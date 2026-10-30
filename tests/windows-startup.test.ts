@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:net';
@@ -43,7 +43,10 @@ test('Windows launcher parses in PowerShell 5.1 and preserves one identified loc
   assert.match(wrapper, /-File "%~dp0Start-POS.ps1" %\*/);
   assert.match(wrapper, /if errorlevel 1/);
 
-  const scratch = mkdtempSync(path.join(tmpdir(), 'pos-startup-'));
+  // Windows PowerShell expands 8.3 names inherited from the CI TEMP path.
+  // Derive every expected path, including absent key/migration paths, from the same real directory.
+  const temporaryRoot = realpathSync.native(tmpdir());
+  const scratch = realpathSync.native(mkdtempSync(path.join(temporaryRoot, 'pos-startup-')));
   const release = path.join(scratch, 'release with spaces');
   mkdirSync(path.join(release, 'app'), { recursive: true });
   cpSync(startupScript, path.join(release, 'Start-POS.ps1'));
@@ -164,7 +167,7 @@ test('Windows launcher parses in PowerShell 5.1 and preserves one identified loc
     for (const child of tracked) if (child.exitCode === null) child.kill();
     if (passed) {
       // Delete only this completed synthetic fixture, after checking its resolved temp boundary.
-      assert.equal(path.dirname(path.resolve(scratch)), path.resolve(tmpdir()));
+      assert.equal(path.dirname(path.resolve(scratch)), temporaryRoot);
       assert.ok(path.basename(scratch).startsWith('pos-startup-'));
       rmSync(scratch, { recursive: true });
     }
