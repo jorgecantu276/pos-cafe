@@ -53,6 +53,8 @@ test('actual favorites page retains ordered draft after lost save, blocks replac
     const confirmation=dom.window.document.querySelector('[role="status"]')!;
     assert.match(confirmation.textContent!,/Favoritos guardados/);
     assert.equal(confirmation.closest('section'),button('Guardar favoritos').closest('section'),'Save confirmation stays beside the saved selection and its action controls');
+    await click('Subir Americano');
+    assert.equal(dom.window.document.querySelector('[role="status"]'),null,'An unsaved edit cannot retain a saved confirmation');
   }finally{
     await act(async()=>root.unmount());dom.window.close();
     for(const[key,descriptor]of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}

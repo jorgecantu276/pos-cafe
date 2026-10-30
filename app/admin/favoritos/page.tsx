@@ -15,8 +15,9 @@ function FavoritesEditor({ data, reload, confirmed, onSaved }: { data: Favorites
   const [chosen, setChosen] = useState(data.config.product_ids), [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false), [pending, setPending] = useState(data.pending), [message, setMessage] = useState('');
   const products = new Map(data.products.map(product => [product.id, product]));
+  const changeChosen = (next: string[]) => { onSaved(''); setChosen(next); };
   const move = (index: number, direction: number) => {
-    const next = [...chosen]; [next[index], next[index + direction]] = [next[index + direction], next[index]]; setChosen(next);
+    const next = [...chosen]; [next[index], next[index + direction]] = [next[index + direction], next[index]]; changeChosen(next);
   };
   const save = async (recover = false) => {
     if (busy) return;
@@ -41,7 +42,7 @@ function FavoritesEditor({ data, reload, confirmed, onSaved }: { data: Favorites
         return <li key={id}><span><strong>{index + 1}. {product?.name ?? 'Producto no disponible'}</strong>{!product?.is_active && <small>Inactivo: quítalo antes de guardar.</small>}</span>
           <button type="button" aria-label={`Subir ${product?.name ?? 'producto'}`} disabled={disabled || index === 0} onClick={() => move(index, -1)}><ArrowUp size={19}/></button>
           <button type="button" aria-label={`Bajar ${product?.name ?? 'producto'}`} disabled={disabled || index === chosen.length - 1} onClick={() => move(index, 1)}><ArrowDown size={19}/></button>
-          <button type="button" aria-label={`Quitar ${product?.name ?? 'producto'}`} disabled={disabled} onClick={() => setChosen(chosen.filter(value => value !== id))}><X size={19}/></button></li>;
+          <button type="button" aria-label={`Quitar ${product?.name ?? 'producto'}`} disabled={disabled} onClick={() => changeChosen(chosen.filter(value => value !== id))}><X size={19}/></button></li>;
       })}</ol>
       {confirmed && <p role="status" className="rounded-xl border border-blue-100 bg-blue-50 p-4 mb-4">{confirmed}</p>}
       <div className="workspace-favorites-actions"><button type="button" className="bg-blue-600 text-white px-5" disabled={disabled || chosen.some(id => !products.get(id)?.is_active)} onClick={() => void save()}>{busy ? 'Guardando…' : 'Guardar favoritos'}</button>
@@ -50,7 +51,7 @@ function FavoritesEditor({ data, reload, confirmed, onSaved }: { data: Favorites
       {message && <p role="status">{message}</p>}
     </section>
     <section className="bg-white border p-5"><h2>Productos activos</h2><label>Buscar producto<input className="block w-full mt-2" aria-label="Buscar producto favorito" value={search} disabled={disabled} onChange={event => setSearch(event.target.value)}/></label>
-      <div className="workspace-favorites-catalog">{data.products.filter(product => product.is_active && product.name.toLocaleLowerCase('es').includes(search.toLocaleLowerCase('es'))).map(product => <button type="button" key={product.id} aria-pressed={chosen.includes(product.id)} disabled={disabled || (!chosen.includes(product.id) && chosen.length >= 8)} onClick={() => setChosen(chosen.includes(product.id) ? chosen.filter(id => id !== product.id) : [...chosen, product.id])}><span>{product.name}</span><small>{chosen.includes(product.id) ? 'Elegido' : `$${Number(product.price).toFixed(2)}`}</small></button>)}</div>
+      <div className="workspace-favorites-catalog">{data.products.filter(product => product.is_active && product.name.toLocaleLowerCase('es').includes(search.toLocaleLowerCase('es'))).map(product => <button type="button" key={product.id} aria-pressed={chosen.includes(product.id)} disabled={disabled || (!chosen.includes(product.id) && chosen.length >= 8)} onClick={() => changeChosen(chosen.includes(product.id) ? chosen.filter(id => id !== product.id) : [...chosen, product.id])}><span>{product.name}</span><small>{chosen.includes(product.id) ? 'Elegido' : `$${Number(product.price).toFixed(2)}`}</small></button>)}</div>
     </section>
   </div>;
 }
