@@ -11,6 +11,7 @@ export interface ProductRow {
   is_active: boolean | null;
   customizable: boolean | null;
   wizard_steps: string[] | null;
+  pos_inventory_items?: Product['inventory'] | NonNullable<Product['inventory']>[] | null;
 }
 export interface ExtraRow {
   id: string;
@@ -89,7 +90,18 @@ export type CatalogProduct = Product & { is_active: boolean };
 export function catalogProduct(row: ProductRow): CatalogProduct {
   return { id: row.id, name: row.name, price: row.price, category: row.category ?? '',
     image_url: row.image_url ?? undefined, is_active: row.is_active === true,
-    customizable: row.customizable === true, wizard_steps: row.wizard_steps ?? [] };
+    customizable: row.customizable === true, wizard_steps: row.wizard_steps ?? [],
+    inventory: (Array.isArray(row.pos_inventory_items) ? row.pos_inventory_items[0] : row.pos_inventory_items) ?? undefined };
+}
+
+export function productAvailable(product: Product) {
+  const i = product.inventory;
+  return !i || (i.mode === 'availability' ? i.available : i.quantity === null || i.quantity > 0);
+}
+export function productStockLabel(product: Product) {
+  if (!productAvailable(product)) return 'Agotado';
+  const i = product.inventory;
+  return i?.mode === 'counted' ? i.quantity === null ? 'Sin contar' : `${i.quantity} disponibles` : '';
 }
 
 export function errorMessage(error: unknown): string {

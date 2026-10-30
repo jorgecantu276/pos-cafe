@@ -18,6 +18,7 @@ export interface Product {
   note?: string;
   customizable?: boolean;
   wizard_steps?: string[];
+  inventory?: { mode: 'availability' | 'counted'; quantity: number | null; available: boolean };
 }
 
 export interface CartItem {

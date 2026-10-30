@@ -8,18 +8,20 @@ import { randomUUID } from 'node:crypto';
 import { shiftDatabaseCases } from './shift/database-cases.mjs';
 import { reportDatabaseCases } from './reports/database-cases.mjs';
 import { multiItemDatabaseCases } from './printing/multi-item-database-cases.mjs';
+import { inventoryDatabaseCases } from './inventory/database-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
 // User-owned TEMP survives PostgreSQL's restricted Windows token; a hosted
 // runner's elevated D:\a checkout can have different inherited ACLs.
 const dir=resolve(await mkdtemp(resolve(tmpdir(),'pos-cafe-pg17-')),'data');
 const password=randomUUID();
-const server=createTestPostgres({databaseDir:dir,user:'postgres',password,port:55439,persistent:true,
+const port=Number(process.env.POS_TEST_PG_PORT || 55439);
+const server=createTestPostgres({databaseDir:dir,user:'postgres',password,port,persistent:true,
   postgresFlags:['-h','127.0.0.1'],onLog:()=>{},onError:()=>{}});
 const clients=[];
 let assertions=0;
 async function connection(role='postgres',uid='') {
-  const c=new Client({host:'127.0.0.1',port:55439,user:'postgres',password,database:'postgres'});
+  const c=new Client({host:'127.0.0.1',port,user:'postgres',password,database:'postgres'});
   await c.connect(); clients.push(c);
   await c.query(`set role ${role}`);
   await c.query("select set_config('request.jwt.claim.sub',$1,false)",[uid]);
@@ -180,6 +182,8 @@ try {
   await db.query(await readFile(resolve(root,'supabase/migrations/202610280004_reports.sql'),'utf8'));
   assertions+=await reportDatabaseCases(db,connection,ids);
   assertions+=await multiItemDatabaseCases(db,connection,ids);
+  await db.query(await readFile(resolve(root,'supabase/migrations/202610300006_simple_inventory.sql'),'utf8'));
+  assertions+=await inventoryDatabaseCases(db,connection,ids);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {
   await Promise.allSettled(clients.map(c=>c.end()));

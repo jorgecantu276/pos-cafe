@@ -10,7 +10,7 @@ import {sourceFiles,verifyIdentity} from '../staging/bootstrap.mjs';
 import {fingerprint,project} from '../staging/safety.mjs';
 
 export async function reportClone(){
-  const source=await sourceFiles(),files=['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql'];
+  const source=await sourceFiles(),files=['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300006_simple_inventory.sql'];
   const migrations=await Promise.all(files.map(f=>readFile(path.join(root,'supabase/migrations',f),'utf8')));
   const hashes=migrations.map((_,i)=>fingerprint(source.snapshot,migrations.slice(0,i+1).join('\n')));
   const directory=path.join(work,'recovery');let selected;

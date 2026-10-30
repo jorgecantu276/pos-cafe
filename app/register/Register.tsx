@@ -7,7 +7,7 @@ import './prototype.css';
 import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
 import './workspace.css';
 
-import { catalogProduct, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
+import { catalogProduct, productAvailable, productStockLabel, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { customizeProduct, useCartStore, type CartExtra, type CartItem, type Product } from '@/store/useCartStore';
@@ -59,6 +59,8 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   };
 
   const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [inventoryError, setInventoryError] = useState('');
+  const catalogRefresh = useRef(false);
   const [dbExtras, setDbExtras] = useState<ExtraRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [ticketSearchTerm, setTicketSearchTerm] = useState(''); // 🟢 ESTADO PARA BUSCAR TICKET
@@ -164,7 +166,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
     await recoverPendingExpenses(supabase, localStorage, user.id);
     await recoverShiftClose(supabase, localStorage, user.id);
     const [catalog, extras, shift] = await Promise.all([
-      supabase.from('products').select('*').order('name').abortSignal(signal),
+      supabase.from('products').select('id,name,price,category,image_url,is_active,customizable,wizard_steps,pos_inventory_items(mode,quantity,available)').order('name').abortSignal(signal),
       supabase.from('extras').select('*').order('phase').abortSignal(signal),
       supabase.from('cash_registers').select('id,opened_at,initial_balance,exchange_rate').eq('opened_by',user.id).eq('status','open').abortSignal(signal).maybeSingle(),
     ]);
@@ -217,6 +219,27 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
     } else { setRegisterId(''); setExpenses([]); setCashSales(0); setShowApertura(true); }
   }, [router]);
   const { loading, error: loadError, reload: fetchData } = useResource(loadPOS, null, applyPOS);
+
+  const refreshInventory = useCallback(async () => {
+    const actor = draftOwner.current;
+    if (!actor || catalogRefresh.current) return;
+    catalogRefresh.current = true;
+    try {
+      const { data, error } = await withDeadline(() => supabase.from('products')
+        .select('id,name,price,category,image_url,is_active,customizable,wizard_steps,pos_inventory_items(mode,quantity,available)')
+        .order('name').abortSignal(AbortSignal.timeout(12_000)));
+      if (error) throw error;
+      if (draftOwner.current === actor) { setProducts((data || []).map(catalogProduct)); setInventoryError(''); }
+    } catch {
+      if (draftOwner.current === actor) setInventoryError('No se pudo actualizar la disponibilidad. El cobro verificará las existencias.');
+    } finally { catalogRefresh.current = false; }
+  }, []);
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState !== 'hidden') void refreshInventory(); };
+    const timer = setInterval(refresh, 30_000);
+    window.addEventListener('focus', refresh);
+    return () => { clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [refreshInventory]);
 
   const calculateTotalCash = () => {
     const pesos = Object.entries(breakdown).reduce((sum, [den, qty]) => sum + (Number(den) * qty), 0);
@@ -552,6 +575,11 @@ const handleSaveAndClose = async () => {
 
   const handleProductClick = useCallback((product: Product) => {
     if (!cartDraft.current || draftError || loading || loadError) return;
+    if (!productAvailable(product)) { alert('Este producto está agotado.'); return; }
+    const quantity = useCartStore.getState().items.filter(i => i.product.id === product.id).reduce((sum, i) => sum + i.quantity, 0);
+    if (product.inventory?.mode === 'counted' && product.inventory.quantity !== null && quantity >= product.inventory.quantity) {
+      alert('Ya agregaste todas las existencias disponibles.'); return;
+    }
     setEditingItemId(null);
     const steps = buildWizardSteps(product);
 
@@ -580,6 +608,10 @@ const handleSaveAndClose = async () => {
 
   const handleConfirmAdd = () => {
     if (!selectedProduct) return;
+    const latest = products.find(p => p.id === selectedProduct.id);
+    const quantity = items.filter(i => i.product.id === selectedProduct.id).reduce((sum, i) => sum + i.quantity, 0);
+    if (!editingItemId && latest && (!productAvailable(latest) || (latest.inventory?.mode === 'counted'
+      && latest.inventory.quantity !== null && quantity >= latest.inventory.quantity))) { alert('Revisa las existencias disponibles.'); return; }
     const productWithExtras = customizeProduct(selectedProduct, activeExtras, productNote);
     if (editingItemId) replaceItem(editingItemId, productWithExtras);
     else addItem(productWithExtras);
@@ -587,6 +619,17 @@ const handleSaveAndClose = async () => {
     setSelectedProduct(null);
     setActiveExtras([]);
     setProductNote('');
+  };
+
+  const changeQuantity = (id: string, quantity: number) => {
+    const line = items.find(i => i.id === id), product = products.find(p => p.id === line?.product.id);
+    if (line && quantity > line.quantity && product) {
+      const total = items.filter(i => i.product.id === product.id).reduce((sum, i) => sum + i.quantity, 0) - line.quantity + quantity;
+      if (!productAvailable(product) || (product.inventory?.mode === 'counted' && product.inventory.quantity !== null && total > product.inventory.quantity)) {
+        alert('La cantidad supera las existencias disponibles.'); return;
+      }
+    }
+    updateQuantity(id, quantity);
   };
 
   const handleOpenCheckout = () => {
@@ -668,6 +711,7 @@ const handleSaveAndClose = async () => {
         setLastOrderId(String(order.ticket_number).padStart(4, '0'));
         setShowCheckoutModal(false);
         setShowPostSaleModal(true);
+        void refreshInventory();
       });
 
     } catch (error: unknown) {
@@ -680,6 +724,7 @@ const handleSaveAndClose = async () => {
       try { needsReview = Boolean(checkoutKey && localStorage.getItem(checkoutKey)); }
       catch { /* Storage failure must not hide the original save error. */ }
       if (needsReview) setShowCheckoutModal(false);
+      if (error instanceof CheckoutRejected) void refreshInventory();
       alert((error instanceof Error ? errorMessage(error) : 'No se confirmó la venta.') + (needsReview ? '\nNo vuelvas a cobrar. Usa recuperar venta para consultar o completar la misma transacción.' : ''));
     } finally {
       if (stillCurrent()) { checkoutInFlight.current = false; setIsProcessingCheckout(false); }
@@ -959,11 +1004,12 @@ const handleSaveAndClose = async () => {
 
       {appearance!=='owner' ? <RegisterView products={products} items={items} total={getTotal()} search={searchTerm} onSearch={setSearchTerm}
         userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout}
-        onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={updateQuantity} onRemove={removeItem} onClear={clearCart} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
+        onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={changeQuantity} onRemove={removeItem} onClear={clearCart} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
         customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
         onNewCustomer={()=>setShowCustomerModal(true)} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
         orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
         {!showPostSaleModal && printStatus}
+        {inventoryError && <p role="status">{inventoryError} <button onClick={() => void refreshInventory()}>Actualizar disponibilidad</button></p>}
         {loadError && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p>No se pudo cargar el catálogo. {loadError}</p>
@@ -1120,12 +1166,13 @@ const handleSaveAndClose = async () => {
               <h2 className="text-[11px] font-black uppercase text-slate-400 mb-5 px-2 tracking-[0.2em]">{cat}</h2>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                 {groupedProducts[cat].map((p) => (
-                  <div key={p.id} onClick={() => handleProductClick(p)} className="bg-white rounded-[2.5rem] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:shadow-xl transition-all cursor-pointer group border border-transparent hover:border-blue-50">
+                  <div key={p.id} aria-disabled={!productAvailable(p)} onClick={() => handleProductClick(p)} className="bg-white rounded-[2.5rem] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:shadow-xl transition-all cursor-pointer group border border-transparent hover:border-blue-50">
                     <div className="h-32 bg-slate-50 rounded-[20px] mb-4 overflow-hidden relative">
                       <ProductPhoto product={p} width={512} height={512} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                     </div>
                     <h3 className="font-bold text-sm text-slate-800">{p.name}</h3>
                     <p className="text-[#0071e3] font-black text-sm mt-1">${Number(p.price).toFixed(2)}</p>
+                    <small>{productStockLabel(p)}</small>
                   </div>
                 ))}
               </div>
@@ -1221,9 +1268,9 @@ const handleSaveAndClose = async () => {
 
                 <div className="flex justify-between items-center pt-2">
                    <div className="flex items-center gap-4 bg-white rounded-xl px-3 py-1.5 shadow-sm border border-slate-100">
-                      <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="p-1 hover:text-[#0071e3] text-slate-400 transition-colors"><Minus size={14}/></button>
+                      <button onClick={() => changeQuantity(item.id, item.quantity - 1)} className="p-1 hover:text-[#0071e3] text-slate-400 transition-colors"><Minus size={14}/></button>
                       <span className="font-bold text-[13px] w-5 text-center text-[#1d1d1f]">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="p-1 hover:text-[#0071e3] text-slate-400 transition-colors"><Plus size={14}/></button>
+                      <button onClick={() => changeQuantity(item.id, item.quantity + 1)} className="p-1 hover:text-[#0071e3] text-slate-400 transition-colors"><Plus size={14}/></button>
                    </div>
                    <div className="flex gap-2">
                       <button onClick={() => handleEditItem(item)} className="p-2.5 text-[#86868b] hover:text-[#0071e3] rounded-full transition-all"><Edit3 size={18}/></button>
@@ -1253,7 +1300,7 @@ const handleSaveAndClose = async () => {
       {selectedProduct&&dynamicSteps.length>0&&appearance!=='owner'&&<CustomizationView product={selectedProduct} steps={dynamicSteps} index={customizationStep} extras={activeExtras} dbExtras={dbExtras}
         note={productNote} onNote={setProductNote} onStep={setCustomizationStep}
         quantity={editingItemId?items.find(item=>item.id===editingItemId)?.quantity:undefined}
-        onQuantity={quantity=>{if(editingItemId)updateQuantity(editingItemId,quantity);}}
+        onQuantity={quantity=>{if(editingItemId)changeQuantity(editingItemId,quantity);}}
         onRemove={editingItemId?()=>{removeItem(editingItemId);setSelectedProduct(null);setEditingItemId(null);setActiveExtras([]);setProductNote('');}:undefined}
         onOption={(optName:string,stepIndex:number=customizationStep)=>{
           const step=dynamicSteps[stepIndex],matches=(extra:CartExtra)=>extra.name===optName&&(!extra.phase||extra.phase===step.id);

@@ -50,10 +50,13 @@ export function WorkspaceKeyboard({ value, onChange, numeric = false, disabled =
 const ProductButton = memo(function ProductButton({ product, disabled, onProduct }: {
   product: CatalogProduct; disabled: boolean; onProduct: RegisterProps['onProduct'];
 }) {
-  return <button className="workspace-product has-photo" disabled={disabled}
+  const stock = product.inventory;
+  const unavailable = stock?.mode === 'availability' ? !stock.available : stock?.quantity === 0;
+  const stockLabel = unavailable ? 'Agotado' : stock?.mode === 'counted' ? stock.quantity === null ? 'Sin contar' : `${stock.quantity} disponibles` : '';
+  return <button className="workspace-product has-photo" disabled={disabled || unavailable}
     onClick={() => onProduct(product)} aria-label={`${product.name}, ${money(Number(product.price))}`}>
     <ProductPhoto product={product} width={72} height={72} />
-    <span className="workspace-product-copy"><strong>{product.name}</strong><span>{money(Number(product.price))}</span></span>
+    <span className="workspace-product-copy"><strong>{product.name}</strong><span>{money(Number(product.price))}{stockLabel && <small className="workspace-stock-label">{stockLabel}</small>}</span></span>
   </button>;
 });
 

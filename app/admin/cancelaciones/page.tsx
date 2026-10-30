@@ -52,6 +52,7 @@ export default function CancelacionesPage() {
         <div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Auditoría y Cancelaciones</h2>
           <p className="text-red-500 text-xs font-black uppercase tracking-[0.2em] mt-1 italic">Últimas 20 ventas · Matamoros · Consulta Ventas para el historial completo</p>
+          <p className="text-sm text-slate-600">Para devolver productos al inventario, abre el ticket cancelado en <a href="/admin/ventas" className="underline">Ventas</a>.</p>
         </div>
         <div className="relative w-full md:w-80">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

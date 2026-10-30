@@ -37,7 +37,7 @@ function checkoutHarness(storage=new Map<string,string>(), online=true, retire=(
     navigator:{onLine:online},setIsProcessingCheckout:()=>{},getTotal:()=>60,items:[item],isPaymentInsufficient:false,activeCustomer:null,
     registerId:'register',paymentMethod:'Efectivo',parseAmount:Number,amountReceivedMXN:100,amountReceivedUSD:0,orderType:'En Local',orderNote:'',
     CheckoutRejected,checkoutPayload,executeCheckout:(client:Parameters<typeof executeCheckout>[0],pending:CheckoutReview)=>executeCheckout(client,pending,timeoutMs),readCheckoutReview,rememberSalePrint,setCheckoutReview:()=>{},setSavedSale:()=>{},setLastOrderId:()=>{},setShowCheckoutModal:()=>{},setShowPostSaleModal:(v:boolean)=>successful=v,
-    clearCart:()=>{},
+    clearCart:()=>{},refreshInventory:async()=>{},
     alert:(message:string)=>alerts.push(message),
     supabase:{rpc:(name:string)=>{assert.equal(name,'pos_checkout');calls++;return response;}},
   });

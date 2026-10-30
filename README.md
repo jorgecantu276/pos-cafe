@@ -53,7 +53,7 @@ Customer tickets use Mexican receipt references with a separate local issuer pro
 
 The October 31 hardware-test candidate and acceptance steps are recorded in [the test plan](docs/test-plan-2026-10-31.md). Windows CI verifies clean installation, lint, TypeScript, unit/UI/layout tests, disposable PostgreSQL, dependency audits, an isolated production build and production printer recovery using synthetic loopback fixtures.
 
-See `supabase/README.md` and [Windows deployment](docs/windows-deployment.md). The client's Supabase signup is awaiting email verification. The matching app and retained migrations 001, 002 and 004 have not been installed/applied on the café PC or hosted client project. PR #1 remains draft; main has not been merged.
+See `supabase/README.md`, [simple inventory](docs/inventory.md) and [Windows deployment](docs/windows-deployment.md). This inventory branch adds migration 006 after retained migrations 001, 002 and 004. It must ship with the matching app. No hosted database or café-PC deployment was performed by the inventory work; confirm the release chat's current deployment state before rollout.
 
 Keep the app and database migration in one planned release. Build here, verify a compatible Windows runtime artifact and actual café Node/runtime, then sync the reviewed source/migrations and release artifact. Do not require the café PC to become the build machine. Local Auth/PostgREST acceptance, encrypted backup/cold-restore/compatible-app rollback, production process restart and legacy-worker fixture upgrade drills pass. Hosted restore, off-device backup operations, Windows boot/watchdog setup and physical acceptance remain release work. Do not roll back to the old unrestricted checkout after tightening the database.
 

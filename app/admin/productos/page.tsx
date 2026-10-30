@@ -151,6 +151,7 @@ export default function ProductosPage() {
             <>
               <input type="url" placeholder="URL de la imagen (Opcional)" value={formData.image_url} className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" onChange={e => setFormData({...formData, image_url: e.target.value})} />
               <p className="text-sm text-slate-500">Pega el enlace de su foto propia cuando esté lista. Si está vacío o la foto no carga, se muestra una imagen provisional.</p>
+              <p className="text-sm text-slate-500">Las existencias se registran en <a className="underline" href="/admin/inventario">Inventario</a>. Un producto nuevo comienza disponible, sin un conteo asignado.</p>
               
               {/* 🟢 SELECTOR DE CATEGORÍAS (PRODUCTOS) */}
               <div className="relative w-full">

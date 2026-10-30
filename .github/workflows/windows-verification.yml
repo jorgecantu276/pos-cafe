@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, codex/prepare-2026-10-31-tests]
   workflow_dispatch:
 
 permissions:

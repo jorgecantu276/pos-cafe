@@ -12,6 +12,7 @@ import { ReportFilters, ReportPagination } from '../ReportControls';
 import { loadReport, reportParams, reportQuery, reportMoney, reportDate, reportPeriod, type SalesReport } from '@/lib/reports';
 import { isCanceled } from '@/lib/shift';
 import { cancelLegacySale, cancellationNotice } from '@/lib/cancellation';
+import InventoryReturn from '../inventario/InventoryReturn';
 import { Loader2, Keyboard, Delete, X, Printer, Ban, AlertCircle } from 'lucide-react';
 
 export default function VentasPage() {
@@ -123,7 +124,7 @@ export default function VentasPage() {
             {isCanceled(selectedOrder.status) && (
               <div className="bg-red-50 text-red-600 border border-red-200 p-4 rounded-xl flex items-center gap-3 mb-6">
                 <AlertCircle size={20} />
-                <p className="text-sm font-bold">Esta venta está marcada como cancelada. La cancelación no devuelve dinero.</p>
+                <p className="text-sm font-bold">Venta cancelada. No se devuelve dinero ni se reponen productos automáticamente.</p>
               </div>
             )}
 
@@ -144,6 +145,7 @@ export default function VentasPage() {
               </div>
             </div>
 
+            {isCanceled(selectedOrder.status) && <InventoryReturn key={selectedOrder.id} orderId={selectedOrder.id} />}
             <div className="flex flex-col gap-3">
               <button 
                 onClick={() => handleReprintTicket(selectedOrder)}
