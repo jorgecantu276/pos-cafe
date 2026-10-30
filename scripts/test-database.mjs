@@ -1,6 +1,7 @@
-import EmbeddedPostgres from 'embedded-postgres';
+import { createTestPostgres } from './testing/postgres.mjs';
 import { Client } from 'pg';
-import { readFile, mkdtemp, mkdir } from 'node:fs/promises';
+import { readFile, mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -10,11 +11,11 @@ import { reportDatabaseCases } from './reports/database-cases.mjs';
 import { multiItemDatabaseCases } from './printing/multi-item-database-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
-const work=resolve(root,'.staging-local');
-await mkdir(work,{recursive:true});
-const dir=await mkdtemp(resolve(work,'pg17-'));
+// User-owned TEMP survives PostgreSQL's restricted Windows token; a hosted
+// runner's elevated D:\a checkout can have different inherited ACLs.
+const dir=resolve(await mkdtemp(resolve(tmpdir(),'pos-cafe-pg17-')),'data');
 const password=randomUUID();
-const server=new EmbeddedPostgres({databaseDir:dir,user:'postgres',password,port:55439,persistent:true,
+const server=createTestPostgres({databaseDir:dir,user:'postgres',password,port:55439,persistent:true,
   postgresFlags:['-h','127.0.0.1'],onLog:()=>{},onError:()=>{}});
 const clients=[];
 let assertions=0;
