@@ -190,6 +190,7 @@ try {
   await db.query("update cash_registers set status='closed' where status='open'");
   await db.query(drawerMigration);
   await db.query(await readFile(resolve(root,'supabase/migrations/202610300006_loyalty_phone.sql'),'utf8'));
+  await db.query(await readFile(resolve(root,'supabase/migrations/202610300007_safe_drawer_rate.sql'),'utf8'));
   assertions+=await drawerDatabaseCases(db,connection,ids);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {

@@ -16,6 +16,9 @@ export async function drawerDatabaseCases(db, connection, ids) {
   equal((await status(a)).active,null); equal((await status(a)).rate,null);
   await deny(a,'select pos_open_shift($1,100,20)',[randomUUID()]);
   await deny(a,'select pos_set_drawer_rate($1,$2)',[randomUUID(),{rate:20}]);
+  await db.query('delete from cafe_private.drawer_settings where singleton=true');
+  await deny(admin,'select pos_set_drawer_rate($1,$2)',[randomUUID(),{rate:20}]);
+  await db.query('insert into cafe_private.drawer_settings(singleton) values(true)');
   const rateKey=randomUUID();const saved=await rpc(admin,'pos_set_drawer_rate',rateKey,{rate:20});
   equal(await rpc(admin,'pos_set_drawer_rate',rateKey,{rate:20}),saved);
   await deny(admin,'select pos_set_drawer_rate($1,$2)',[rateKey,{rate:21}]);
