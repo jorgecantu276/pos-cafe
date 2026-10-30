@@ -1,11 +1,13 @@
 'use client';
 
+import { type Coupon } from '@/lib/pos-types';
+
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Ticket, PlusCircle, Trash2, Tag, Calendar, Loader2 } from 'lucide-react';
+import { PlusCircle, Trash2, Tag, Calendar, Loader2 } from 'lucide-react';
 
 export default function CuponesPage() {
-  const [coupons, setCoupons] = useState<any[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

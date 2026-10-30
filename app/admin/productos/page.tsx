@@ -1,14 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import Image from 'next/image';
+
+import { type ProductRow, type ExtraRow, errorMessage } from '@/lib/pos-types';
+
+import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useResource } from '@/lib/use-resource';
+import LoadFailure from '@/app/LoadFailure';
 import { PlusCircle, Trash2, Edit2, Package, Loader2, Layers } from 'lucide-react';
 
 export default function ProductosPage() {
   const [activeTab, setActiveTab] = useState<'items' | 'extras'>('items');
-  const [products, setProducts] = useState<any[]>([]);
-  const [extras, setExtras] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   
   const [editingId, setEditingId] = useState<string | number | null>(null);
@@ -17,32 +20,33 @@ export default function ProductosPage() {
   const [showNewCat, setShowNewCat] = useState(false);
   const [showNewPhase, setShowNewPhase] = useState(false);
 
-  const initialFormState = { name: '', price: '', category: 'Bebidas', stock: 10, phase: 'Tamaño', customizable: true, image_url: '', wizard_steps: [] as string[] };
+  const initialFormState = { name: '', price: '', category: 'Bebidas', stock: 0, phase: 'Tamaño', customizable: true, image_url: '', wizard_steps: [] as string[] };
   const [formData, setFormData] = useState(initialFormState);
 
-  const fetchData = async () => {
-    setLoading(true);
-    const { data: p } = await supabase.from('products').select('*').order('name');
-    const { data: e } = await supabase.from('extras').select('*').order('phase');
-    setProducts(p || []);
-    setExtras(e || []);
-    setLoading(false);
-  };
+  const loadCatalog = useCallback(async (signal: AbortSignal) => {
+    const [products, extras] = await Promise.all([
+      supabase.from('products').select('*').order('name').abortSignal(signal),
+      supabase.from('extras').select('*').order('phase').abortSignal(signal),
+    ]);
+    if (products.error) throw products.error;
+    if (extras.error) throw extras.error;
+    return { products: (products.data || []) as ProductRow[], extras: (extras.data || []) as ExtraRow[] };
+  }, []);
+  const { data: { products, extras }, loading, error: loadError, reload: fetchData } = useResource(loadCatalog, { products: [], extras: [] });
 
-  useEffect(() => { fetchData(); }, []);
 
-  const handleEdit = (item: any, type: 'items' | 'extras') => {
+  const handleEdit = (item: ProductRow | ExtraRow, type: 'items' | 'extras') => {
     setActiveTab(type);
     setEditingId(item.id);
     setFormData({
       name: item.name || '',
-      price: item.price || '',
-      category: item.category || 'Bebidas',
-      stock: item.stock || 10,
-      phase: item.phase || 'Tamaño',
-      customizable: item.customizable !== false,
-      image_url: item.image_url || '',
-      wizard_steps: item.wizard_steps || [] 
+      price: String(item.price ?? ''),
+      category: 'category' in item ? item.category || 'Bebidas' : 'Bebidas',
+      stock: 'stock' in item ? item.stock ?? 0 : 0,
+      phase: 'phase' in item ? item.phase : 'Tamaño',
+      customizable: 'customizable' in item && item.customizable === true,
+      image_url: 'image_url' in item ? item.image_url || '' : '',
+      wizard_steps: 'wizard_steps' in item ? item.wizard_steps || [] : []
     });
     setShowNewCat(false);
     setShowNewPhase(false);
@@ -62,12 +66,14 @@ export default function ProductosPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      if (!formData.name.trim() || !Number.isFinite(Number(formData.price)) || Number(formData.price)<0
+        ) throw new Error('Revisa nombre y precio.');
       if (activeTab === 'items') {
         const payload = { 
           name: formData.name, 
           price: parseFloat(formData.price),
           category: formData.category,
-          stock: formData.stock,
+          // Editing a name/price must not overwrite stock sold since loading.
           customizable: formData.customizable,
           image_url: formData.image_url,
           wizard_steps: formData.customizable ? formData.wizard_steps : [] 
@@ -100,24 +106,26 @@ export default function ProductosPage() {
       setEditingId(null);
       setFormData(initialFormState);
       fetchData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error al guardar:", error);
-      alert(`Hubo un error al guardar: ${error.message}`);
+      alert(`Hubo un error al guardar: ${errorMessage(error)}`);
     }
   };
 
   // 🟢 EXTRAYENDO CATEGORÍAS Y FASES ÚNICAS (Mantenemos las opciones por defecto siempre visibles)
   const defaultCategories = ['Bebidas', 'Postres', 'Varios'];
-  const uniqueCategories = Array.from(new Set([...defaultCategories, ...products.map(p => p.category)]));
+  const uniqueCategories = Array.from(new Set([...defaultCategories, ...products.map(p => p.category).filter((c): c is string => Boolean(c))]));
 
   const defaultPhases = ['Tamaño', 'Tipo de Leche', 'Endulzante', 'Sabor'];
   const uniquePhases = Array.from(new Set([...defaultPhases, ...extras.map(e => e.phase)]));
 
-  const groupedExtras = extras.reduce((acc: any, current) => {
+  const groupedExtras = extras.reduce<Record<string, ExtraRow[]>>((acc, current) => {
     if (!acc[current.phase]) acc[current.phase] = [];
     acc[current.phase].push(current);
     return acc;
   }, {});
+
+  if (loadError) return <LoadFailure message={loadError} retry={fetchData} />;
 
   if (loading) return <Loader2 className="animate-spin text-blue-600 mx-auto mt-20" />;
 
@@ -144,6 +152,7 @@ export default function ProductosPage() {
           {activeTab === 'items' ? (
             <>
               <input type="url" placeholder="URL de la imagen (Opcional)" value={formData.image_url} className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" onChange={e => setFormData({...formData, image_url: e.target.value})} />
+              <p className="text-sm text-slate-500">Las existencias se registran en <a className="underline" href="/admin/inventario">Inventario</a>. Un producto nuevo comienza en cero.</p>
               
               {/* 🟢 SELECTOR DE CATEGORÍAS (PRODUCTOS) */}
               <div className="relative w-full">
@@ -217,12 +226,12 @@ export default function ProductosPage() {
 
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
         {activeTab === 'items' ? (
-          products.map(p => (
+          products.filter(p=>p.is_active!==false).map(p => (
             <div key={p.id} className="p-6 flex items-center justify-between border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors group">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-blue-50/50 rounded-2xl flex items-center justify-center text-blue-500 overflow-hidden flex-shrink-0 border border-blue-100 shadow-sm">
                   {p.image_url ? (
-                    <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                    <Image unoptimized width={56} height={56} src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
                   ) : (
                     <Package size={24} className="opacity-50" />
                   )}
@@ -249,7 +258,7 @@ export default function ProductosPage() {
                 <button onClick={() => handleEdit(p, 'items')} className="bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors p-2.5 rounded-xl">
                   <Edit2 size={18}/>
                 </button>
-                <button onClick={async () => { if(confirm('¿Seguro que deseas eliminar este producto?')) { await supabase.from('products').delete().eq('id', p.id); fetchData(); } }} className="bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors p-2.5 rounded-xl">
+                <button aria-label={`Desactivar ${p.name}`} onClick={async () => { if(confirm('¿Desactivar este producto? Su historial y existencias se conservarán.')) { const r=await supabase.from('products').update({is_active:false}).eq('id', p.id); if(r.error){alert(errorMessage(r.error));return;} fetchData(); } }} className="bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors p-2.5 rounded-xl">
                   <Trash2 size={18}/>
                 </button>
               </div>
@@ -261,7 +270,7 @@ export default function ProductosPage() {
               <div className="bg-slate-50 px-6 py-3 border-y border-slate-100">
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{phaseName}</h3>
               </div>
-              {groupedExtras[phaseName].map((e: any) => (
+              {groupedExtras[phaseName].map((e) => (
                 <div key={e.id} className="p-6 flex items-center justify-between border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors group">
                   <div>
                     <h4 className="font-bold text-slate-800 text-lg">{e.name}</h4>

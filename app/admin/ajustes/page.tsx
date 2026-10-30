@@ -1,10 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  Settings, Moon, Sun, Printer, Store, 
-  User, Check, Laptop, Palette, ChevronRight
-} from 'lucide-react';
+import { Moon, Sun, Printer, Check, Laptop, Palette } from 'lucide-react';
 
 export default function AjustesPage() {
   const [theme, setTheme] = useState('light');

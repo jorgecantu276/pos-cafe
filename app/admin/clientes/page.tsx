@@ -1,26 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { loadReport, reportMoney, reportDate, type CustomerReport } from '@/lib/reports';
+import { useResource } from '@/lib/use-resource';
+import LoadFailure from '@/app/LoadFailure';
+import { ReportPagination } from '../ReportControls';
+
+import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Users, Search, UserPlus, Star, Phone, Mail, Loader2, TrendingUp } from 'lucide-react';
+import { Search, Star, Phone, Mail, TrendingUp } from 'lucide-react';
 
 export default function ClientesPage() {
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-
-  useEffect(() => {
-    const fetchCustomers = async () => {
-      const { data } = await supabase.from('customers').select('*').order('total_spent', { ascending: false });
-      setCustomers(data || []);
-      setLoading(false);
-    };
-    fetchCustomers();
-  }, []);
-
-  const filtered = customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
-
-  if (loading) return <Loader2 className="animate-spin text-blue-600 mx-auto mt-20" />;
+  const [query, setQuery] = useState({ search: '', page: 0 });
+  const load = useCallback((signal: AbortSignal) => loadReport<CustomerReport>(supabase, 'pos_customer_report', { p_search: query.search, p_page: query.page }, signal), [query]);
+  const { data: report, loading, error, reload } = useResource<CustomerReport | null>(load, null);
+  const filtered = report?.customers ?? [];
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -33,14 +26,19 @@ export default function ClientesPage() {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input 
             type="text" 
-            placeholder="Buscar por nombre..." 
+            placeholder="Buscar por nombre..."
+            maxLength={100}
             className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 outline-none text-sm font-bold"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={query.search}
+            onChange={event => setQuery({ search: event.target.value, page: 0 })}
           />
         </div>
       </header>
 
+      <button className="rounded-xl border bg-white p-3" onClick={() => setQuery({ ...query, page: 0 })}>Actualizar clientes</button>
+      <p className="text-sm text-slate-500">Compras completadas asociadas al cliente; excluye cancelaciones y pendientes. Los puntos conservan su registro de fidelidad.</p>
+      {error ? <LoadFailure message={error} retry={reload} /> : loading ? <p role="status">Verificando clientes…</p> : report && <>
+      <p className="text-sm">{report.summary.rows} clientes · Compras completadas {reportMoney(report.summary.sales)} · Actualizado {reportDate(report.captured_at)}</p>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map(customer => (
           <div key={customer.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all group">
@@ -54,13 +52,13 @@ export default function ClientesPage() {
             </div>
             <h4 className="text-lg font-bold text-slate-800">{customer.name}</h4>
             <div className="space-y-2 mt-4">
-              <p className="text-xs text-slate-400 flex items-center gap-2"><Mail size={14}/> {customer.email || 'Sin correo'}</p>
+              <p className="text-xs text-slate-400 flex items-center gap-2"><Mail size={14}/> {'Sin correo'}</p>
               <p className="text-xs text-slate-400 flex items-center gap-2"><Phone size={14}/> {customer.phone || 'Sin teléfono'}</p>
             </div>
             <div className="mt-6 pt-6 border-t border-slate-50 flex justify-between items-center">
                <div>
-                 <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Consumo Total</p>
-                 <p className="text-xl font-black text-slate-900">${Number(customer.total_spent).toFixed(2)}</p>
+                 <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Compras completadas</p>
+                 <p className="text-xl font-black text-slate-900">{reportMoney(customer.completed_spent)}</p>
                </div>
                <div className="bg-emerald-50 text-emerald-600 p-2 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
                  <TrendingUp size={20}/>
@@ -69,6 +67,8 @@ export default function ClientesPage() {
           </div>
         ))}
       </div>
+      <ReportPagination page={report.page} pageSize={report.page_size} rows={report.summary.rows} onPage={page => setQuery({ ...query, page })} />
+      </>}
     </div>
   );
 }

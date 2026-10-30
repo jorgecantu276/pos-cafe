@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { type Supply, errorMessage } from '@/lib/pos-types';
+
+import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { 
-  Box, Plus, Search, AlertTriangle, TrendingDown, 
-  Edit3, Loader2, Trash2, ChevronRight, X
-} from 'lucide-react';
+import { useResource } from '@/lib/use-resource';
+import LoadFailure from '@/app/LoadFailure';
+import { Box, Plus, Search, AlertTriangle, Edit3, Loader2, Trash2, X } from 'lucide-react';
 
 const CONVERSIONS: Record<string, { base: string, factor: number }> = {
   'ml': { base: 'ml', factor: 1 },
@@ -17,8 +18,6 @@ const CONVERSIONS: Record<string, { base: string, factor: number }> = {
 };
 
 export default function InsumosPage() {
-  const [supplies, setSupplies] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -32,14 +31,13 @@ export default function InsumosPage() {
     cost_per_unit: ''
   });
 
-  const fetchSupplies = async () => {
-    setLoading(true);
-    const { data } = await supabase.from('supplies').select('*').order('name');
-    setSupplies(data || []);
-    setLoading(false);
-  };
+  const loadSupplies = useCallback(async (signal: AbortSignal) => {
+    const { data, error } = await supabase.from('supplies').select('*').order('name').abortSignal(signal);
+    if (error) throw error;
+    return (data || []) as Supply[];
+  }, []);
+  const { data: supplies, loading, error: loadError, reload: fetchSupplies } = useResource(loadSupplies, []);
 
-  useEffect(() => { fetchSupplies(); }, []);
 
   const formatDisplayStock = (amount: number, unit: string) => {
     if (unit === 'ml' && amount >= 1000) return `${(amount / 1000).toFixed(2)} lt`;
@@ -48,23 +46,24 @@ export default function InsumosPage() {
   };
 
   // ABRIR MODAL PARA EDITAR
-  const handleEdit = (supply: any) => {
+  const handleEdit = (supply: Supply) => {
     setEditingId(supply.id);
     // Para editar, mostramos los valores en la unidad base para evitar confusiones
     setFormData({
       name: supply.name,
       unit: supply.unit,
-      current_stock: supply.current_stock.toString(),
-      min_stock: supply.min_stock.toString(),
-      cost_per_unit: supply.cost_per_unit.toString()
+      current_stock: String(supply.current_stock ?? 0),
+      min_stock: String(supply.min_stock ?? 0),
+      cost_per_unit: String(supply.cost_per_unit ?? 0)
     });
     setIsModalOpen(true);
   };
 
   // BORRAR INSUMO
   const handleDelete = async (id: string) => {
-    if (confirm('¿Estás seguro de eliminar este insumo? Esto afectará a las recetas que lo usen.')) {
-      await supabase.from('supplies').delete().eq('id', id);
+    if (confirm('¿Desactivar este insumo? Las recetas que lo usan no podrán venderse hasta corregirlas. Se conserva el historial.')) {
+      const { error } = await supabase.from('supplies').update({is_active:false}).eq('id', id);
+      if (error) { alert('No se pudo desactivar el insumo: ' + errorMessage(error)); return; }
       fetchSupplies();
     }
   };
@@ -73,38 +72,44 @@ export default function InsumosPage() {
     e.preventDefault();
     setIsSaving(true);
     try {
+      if(editingId&&!['ml','gr','pza'].includes(formData.unit))throw new Error('La unidad anterior requiere conciliación antes de editar este insumo. No se convirtió el saldo.');
       const conversion = CONVERSIONS[formData.unit];
-      const stockEnBase = parseFloat(formData.current_stock) * conversion.factor;
       const costoEnBase = parseFloat(formData.cost_per_unit) / conversion.factor;
       const minStockEnBase = parseFloat(formData.min_stock) * conversion.factor;
+      if (!formData.name.trim() || ![costoEnBase, minStockEnBase].every(value => Number.isFinite(value) && value >= 0)) {
+        throw new Error('Introduce un nombre e importes válidos, sin valores negativos.');
+      }
 
       const payload = {
         name: formData.name,
-        unit: conversion.base,
-        current_stock: stockEnBase,
+        ...(!editingId ? {unit: conversion.base} : {}),
         min_stock: minStockEnBase,
         cost_per_unit: costoEnBase
       };
 
       if (editingId) {
-        await supabase.from('supplies').update(payload).eq('id', editingId);
+        const { error } = await supabase.from('supplies').update(payload).eq('id', editingId);
+        if (error) throw error;
       } else {
-        await supabase.from('supplies').insert([payload]);
+        const { error } = await supabase.from('supplies').insert([payload]);
+        if (error) throw error;
       }
       
       setIsModalOpen(false);
       setEditingId(null);
       setFormData({ name: '', unit: 'ml', current_stock: '', min_stock: '', cost_per_unit: '' });
       fetchSupplies();
-    } catch (err: any) {
-      alert("Error: " + err.message);
+    } catch (err: unknown) {
+      alert("Error: " + errorMessage(err));
     } finally {
       setIsSaving(false);
     }
   };
 
-  const filtered = supplies.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  const lowStockCount = supplies.filter(s => s.current_stock <= s.min_stock).length;
+  const filtered = supplies.filter(s => s.is_active!==false && s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const lowStockCount = supplies.filter(s => Number(s.current_stock) <= Number(s.min_stock)).length;
+
+  if (loadError) return <LoadFailure message={loadError} retry={fetchSupplies} />;
 
   if (loading) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="animate-spin text-slate-300 w-8 h-8" /></div>;
 
@@ -147,7 +152,7 @@ export default function InsumosPage() {
             </div>
             <div className="flex items-center gap-10 w-full md:w-auto justify-between md:justify-end">
               <div className="text-right">
-                <p className={`text-2xl font-semibold tracking-tight ${supply.current_stock <= supply.min_stock ? 'text-red-600' : 'text-[#1d1d1f]'}`}>{formatDisplayStock(supply.current_stock, supply.unit)}</p>
+                <p className={`text-2xl font-semibold tracking-tight ${Number(supply.current_stock) <= Number(supply.min_stock) ? 'text-red-600' : 'text-[#1d1d1f]'}`}>{formatDisplayStock(Number(supply.current_stock), supply.unit)}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => handleEdit(supply)} className="p-3 text-slate-300 hover:text-[#1d1d1f] hover:bg-white rounded-full transition-all border border-transparent hover:border-slate-100 shadow-sm"><Edit3 size={20}/></button>
@@ -174,7 +179,7 @@ export default function InsumosPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-[#86868b] uppercase">Unidad de Compra</label>
-                  <select className="w-full bg-[#f5f5f7] border-none rounded-xl p-4 outline-none font-semibold" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})}>
+                  <select disabled={!!editingId} className="w-full bg-[#f5f5f7] border-none rounded-xl p-4 outline-none font-semibold" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})}>
                     <option value="ml">ml / lt / oz</option>
                     <option value="gr">gr / kg</option>
                     <option value="lt">Litros (lt)</option>
@@ -184,14 +189,13 @@ export default function InsumosPage() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-[#86868b] uppercase">Costo total compra</label>
+                  <label className="text-xs font-bold text-[#86868b] uppercase">Costo por unidad seleccionada</label>
                   <input required type="number" step="0.0001" className="w-full bg-[#f5f5f7] border-none rounded-xl p-4 outline-none font-semibold" value={formData.cost_per_unit} onChange={e => setFormData({...formData, cost_per_unit: e.target.value})} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-[#86868b] uppercase">Stock cantidad</label>
-                  <input required type="number" step="0.01" className="w-full bg-[#f5f5f7] border-none rounded-xl p-4 outline-none font-semibold" value={formData.current_stock} onChange={e => setFormData({...formData, current_stock: e.target.value})} />
+                  <p className="text-sm text-slate-500">Entradas, conteos y merma en <a href="/admin/inventario" className="underline">Inventario</a>. Los insumos nuevos comienzan en cero.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-[#86868b] uppercase">Mínimo Alerta</label>

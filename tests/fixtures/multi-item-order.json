@@ -1,0 +1,18 @@
+{
+  "scope": "Synthetic local test only. Names and prices follow the supplied menu; IDs and stock are fictitious.",
+  "products": [
+    {"id":"d0000000-0000-4000-8000-000000000001","name":"Iced coffee caramelo","price":95,"category":"Bebidas","stock":20,"image_url":null,"is_active":true,"customizable":true,"wizard_steps":["Tipo de Leche"]},
+    {"id":"d0000000-0000-4000-8000-000000000002","name":"Iced coffee vainilla","price":95,"category":"Bebidas","stock":20,"image_url":null,"is_active":true,"customizable":true,"wizard_steps":["Tipo de Leche"]}
+  ],
+  "extras": [
+    {"id":"e0000000-0000-4000-8000-000000000001","name":"Leche de avena","price":15,"phase":"Tipo de Leche","active":true},
+    {"id":"e0000000-0000-4000-8000-000000000002","name":"Entera","price":0,"phase":"Tipo de Leche","active":true},
+    {"id":"e0000000-0000-4000-8000-000000000003","name":"Almendra","price":15,"phase":"Tipo de Leche","active":true}
+  ],
+  "expectedTotal":425,
+  "expectedLines":[
+    {"product_id":"d0000000-0000-4000-8000-000000000001","quantity":2,"extra_ids":["e0000000-0000-4000-8000-000000000001"],"note":"sin hielo"},
+    {"product_id":"d0000000-0000-4000-8000-000000000001","quantity":1,"extra_ids":["e0000000-0000-4000-8000-000000000002"],"note":"extra hielo"},
+    {"product_id":"d0000000-0000-4000-8000-000000000002","quantity":1,"extra_ids":["e0000000-0000-4000-8000-000000000003"],"note":"sin tapa"}
+  ]
+}

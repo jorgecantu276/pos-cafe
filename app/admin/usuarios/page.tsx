@@ -1,20 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import Image from 'next/image';
+
+import { type StaffProfile, errorMessage } from '@/lib/pos-types';
+
+import { useCallback, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useResource } from '@/lib/use-resource';
+import LoadFailure from '@/app/LoadFailure';
 import { 
   ShieldCheck, Shield, Loader2, Trash2, UserPlus, 
   X, Image as ImageIcon, KeyRound, Save, Edit2, Coffee
 } from 'lucide-react';
 
 export default function UsuariosPage() {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
@@ -30,26 +30,16 @@ export default function UsuariosPage() {
 
   const [formData, setFormData] = useState(initialFormState);
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('full_name', { ascending: true });
-      
-      if (error) throw error;
-      setUsers(data || []);
-    } catch (err) {
-      console.error("Error cargando usuarios:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadUsers = useCallback(async (signal: AbortSignal) => {
+    const { data, error } = await supabase.from('profiles').select('id, full_name, username, role, avatar_url, is_active')
+      .eq('is_active', true).order('full_name', { ascending: true }).abortSignal(signal);
+    if (error) throw error;
+    return (data || []) as StaffProfile[];
+  }, []);
+  const { data: users, setData: setUsers, loading, error: loadError, reload: fetchUsers } = useResource(loadUsers, []);
 
-  useEffect(() => { fetchUsers(); }, []);
 
-  const handleOpenModal = (mode: 'create' | 'edit', user?: any) => {
+  const handleOpenModal = (mode: 'create' | 'edit', user?: StaffProfile) => {
     setModalMode(mode);
     if (mode === 'edit' && user) {
       setFormData({
@@ -83,43 +73,44 @@ const handleSaveUser = async (e: React.FormEvent) => {
         if (!res.ok) throw new Error(result.error);
         
       } else {
-        // LÓGICA DE EDICIÓN: Esto sí se puede hacer directo desde el frontend
-        const { error } = await supabase.from('profiles')
-          .update({
-            full_name: formData.full_name,
-            username: formData.username,
-            role: formData.role,
-            avatar_url: formData.avatar_url
-          })
-          .eq('id', formData.id);
-          
-        if (error) throw error;
+        const res = await fetch('/api/users', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...formData, is_active: true }),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error);
       }
 
       await fetchUsers();
       setIsModalOpen(false);
-    } catch (error: any) {
-      alert("Error al guardar el usuario: " + error.message);
+    } catch (error: unknown) {
+      alert("Error al guardar el usuario: " + errorMessage(error));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleResetPassword = async () => {
-    // Aquí conectarías con tu API para forzar el cambio de contraseña
-    alert(`Se enviará un enlace de recuperación o se forzará el cambio para el usuario: ${formData.username}`);
+    alert('La recuperación se realiza en Supabase Auth con el responsable. Esta pantalla todavía no cambia contraseñas.');
   };
 
   const handleDelete = async (id: string) => {
-    if(!confirm('¿Estás seguro de eliminar este usuario?')) return;
+    if(!confirm('¿Desactivar este usuario? Se conservará su historial.')) return;
     try {
-      const { error } = await supabase.from('profiles').delete().eq('id', id);
-      if (error) throw error;
+      const user = users.find(u => u.id === id);
+      const res = await fetch('/api/users', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...user, is_active: false }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
       setUsers(users.filter(u => u.id !== id));
     } catch (error) {
-      alert("Error al eliminar");
+      alert(error instanceof Error ? errorMessage(error) : 'No se pudo desactivar.');
     }
   };
+
+  if (loadError) return <LoadFailure message={loadError} retry={fetchUsers} />;
 
   if (loading) return (
     <div className="flex h-[60vh] items-center justify-center">
@@ -153,7 +144,7 @@ const handleSaveUser = async (e: React.FormEvent) => {
               <div className="flex items-center gap-6">
                 <div className="relative">
                   {user.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.full_name} className="w-16 h-16 rounded-full object-cover shadow-sm border border-slate-200" />
+                    <Image unoptimized width={64} height={64} src={user.avatar_url} alt={user.full_name} className="w-16 h-16 rounded-full object-cover shadow-sm border border-slate-200" />
                   ) : (
                     <div className="w-16 h-16 bg-gradient-to-b from-slate-50 to-slate-100 rounded-full flex items-center justify-center text-[#1d1d1f] font-semibold text-xl shadow-inner border border-slate-200/50 uppercase">
                       {user.full_name?.charAt(0) || 'U'}
@@ -235,7 +226,7 @@ const handleSaveUser = async (e: React.FormEvent) => {
                 <div className="flex-shrink-0 flex flex-col items-center gap-3">
                   <div className="w-24 h-24 rounded-full bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden relative group">
                     {formData.avatar_url ? (
-                      <img src={formData.avatar_url} alt="Preview" className="w-full h-full object-cover" />
+                      <Image unoptimized width={64} height={64} src={formData.avatar_url} alt="Preview" className="w-full h-full object-cover" />
                     ) : (
                       <ImageIcon className="text-slate-300" size={32} />
                     )}
@@ -297,6 +288,7 @@ const handleSaveUser = async (e: React.FormEvent) => {
                     placeholder="Ej. juan.barista" 
                     className="w-full bg-white border border-slate-200 focus:border-[#0071e3]/40 rounded-xl px-4 py-3 text-sm font-semibold outline-none transition-all shadow-sm"
                     value={formData.username}
+                    disabled={modalMode === 'edit'}
                     onChange={e => setFormData({...formData, username: e.target.value})}
                   />
                 </div>
