@@ -1,15 +1,15 @@
 param([string]$ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'pos-cafe-config.json'), [switch]$NoBrowser)
 $ErrorActionPreference = 'Stop'
 $release = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'release.json') -Raw | ConvertFrom-Json
-if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { throw 'Falta pos-cafe-config.json fuera de la carpeta de version. Usa la plantilla preparada para este cliente.' }
+if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { throw 'Falta pos-cafe-config.json fuera de la carpeta de esta version. Usa la plantilla de configuracion del negocio.' }
 $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 $hash = [System.Security.Cryptography.SHA256]::Create()
 try { $keyHash = -join ($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$config.SupabaseAnonKey)) | ForEach-Object { $_.ToString('x2') }) } finally { $hash.Dispose() }
-if ($config.SupabaseUrl.TrimEnd('/') -cne $release.supabaseUrl -or $keyHash -cne $release.publicKeySha256) { throw 'Esta version se compilo para otra base de datos. Requiere una nueva compilacion; no basta cambiar la configuracion local.' }
+if ($config.SupabaseUrl.TrimEnd('/') -cne $release.supabaseUrl -or $keyHash -cne $release.publicKeySha256) { throw 'Esta version corresponde a otra base de datos. Pide una version preparada para este negocio; cambiar la configuracion local no es suficiente.' }
 $port = 3000
 if ($null -ne $config.Port) { $port = [int]$config.Port }
 if ($port -lt 1024 -or $port -gt 65535) { throw 'Puerto invalido.' }
-if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) { throw 'El puerto ya esta ocupado. Conserva la aplicacion existente; usa otro puerto o revisa la instancia abierta.' }
+if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) { throw 'El puerto ya esta ocupado. Revisa si la caja ya esta abierta. Conserva la aplicacion existente; el responsable puede revisar el puerto configurado.' }
 $dataDirectory = [string]$config.PrintDataDirectory
 if (-not $dataDirectory) { $dataDirectory = Join-Path (Split-Path -Parent $PSScriptRoot) 'pos-cafe-data' }
 if (-not [IO.Path]::IsPathRooted($dataDirectory)) { throw 'PrintDataDirectory requiere una ruta absoluta.' }
@@ -19,7 +19,7 @@ if ($dataDirectory.StartsWith('\\') -or $dataDirectory.TrimEnd('\').Equals($rele
 if ($config.PrintMode -notin @('mock', 'windows')) { throw 'PrintMode requiere mock o windows.' }
 if ($release.fixtureOnly -and $config.PrintMode -eq 'windows') { throw 'Una compilacion de prueba local no puede activar impresion fisica.' }
 if ($config.ReceiptIssuerFile -and -not [IO.Path]::IsPathRooted([string]$config.ReceiptIssuerFile)) { throw 'ReceiptIssuerFile requiere una ruta absoluta.' }
-if ($config.PrintMode -eq 'windows' -and (-not $config.ReceiptIssuerFile -or -not (Test-Path -LiteralPath $config.ReceiptIssuerFile -PathType Leaf))) { throw 'Configura el perfil fiscal local antes de usar impresion fisica.' }
+if ($config.PrintMode -eq 'windows' -and (-not $config.ReceiptIssuerFile -or -not (Test-Path -LiteralPath $config.ReceiptIssuerFile -PathType Leaf))) { throw 'Configura los datos fiscales del emisor antes de imprimir tickets de venta.' }
 $environment = @{
   NODE_ENV='production'; HOSTNAME='127.0.0.1'; PORT=[string]$port
   NEXT_PUBLIC_SUPABASE_URL=[string]$config.SupabaseUrl; NEXT_PUBLIC_SUPABASE_ANON_KEY=[string]$config.SupabaseAnonKey
@@ -37,12 +37,12 @@ try {
   $child = Start-Process -FilePath (Join-Path $PSScriptRoot 'node.exe') -ArgumentList @(('"' + $server + '"')) -WorkingDirectory (Split-Path -Parent $server) -WindowStyle Hidden -PassThru
   $ready = $false
   for ($attempt=0; $attempt -lt 60; $attempt++) {
-    if ($child.HasExited) { throw 'El servidor no pudo iniciar. Revisa esta version y la configuracion local.' }
+    if ($child.HasExited) { throw 'La aplicacion no pudo iniciar. Revisa esta version y su configuracion local.' }
     try { $response = Invoke-WebRequest -Uri "http://127.0.0.1:$port/manifest.json" -UseBasicParsing -TimeoutSec 2; if ($response.StatusCode -eq 200) { $ready=$true; break } } catch { }
     Start-Sleep -Milliseconds 500
   }
-  if (-not $ready) { throw 'No se confirmo el inicio del servidor.' }
-  Write-Host "POS disponible en http://127.0.0.1:$port - conserva esta ventana abierta."
+  if (-not $ready) { throw 'No se pudo confirmar que la aplicacion inicio.' }
+  Write-Host "Caja disponible en http://127.0.0.1:$port - conserva esta ventana abierta."
   if ($config.PrintMode -eq 'mock') { Write-Host 'IMPRESION SIMULADA: no se enviara papel.' }
   if (-not $NoBrowser) { Start-Process "http://127.0.0.1:$port" }
   $child.WaitForExit()

@@ -16,7 +16,7 @@ export default function ProductosPage() {
   
   const [editingId, setEditingId] = useState<string | number | null>(null);
 
-  // 🟢 Estados para mostrar el input de "Crear Nueva"
+  // Entrada de una categoría o un grupo de extras nuevo.
   const [showNewCat, setShowNewCat] = useState(false);
   const [showNewPhase, setShowNewPhase] = useState(false);
 
@@ -106,11 +106,11 @@ export default function ProductosPage() {
       fetchData();
     } catch (error: unknown) {
       console.error("Error al guardar:", error);
-      alert(`Hubo un error al guardar: ${errorMessage(error)}`);
+      alert(`No se pudo guardar: ${errorMessage(error)}`);
     }
   };
 
-  // 🟢 EXTRAYENDO CATEGORÍAS Y FASES ÚNICAS (Mantenemos las opciones por defecto siempre visibles)
+  // Las opciones habituales también se muestran cuando todavía no hay productos.
   const defaultCategories = ['Bebidas', 'Postres', 'Varios'];
   const uniqueCategories = Array.from(new Set([...defaultCategories, ...products.map(p => p.category).filter((c): c is string => Boolean(c))]));
 
@@ -131,10 +131,10 @@ export default function ProductosPage() {
     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500 pb-20">
       <header className="flex justify-between items-end">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter">GESTIÓN DE CATÁLOGO</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Catálogo</h2>
           <div className="flex gap-4 mt-4">
-            <button onClick={() => { setActiveTab('items'); setFormData(initialFormState); setEditingId(null); setShowForm(false); }} className={`pb-2 px-1 text-sm font-bold border-b-2 transition-all ${activeTab === 'items' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400'}`}>1.1 Productos</button>
-            <button onClick={() => { setActiveTab('extras'); setFormData(initialFormState); setEditingId(null); setShowForm(false); }} className={`pb-2 px-1 text-sm font-bold border-b-2 transition-all ${activeTab === 'extras' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400'}`}>1.2 Extras</button>
+            <button onClick={() => { setActiveTab('items'); setFormData(initialFormState); setEditingId(null); setShowForm(false); }} className={`pb-2 px-1 text-sm font-bold border-b-2 transition-all ${activeTab === 'items' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400'}`}>Productos</button>
+            <button onClick={() => { setActiveTab('extras'); setFormData(initialFormState); setEditingId(null); setShowForm(false); }} className={`pb-2 px-1 text-sm font-bold border-b-2 transition-all ${activeTab === 'extras' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400'}`}>Extras</button>
           </div>
         </div>
         <button onClick={handleToggleForm} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:scale-105 transition-all shadow-lg">
@@ -149,10 +149,10 @@ export default function ProductosPage() {
           
           {activeTab === 'items' ? (
             <>
-              <input type="url" placeholder="URL de la imagen (Opcional)" value={formData.image_url} className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" onChange={e => setFormData({...formData, image_url: e.target.value})} />
-              <p className="text-sm text-slate-500">Pega el enlace de su foto propia cuando esté lista. Si está vacío o la foto no carga, se muestra una imagen provisional.</p>
+              <input type="url" placeholder="Enlace de la foto (opcional)" value={formData.image_url} className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" onChange={e => setFormData({...formData, image_url: e.target.value})} />
+              <p className="text-sm text-slate-500">Pega el enlace de la foto del producto. Si lo dejas vacío o la foto no carga, se muestra una imagen provisional.</p>
               
-              {/* 🟢 SELECTOR DE CATEGORÍAS (PRODUCTOS) */}
+              {/* Categoría del producto */}
               <div className="relative w-full">
                 {showNewCat ? (
                   <div className="flex gap-2">
@@ -170,13 +170,13 @@ export default function ProductosPage() {
               <div className="lg:col-span-4 flex flex-col gap-4 mt-2">
                 <label className="flex items-center gap-2 text-sm font-bold text-slate-600 bg-slate-50 p-4 rounded-2xl cursor-pointer hover:bg-slate-100 transition-colors w-fit">
                   <input type="checkbox" checked={formData.customizable} onChange={e => setFormData({...formData, customizable: e.target.checked})} className="w-5 h-5 rounded text-blue-600" />
-                  Habilitar preparación guiada (Wizard) para este producto
+                  Permitir elegir opciones de preparación
                 </label>
 
                 {formData.customizable && (
                   <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100 animate-in fade-in zoom-in-95">
                     <p className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-                      <Layers size={16} className="text-blue-600"/> ¿Qué opciones aplican para este producto?
+                      <Layers size={16} className="text-blue-600"/> Opciones de este producto
                     </p>
                     <div className="flex flex-wrap gap-4">
                       {uniquePhases.map(phase => (
@@ -200,24 +200,24 @@ export default function ProductosPage() {
               </div>
             </>
           ) : (
-            /* 🟢 SELECTOR DE FASES (EXTRAS) */
+            /* Grupo del extra */
             <div className="relative w-full">
                 {showNewPhase ? (
                   <div className="flex gap-2">
-                    <input type="text" placeholder="Nueva Fase (Ej: Jarabes)" required className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" value={formData.phase} onChange={e => setFormData({...formData, phase: e.target.value})} />
+                    <input type="text" placeholder="Nuevo grupo (ej. Jarabes)" required className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" value={formData.phase} onChange={e => setFormData({...formData, phase: e.target.value})} />
                     <button type="button" onClick={() => { setShowNewPhase(false); setFormData({...formData, phase: uniquePhases[0] as string}); }} className="bg-slate-200 text-slate-600 px-4 rounded-xl font-bold hover:bg-slate-300">X</button>
                   </div>
                 ) : (
                   <select className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full cursor-pointer" value={formData.phase} onChange={e => { if(e.target.value === '___NEW___') { setShowNewPhase(true); setFormData({...formData, phase: ''}); } else { setFormData({...formData, phase: e.target.value}); } }}>
                     {uniquePhases.map(phase => <option key={phase as string} value={phase as string}>{phase}</option>)}
-                    <option value="___NEW___">+ Crear nueva fase / categoría</option>
+                    <option value="___NEW___">+ Crear grupo de extras</option>
                   </select>
                 )}
             </div>
           )}
 
           <button type="submit" className={`bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30 py-3 ${activeTab === 'items' ? 'lg:col-span-4' : 'lg:col-span-1'}`}>
-            {editingId ? 'Actualizar Cambios' : 'Guardar Nuevo'}
+            {editingId ? 'Guardar cambios' : 'Guardar nuevo'}
           </button>
         </form>
       )}
@@ -234,7 +234,7 @@ export default function ProductosPage() {
                   <h4 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
                     {p.name}
                     {p.category === 'Bebidas' && p.customizable === false && (
-                       <span className="text-[9px] bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full uppercase font-black tracking-wider">Sin Wizard</span>
+                       <span className="text-[9px] bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full uppercase font-black tracking-wider">Sin opciones</span>
                     )}
                   </h4>
                   <p className="text-[11px] font-black text-blue-600 uppercase tracking-widest">{p.category} — <span className="text-slate-400">${Number(p.price).toFixed(2)}</span></p>

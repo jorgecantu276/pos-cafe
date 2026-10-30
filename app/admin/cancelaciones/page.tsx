@@ -50,14 +50,14 @@ export default function CancelacionesPage() {
     <div className="space-y-8 animate-in fade-in duration-700">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Auditoría y Cancelaciones</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Cancelaciones</h2>
           <p className="text-red-500 text-xs font-black uppercase tracking-[0.2em] mt-1 italic">Últimas 20 ventas · Matamoros · Consulta Ventas para el historial completo</p>
         </div>
         <div className="relative w-full md:w-80">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input 
             type="text" 
-            placeholder="Buscar ID de ticket..." 
+            placeholder="Buscar identificador o importe"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 outline-none text-sm font-bold focus:ring-2 focus:ring-red-100 transition-all"
@@ -104,7 +104,7 @@ export default function CancelacionesPage() {
                   </button>
                 )}
                 {isCancelled && (
-                  <div className="px-6 py-3 text-red-300 font-black text-xs uppercase tracking-widest">Sin Acción</div>
+                  <div className="px-6 py-3 text-red-300 font-black text-xs uppercase tracking-widest">Ya cancelado</div>
                 )}
               </div>
             </div>
@@ -114,7 +114,7 @@ export default function CancelacionesPage() {
 
       {filteredOrders.length === 0 && (
         <div className="text-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
-          <p className="text-slate-400 font-bold uppercase tracking-[0.2em]">No se encontraron tickets para auditar</p>
+          <p className="text-slate-400 font-bold uppercase tracking-[0.2em]">No hay ventas que coincidan.</p>
         </div>
       )}
     </div>

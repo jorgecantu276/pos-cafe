@@ -89,7 +89,7 @@ export default function CortesPage() {
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div className="space-y-1">
           <h2 className="text-4xl font-semibold text-[#1d1d1f] tracking-tight">Cortes de Caja</h2>
-          <p className="text-[#86868b] text-sm font-bold uppercase tracking-widest mt-1">Arqueo y registros históricos</p>
+          <p className="text-[#86868b] text-sm font-bold uppercase tracking-widest mt-1">Turno actual e historial de cierres</p>
         </div>
         <button className="rounded-xl border bg-white p-3" onClick={() => window.location.reload()}>Actualizar página</button>
       </header>
@@ -120,7 +120,7 @@ export default function CortesPage() {
                   <h3 className="text-2xl font-black text-[#1d1d1f] tracking-tighter">${startingCash.toFixed(2)}</h3>
               </div>
               <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-slate-100/50 flex flex-col justify-between">
-                  <p className="text-[11px] font-bold text-[#0071e3] uppercase tracking-widest mb-1">Ventas Reales</p>
+                  <p className="text-[11px] font-bold text-[#0071e3] uppercase tracking-widest mb-1">Ventas completadas</p>
                   <h3 className="text-2xl font-black text-[#0071e3] tracking-tighter">${totalSales.toFixed(2)}</h3>
               </div>
               <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-slate-100/50 flex flex-col justify-between">

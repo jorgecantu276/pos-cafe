@@ -30,7 +30,7 @@ export default function CuponesPage() {
     <div className="space-y-6">
       <header className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Cupones y Promos</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Cupones</h2>
           <p className="text-slate-600 mt-1">Solo consulta. Los cupones todavía no se aplican en caja.</p>
         </div>
         <button disabled title="Creación de cupones no disponible" className="bg-slate-500 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2">
@@ -51,16 +51,16 @@ export default function CuponesPage() {
                  <span className="text-lg font-black tracking-tighter">{coupon.code}</span>
                </div>
                <p className="text-2xl font-black text-slate-800">
-                 {coupon.discount_type === 'percentage' ? `${coupon.value}% OFF` : `$${coupon.value} DCTO`}
+                 {coupon.discount_type === 'percentage' ? `${coupon.value}% de descuento` : `$${coupon.value} de descuento`}
                </p>
                <p className="text-[10px] font-bold text-slate-400 uppercase mt-2 flex items-center gap-1">
-                 <Calendar size={12}/> Expira: {coupon.expiry_date || 'Nunca'}
+                 <Calendar size={12}/> Vence: {coupon.expiry_date || 'Sin vencimiento'}
                </p>
              </div>
 
              <div className="text-right">
                <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase mb-4 ${coupon.active ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                 {coupon.active ? 'Registrado como activo · no aplicable en caja' : 'Pausado'}
+                 {coupon.active ? 'Activo en el registro · aún no se aplica en caja' : 'Pausado'}
                </div>
                <button disabled aria-label="Eliminar cupón no disponible" className="text-slate-300"><Trash2 size={20}/></button>
              </div>

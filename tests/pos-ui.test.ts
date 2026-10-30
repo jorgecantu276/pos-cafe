@@ -169,7 +169,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     assert.equal(submitted?.payment_method, 'tarjeta'); assert.equal(submitted?.expected_total, 80);
     assert.equal(submitted?.order_type, 'Para Llevar'); assert.equal(submitted?.order_note, 'Entrega en puerta');
     assert.equal(submitted?.customer_id, 'local-member');
-    assert.match(dom.window.document.body.textContent!, appearance==='workspace'?/Venta guardada/:/Venta Exitosa/);
+    assert.match(dom.window.document.body.textContent!, appearance==='workspace'?/Venta guardada/:/Venta guardada/);
     assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user')), null);
     assert.equal(cart.useCartStore.getState().items.length, 0);
     assert.equal(printJobs.length,2);assert.ok(dispatches.length>=1);

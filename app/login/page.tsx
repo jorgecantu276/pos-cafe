@@ -38,7 +38,7 @@ export default function LoginPage() {
         setUsers(data || []);
       } catch (err) {
         console.error("Error cargando perfiles:", err);
-        setError('No se pudieron cargar los perfiles. Revisa la conexión y la actualización de la base de datos.');
+        setError('No se pudieron cargar los perfiles. Revisa la conexión; si continúa, avisa al responsable.');
       } finally {
         setLoadingUsers(false);
       }
@@ -50,7 +50,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUsername) {
-      setError('Por favor selecciona un perfil primero.');
+      setError('Selecciona un perfil para continuar.');
       return;
     }
 

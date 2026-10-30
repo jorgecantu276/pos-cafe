@@ -114,7 +114,7 @@ export default function UsuariosPage() {
       <header className="flex justify-between items-center">
         <div className="space-y-1">
           <h2 className="text-4xl font-semibold text-[#1d1d1f] tracking-tight">Equipo</h2>
-          <p className="text-[#86868b] text-lg font-medium">Gestiona permisos y accesos locales.</p>
+          <p className="text-[#86868b] text-lg font-medium">Usuarios, contraseñas y permisos.</p>
         </div>
         <button
           disabled={isSaving || !!pendingChange} onClick={() => handleOpenModal('create')}
@@ -158,7 +158,7 @@ export default function UsuariosPage() {
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-tight uppercase ${
                       user.role === 'admin' ? 'bg-[#0071e3]/10 text-[#0071e3]' : 'bg-slate-100 text-slate-500'
                     }`}>
-                      {user.role === 'admin' ? 'ADMIN' : user.role === 'cashier' ? 'CAJERO' : 'BARISTA'}
+                      {user.role === 'admin' ? 'ADMINISTRADOR' : user.role === 'cashier' ? 'CAJERO' : 'BARISTA'}
                     </span>
                   </div>
                   <p className="text-sm text-[#86868b] font-medium tracking-tight">@{user.username || 'usuario'}</p>
@@ -189,14 +189,14 @@ export default function UsuariosPage() {
               <ShieldCheck size={20} />
            </div>
            <h5 className="font-semibold text-[#1d1d1f]">Administradores</h5>
-           <p className="text-sm text-[#86868b] leading-relaxed font-medium">Control total. Pueden acceder a ventas, productos, cortes de caja, configuraciones y usuarios.</p>
+           <p className="text-sm text-[#86868b] leading-relaxed font-medium">Pueden consultar ventas y cortes, cambiar productos y administrar usuarios y caja.</p>
         </div>
         <div className="bg-[#f5f5f7] p-8 rounded-[24px] space-y-3 border border-slate-100/50">
            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm text-[#86868b]">
               <Shield size={20} />
            </div>
            <h5 className="font-semibold text-[#1d1d1f]">Cajeros y baristas</h5>
-           <p className="text-sm text-[#86868b] leading-relaxed font-medium">Cajeros y baristas usan el Punto de Venta: abren turno, cobran, entregan la caja y emiten su Corte Z.</p>
+           <p className="text-sm text-[#86868b] leading-relaxed font-medium">Pueden abrir turno, cobrar, entregar la caja y guardar su corte de caja.</p>
         </div>
       </div>
 
@@ -222,7 +222,7 @@ export default function UsuariosPage() {
                 <div className="flex-shrink-0 flex flex-col items-center gap-3">
                   <div className="w-24 h-24 rounded-full bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden relative group">
                     {formData.avatar_url ? (
-                      <Image unoptimized width={64} height={64} src={formData.avatar_url} alt="Preview" className="w-full h-full object-cover" />
+                      <Image unoptimized width={64} height={64} src={formData.avatar_url} alt="Vista previa de la foto" className="w-full h-full object-cover" />
                     ) : (
                       <ImageIcon className="text-slate-300" size={32} />
                     )}
@@ -231,7 +231,7 @@ export default function UsuariosPage() {
 
                 <div className="flex-1 space-y-4">
                   <div>
-                    <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">URL de Imagen (Opcional)</label>
+                    <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Enlace de la foto (opcional)</label>
                     <input
                       type="url"
                       placeholder="https://ejemplo.com/foto.jpg"
@@ -249,7 +249,7 @@ export default function UsuariosPage() {
                         onClick={() => setFormData({...formData, role: 'admin'})}
                         className={`p-3 rounded-xl border-2 font-bold text-sm transition-all flex items-center justify-center gap-2 ${formData.role === 'admin' ? 'border-[#0071e3] text-[#0071e3] bg-blue-50/50' : 'border-slate-100 text-slate-500 bg-white hover:border-slate-200'}`}
                       >
-                        <ShieldCheck size={16} /> Admin
+                        <ShieldCheck size={16} /> Administrador
                       </button>
                       <button type="button" onClick={() => setFormData({...formData, role: 'cashier'})}
                         className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 ${formData.role === 'cashier' ? 'border-[#1d1d1f] text-[#1d1d1f] bg-slate-50' : 'border-slate-100 text-slate-500 bg-white'}`}><Wallet size={16} /> Cajero</button>
@@ -279,7 +279,7 @@ export default function UsuariosPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Usuario / Alias</label>
+                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Nombre de usuario</label>
                   <input
                     type="text"
                     required

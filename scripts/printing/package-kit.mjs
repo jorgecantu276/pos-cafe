@@ -37,112 +37,120 @@ await copyFile(process.execPath, path.join(destination, 'node.exe'));
 const licenseUrl = 'https://raw.githubusercontent.com/nodejs/node/v24.22.2/LICENSE';
 const response = await fetch(licenseUrl); assert.ok(response.ok, 'Exact Node runtime license is required');
 await writeFile(path.join(destination, 'Node-LICENSE.txt'), await response.text());
-const instructions = `CARIÑITO MÍO — PHYSICAL PRINTER TEST KIT V6 — 31 OCTOBER 2026
+const instructions = `CARIÑITO MÍO: PRUEBA DE IMPRESORAS V6
+31 DE OCTUBRE DE 2026
 
-This is the actual shared print dispatcher and Windows driver adapter bundled
-with Node 24.22.2 x64. No npm install, internet or Supabase access is needed.
-It does not install/replace the cafe POS. All sample records remain local.
-It never charges a customer, changes inventory, installs drivers, pairs devices,
-changes printer defaults, or sends cutter/drawer/RAW commands.
+Este paquete usa el mismo servicio de impresión de la caja e incluye
+Node 24.22.2 x64. Funciona sin ejecutar npm install, sin internet y sin Supabase.
+No instala ni reemplaza el punto de venta. Guarda las pruebas en esta PC.
+No cobra, cambia inventario, instala controladores, empareja dispositivos,
+cambia ajustes predeterminados ni envía comandos de corte, cajón o RAW.
 
-V6 corrects Windows queue-status handling for printing/busy queues. If a previous
-kit was used, stop testing and preserve its WHOLE runtime folder (saved samples,
-journal and companions) in place when updating kit files. A fresh empty journal
-must never be used as a retry of an earlier physical order.
+V6 corrige la lectura del estado de las colas ocupadas o que están imprimiendo.
+Si ya usaste otro paquete, detén las pruebas antes de actualizarlo. Conserva
+completa su carpeta runtime, con las muestras guardadas, el registro de
+impresión y sus archivos asociados. Para reintentar una orden anterior,
+conserva ese registro; uno nuevo vacío permitiría duplicar la impresión.
 
-Configured for these exact machines:
-CUSTOMER: POS80 Printer / POS80 5.1.1.43 observed / USB CP001
-          VID4B43 PID3830, 203dpi, explicit 72 x 210mm advertised form.
-BARISTA: Nulltonex Y813BT Sticker / Y813BT Label 1.1.3.1 originally observed
-         COM3: Bluetooth SPP, Y813BT-E08D, 203dpi; VEVOR package label observed.
-         Hybsk 2.25 x 1.25 inch labels = 57.15 x 31.75mm.
-         The job selects the advertised 57 x 32mm form.
+Impresoras configuradas:
+CLIENTE: POS80 Printer / controlador POS80 5.1.1.43 observado / USB CP001
+         VID4B43 PID3830, 203 dpi; formato anunciado de 72 x 210 mm.
+BARRA: Nulltonex Y813BT Sticker / controlador Y813BT Label 1.1.3.1 observado
+       originalmente; COM3: Bluetooth SPP, Y813BT-E08D, 203 dpi.
+       VEVOR es el nombre observado en el paquete del controlador.
+       Etiquetas Hybsk de 2.25 x 1.25 pulgadas = 57.15 x 31.75 mm.
+       La impresión selecciona el formato anunciado de 57 x 32 mm.
 
-Extract the WHOLE ZIP to a stable local folder. Keep the same folder and its
-runtime directory between retries. Do not use a synced/network directory.
-Open PowerShell in that folder. No administrator access should be required.
+Extrae todo el ZIP a una carpeta local permanente. Usa la misma carpeta y
+conserva runtime entre reintentos. Evita carpetas de red o sincronizadas.
+Abre PowerShell en esa carpeta. No debería requerir permisos de administrador.
 
-1. READ-ONLY CHECK — no printing:
+1. Revisar impresoras sin imprimir:
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Test-CafePrinters.ps1
 
-   Check both exact queue names, driver/port matches and installed paper forms.
-   Confirm the pictured Hybsk roll is loaded. Power on both printers and inspect
-   Bluetooth connection. Idle queue status alone does not prove connection.
-   Any settings/pairing fixes are manual; this kit never changes them.
+   Revisa los nombres de ambas colas, sus controladores, puertos y formatos de
+   papel instalados. Confirma que esté cargado el rollo Hybsk de las fotos.
+   Enciende las impresoras y revisa la conexión Bluetooth. Una cola en reposo
+   no confirma esa conexión. Los ajustes y el emparejamiento se corrigen a mano;
+   este paquete no los cambia.
 
-2. OPTIONAL SIMULATION — no printing:
+2. Simular sin imprimir (opcional):
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Test-CafePrinters.ps1 -Simulate
 
-3. EXPLICIT PAPER TEST — sends sample jobs to the TWO PHYSICAL PRINTERS:
+3. Imprimir muestras en las dos impresoras:
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Test-CafePrinters.ps1 -PrintTest
 
-   The preselected label size is 57.15 x 31.75mm. If the actual roll differs,
-   stop and verify it before using the optional -LabelWidthMm/-LabelHeightMm
-   overrides. Both dimensions must match an advertised driver form.
+   El tamaño seleccionado es 57.15 x 31.75 mm. Si el rollo cargado tiene otras
+   medidas, detente y compruébalo antes de usar -LabelWidthMm/-LabelHeightMm.
+   El ancho y el alto deben coincidir con un formato del controlador.
 
-   The customer receipt shows PRUEBA-001 and a synthetic MXN220 sale, MXN250
-   tender/MXN30 change. ${issuerSource ? 'Registered name, RFC, tax regime and official address\n   come from the supplied local receipt-issuer.json profile.' : 'Registered name, RFC, tax regime and official address\n   remain visible PLACEHOLDERS until a local issuer profile is supplied.'} This marked hardware
-   test is not a CFDI or a production sale. The customer layout includes item
-   quantities/unit prices/amounts and a CFDI request note.
-   The Bluetooth job uses Starbucks-inspired name/drink/modifier hierarchy,
-   TWO cup sections, no-ice/milk
-   instructions, matching folio/customer and NO PREPARAR warnings.
-   Expect additional identified continuation labels if text needs more room.
-   Two jobs are submitted concurrently; device speed determines paper timing.
+   El ticket de cliente muestra PRUEBA-001: venta de muestra de MXN220,
+   pago de MXN250 y cambio de MXN30. ${issuerSource ? 'El nombre o razón social, RFC, régimen y domicilio\n   provienen del archivo local receipt-issuer.json suministrado.' : 'El nombre o razón social, RFC, régimen y domicilio\n   quedan como campos de muestra hasta agregar los datos locales del emisor.'}
+   La muestra está marcada como prueba; no es un CFDI ni una venta real.
+   Incluye cantidades, precios unitarios, importes y una nota para solicitar CFDI.
+   La impresión Bluetooth muestra nombre, bebida y opciones, con dos secciones
+   de vaso, indicaciones de leche y sin hielo, el mismo folio y cliente, y avisos
+   de NO PREPARAR. Si falta espacio, saldrán etiquetas de continuación identificadas.
+   Ambos trabajos se envían a la vez; cada impresora determina cuándo sale el papel.
 
-4. VERIFY PAPER: matching folio, accents, quantities, readable modifiers,
-   final preparation note, correct feed/alignment and no unwanted long feed.
-   Do not change scaling or delete journals to hide an alignment problem.
+4. Revisar el papel:
+   Comprueba folio, acentos, cantidades, opciones legibles, nota final de
+   preparación, alineación y avance. Revisa que no avance papel de más.
+   No cambies la escala ni borres el registro para ocultar un problema de alineación.
 
-5. RETRY by running the SAME -PrintTest command in the SAME folder.
-   Already accepted copies are not submitted again. Before-handoff failures
-   may retry independently. If status is uncertain, inspect Windows queue and
-   paper; the kit blocks blind resends. Windows owns reconnect/paper recovery
-   after accepting a job. Do not charge again or delete runtime to reprint.
+5. Reintentar con el mismo comando -PrintTest y en la misma carpeta:
+   Las copias aceptadas por Windows no se vuelven a enviar. Cada copia que falló
+   antes de entregarse a Windows puede reintentarse por separado. Si el resultado
+   es incierto, revisa la cola de Windows y el papel; el paquete bloquea el reenvío.
+   Una vez aceptado el trabajo, Windows gestiona su salida cuando se restablece
+   la conexión o el papel. No vuelvas a cobrar ni borres runtime para reimprimir.
 
-6. DISTINCT LOCAL TEST CASES (all synthetic, no charge/database):
-   Add -TestCase with one of: baseline, repeat-02 through repeat-20,
+6. Probar otros casos locales (sin cobros ni acceso a la base de datos):
+   Agrega -TestCase con uno de estos valores: baseline, repeat-02 a repeat-20,
    bluetooth-offline, usb-offline, paper-out, long-notes.
-   Each case saves its own immutable sale UUID and uses the SAME durable
-   journal. Running the SAME case again never resends accepted copies.
-   Changing case intentionally creates a DIFFERENT marked test order.
+   Cada caso conserva su identificador de venta y usa el mismo registro de
+   impresión. Repetir un caso no reenvía las copias aceptadas. Cambiar de caso
+   crea otra orden de prueba identificada.
 
-   Second independent order:
+   Segunda orden independiente:
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Test-CafePrinters.ps1 -PrintTest -TestCase repeat-02
 
-   For Bluetooth recovery: turn off the label printer, run -TestCase
-   bluetooth-offline, inspect both Windows queues, turn it back on and rerun
-   that SAME case. Windows may have accepted the offline job already; wait
-   for that existing job to recover instead of creating a replacement.
-   The receipt printer is built into the POS computer. Use usb-offline only
-   if there is a normal external cable that can be safely disconnected;
-   otherwise skip that physical case. Do not open the unit or unplug internal
-   connectors. Use paper-out and whole-PC restart for built-in printer recovery,
-   and long-notes for two different drinks with continuation labels.
-   Every barista label now retains the order folio AND its cup number.
-   Inspect paper after every fault; an uncertain result remains blocked.
+   Para probar la recuperación Bluetooth: apaga la impresora de etiquetas,
+   ejecuta -TestCase bluetooth-offline y revisa ambas colas de Windows.
+   Enciende la impresora y repite el mismo caso. Windows puede haber aceptado
+   el trabajo mientras estaba desconectada; espera a que termine ese trabajo
+   antes de crear una reposición.
+   La impresora de tickets está integrada en la computadora. Usa usb-offline
+   solo si tiene un cable externo normal que pueda desconectarse con seguridad.
+   Si no, omite ese caso físico. No abras el equipo ni desconectes piezas internas.
+   Prueba la recuperación de la impresora integrada con paper-out y reiniciando
+   la PC completa. Usa long-notes para dos bebidas distintas con continuación.
+   Cada etiqueta de barra conserva el folio de la orden y el número de vaso.
+   Revisa el papel después de cada falla; un resultado incierto queda bloqueado.
 
-   For a repeated-order run, execute baseline then repeat-02 through
-   repeat-20 in sequence. Expect 20 customer jobs and 20 barista jobs total,
-   with two cup sections per order (long warnings may add continuation labels).
-   Do not introduce a deliberate fault until existing jobs have drained.
+   Para probar órdenes repetidas, ejecuta baseline y luego repeat-02 a repeat-20
+   en orden. Deben ser 20 trabajos de cliente y 20 de barra, con dos secciones
+   de vaso por orden. Los avisos largos pueden agregar etiquetas de continuación.
+   Espera a que terminen los trabajos antes de provocar una falla.
 
-Files to retain after the test:
-- runtime/hardware-report.json (read-only discovery)
-- runtime/windows/last-result.json (copy statuses)
-- runtime/windows/result-<case>.json (individual acceptance cases)
-- runtime/windows/windows-jobs.sqlite and companion files (duplicate guard)
+Conserva estos archivos después de las pruebas:
+- runtime/hardware-report.json (revisión del equipo)
+- runtime/windows/last-result.json (estado de las copias)
+- runtime/windows/result-<case>.json (resultado de cada caso)
+- runtime/windows/windows-jobs.sqlite y sus archivos asociados (evitan duplicados)
 
-Do not restore an earlier journal after new jobs. Stop the program before
-copying/backing up SQLite files. Historical/manual Windows reprints are outside
-this dispatcher's at-most-once submission guarantee.
+No restaures un registro anterior después de enviar nuevos trabajos. Detén el
+programa antes de copiar o respaldar los archivos SQLite. Las reimpresiones
+manuales o históricas desde Windows no tienen la protección contra duplicados
+de este servicio.
 
-No physical print has been validated yet. Exact USB hardware brand/model,
-actual Bluetooth transport/output, stock alignment and installed café runtime
-remain physical acceptance work. Passing local simulations is not paper proof.
-ExecutionPolicy Bypass above applies only to that PowerShell process.
+Todavía falta comprobar la impresión en papel. También deben verificarse en
+la cafetería la marca y modelo exactos del equipo USB, la conexión y salida
+Bluetooth, la alineación y la versión instalada de Node. Una simulación local
+no comprueba la salida en papel. ExecutionPolicy Bypass se aplica únicamente
+al proceso de PowerShell que ejecuta cada comando.
 
-${issuerSource ? 'This kit includes the receipt issuer profile transcribed from the supplied\nconstancia. The original PDF, CURP, idCIF, QR and electronic seal are excluded.\nNo lookup of this taxpayer or invoice submission is made. The same profile\ncan later be copied outside the POS release and referenced by server-only\nPOS_RECEIPT_ISSUER_FILE. No live app environment is changed by this kit.\n' : ''}
+${issuerSource ? 'Este paquete incluye los datos del emisor transcritos de la constancia\nsuministrada. No incluye el PDF original, CURP, idCIF, QR ni sello electrónico.\nNo consulta al contribuyente ni envía facturas. Después puede copiarse el mismo\narchivo fuera de la carpeta de versión y configurarse en el servidor mediante\nPOS_RECEIPT_ISSUER_FILE. Este paquete no cambia la configuración de la aplicación\nen uso.\n' : ''}
 `;
 await writeFile(path.join(destination, 'START-HERE.txt'), instructions);
 const files = ['physical-test.mjs', 'node.exe', 'Node-LICENSE.txt', 'machine-profile.json', 'Test-CafePrinters.ps1', 'Inspect-CafePrinters.ps1', 'scripts/printing/windows-print.ps1', 'scripts/printing/DesktopPrinter.cs', 'START-HERE.txt'];

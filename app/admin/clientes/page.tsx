@@ -80,8 +80,8 @@ export default function ClientesPage() {
     <div className="space-y-8 animate-in fade-in duration-700">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">CRM de Clientes</h2>
-          <p className="text-slate-400 text-sm font-bold uppercase tracking-widest mt-1">Tu comunidad de café</p>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Clientes</h2>
+          <p className="text-slate-400 text-sm font-bold uppercase tracking-widest mt-1">Datos, puntos y compras</p>
         </div>
         <div className="relative w-full md:w-80">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -98,7 +98,7 @@ export default function ClientesPage() {
       </header>
 
       <button className="rounded-xl border bg-white p-3" onClick={() => setQuery({ ...query, page: 0 })}>Actualizar clientes</button>
-      <p className="text-sm text-slate-500">Compras completadas asociadas al cliente; excluye cancelaciones y pendientes. Los puntos conservan su registro de fidelidad.</p>
+      <p className="text-sm text-slate-500">Las compras mostradas excluyen ventas canceladas y pendientes. Los puntos se muestran por separado.</p>
       {correctionError && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4">{correctionError}</p>}
       {correctionMessage && <p role="status" className="rounded-xl bg-emerald-50 p-4">{correctionMessage}</p>}
       {pending && <section aria-label="Corrección pendiente" className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
@@ -107,7 +107,7 @@ export default function ClientesPage() {
       </section>}
       {editing && <section aria-label="Corregir cliente" className="rounded-2xl border bg-white p-6">
         <h3 className="text-xl font-bold">Corregir nombre y teléfono</h3>
-        <p className="mt-2 text-sm text-slate-500">Se actualiza el mismo cliente y se conservan sus puntos, saldo e historial de compras.</p>
+        <p className="mt-2 text-sm text-slate-500">Se corrigen los datos del cliente y se conservan sus puntos e historial de compras.</p>
         <form className="mt-4 space-y-4" onSubmit={event => { event.preventDefault(); void correctCustomer(false); }}>
           <fieldset disabled={saving || !!pending || pendingUnreadable} className="space-y-4">
             <label className="block">Nombre<input required maxLength={150} aria-label="Nombre del cliente" className="mt-1 block w-full rounded-xl border p-3" value={editing.name} onChange={event => setEditing({ ...editing, name: event.target.value })} /></label>
@@ -128,7 +128,7 @@ export default function ClientesPage() {
                 {customer.name.charAt(0)}
               </div>
               <div className="bg-amber-50 text-amber-600 px-3 py-1 rounded-full flex items-center gap-1 text-[10px] font-black">
-                <Star size={12} fill="currentColor" /> {customer.points} PTS
+                <Star size={12} fill="currentColor" /> {customer.points} puntos
               </div>
             </div>
             <h4 className="text-lg font-bold text-slate-800">{customer.name}</h4>

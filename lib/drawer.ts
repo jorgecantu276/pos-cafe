@@ -42,6 +42,7 @@ async function submit(client: Client, storage: Storage, pending: Pending) {
     throw new Error(error.message);
   }
   if (!data || data.request_id !== pending.request || (['handoff','manager_close'].includes(pending.operation) && (data.report?.register_id !== pending.payload.register
+      || Number(data.report.counted_cash)!==pending.payload.counted
       || !['starting_cash','total_sales','total_expenses','expected_cash','counted_cash','difference'].every(key=>Number.isFinite(Number(data.report[key])))))
     || (pending.operation === 'accept' && (typeof data.register?.id !== 'string' || data.register.opened_by !== pending.actor || Number(data.register.initial_balance) !== pending.payload.counted))
     || (pending.operation === 'customer' && (typeof data.customer?.id !== 'string' || typeof data.customer.name !== 'string' || !Number.isFinite(data.customer.points)))

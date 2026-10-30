@@ -244,7 +244,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
       || parseAmount(exchangeRate)>1000 || Math.round(parseAmount(exchangeRate)*10000)/10000 !== parseAmount(exchangeRate)
       || !Number.isFinite(calculateTotalCash()) || calculateTotalCash()<0 || calculateTotalCash()>10000000
       || Object.values(breakdown).some(q=>!Number.isInteger(q)||q<0) || parseAmount(dollarsInBox)<0) {
-      alert("Por favor, introduce un Tipo de Cambio válido.");
+      alert("Revisa el tipo de cambio guardado.");
       return;
     }
 
@@ -682,20 +682,20 @@ const handleSaveAndClose = async () => {
                   <Coffee size={28} />
                 </div>
                 <h2 className="text-3xl font-semibold tracking-tighter leading-tight">
-                  ¡Hola, <span className="text-[#0071e3] block">{userName}</span> bienvenido!
+                  Abrir caja <span className="text-[#0071e3] block">{userName}</span>
                 </h2>
-                <p className="text-slate-400 text-xs font-medium leading-relaxed">Inicia el turno verificando el efectivo inicial y el tipo de cambio del día.</p>
+                <p className="text-slate-400 text-xs font-medium leading-relaxed">Cuenta el efectivo inicial y revisa el tipo de cambio guardado.</p>
               </div>
               {appearance==='prototype'?<div className="flex flex-col gap-3">
                 {isAdmin&&<a href="/admin" className="text-white underline">Administrar sin abrir caja</a>}
                 <button onClick={()=>void handleLogout()} className="text-white border border-white/40">Cambiar usuario</button>
-              </div>:<div className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">Mi Café System • 2026</div>}
+              </div>:<div className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">Cariñito Mío</div>}
             </div>
 
             <div className="flex-1 p-8 flex flex-col justify-between max-h-[90vh] overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-2 gap-6 mb-5">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest px-1">Tipo de Cambio (MXN/USD) *</label>
+                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest px-1">Tipo de cambio guardado (MXN/USD)</label>
                   <div className="relative">
                     <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0071e3] w-4 h-4" />
                     <input
@@ -876,7 +876,7 @@ const handleSaveAndClose = async () => {
                 <label className="flex gap-3 items-center mb-4"><input type="checkbox" checked={countConfirmed} disabled={isClosingShift} onChange={e=>setCountConfirmed(e.target.checked)}/>Terminé de contar todo el efectivo; confirmo el importe mostrado (también si es cero).</label>
                 <div className="flex gap-4">
                   <button disabled={isClosingShift} onClick={() => setShowCierre(false)} className="flex-1 bg-slate-100 text-slate-600 h-14 rounded-[20px] font-bold hover:bg-slate-200 transition-all disabled:opacity-50">
-                    Volver al POS
+                    Volver a caja
                   </button>
                   <button onClick={handleSaveAndClose} disabled={!countConfirmed || items.length>0 || isClosingShift || savingExpense || !!expenseError || (closeAction==='handoff'&&(!handoffTarget||items.length>0))} className="flex-1 bg-[#1d1d1f] text-white h-14 rounded-[20px] font-bold shadow-xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">
                     <Printer size={20} /> {isClosingShift ? 'Guardando…' : closeAction==='handoff' ? 'Guardar corte y entregar caja' : 'Guardar e Imprimir Z'}
@@ -1036,7 +1036,7 @@ const handleSaveAndClose = async () => {
 
             <div className="relative w-72">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input type="text" placeholder="¿Qué se te antoja?" value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full bg-white border border-slate-200 rounded-[20px] py-3.5 pl-12 pr-4 outline-none text-sm font-medium focus:ring-4 focus:ring-[#0071e3]/10 transition-all" />
+              <input type="text" placeholder="Buscar producto" value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full bg-white border border-slate-200 rounded-[20px] py-3.5 pl-12 pr-4 outline-none text-sm font-medium focus:ring-4 focus:ring-[#0071e3]/10 transition-all" />
             </div>
 
             <button onClick={()=>void handleOpenCierre('handoff')} className="border rounded-xl px-4">Cambiar cajero</button>
@@ -1116,9 +1116,9 @@ const handleSaveAndClose = async () => {
             ) : (
               <div className="bg-[#1c1c1e] text-white p-5 rounded-[22px] flex justify-between items-center shadow-xl">
                 <div className="space-y-0.5">
-                  <p className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider">Miembro Mi Café</p>
+                  <p className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider">Cliente</p>
                   <h4 className="font-semibold text-sm truncate w-40">{activeCustomer.name}</h4>
-                  <p className="text-[11px] font-semibold text-[#0071e3]">{activeCustomer.points} pts acumulados</p>
+                  <p className="text-[11px] font-semibold text-[#0071e3]">{activeCustomer.points} puntos acumulados</p>
                 </div>
                 <button onClick={() => { setCustomerId(null); setActiveCustomer(null); setCustomerRestoring(false); setCustomerError(null); }} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"><X size={14} /></button>
               </div>
@@ -1232,7 +1232,7 @@ const handleSaveAndClose = async () => {
                       <textarea
                         value={orderNote}
                         onChange={e => setOrderNote(e.target.value)}
-                        placeholder="Ej. Mesa 4, cobrar por separado, etc..."
+                        placeholder="Ej. Mesa 4, para llevar"
                         className="w-full h-32 bg-[#f5f5f7] border-2 border-transparent focus:border-[#0071e3]/30 rounded-[16px] p-4 text-[15px] font-medium outline-none resize-none text-slate-700 transition-colors"
                       />
                     </div>
@@ -1331,7 +1331,7 @@ const handleSaveAndClose = async () => {
                <CheckCircle2 size={44} strokeWidth={1.5} />
              </div>
 
-             <h2 className="text-[32px] font-semibold tracking-tight text-[#1d1d1f] mb-2">Venta Exitosa</h2>
+             <h2 className="text-[32px] font-semibold tracking-tight text-[#1d1d1f] mb-2">Venta guardada</h2>
              <p className="text-[#86868b] text-[17px] mb-10 font-medium leading-relaxed">
                La venta está guardada. Las copias de cliente y barra se envían a sus impresoras.
              </p>
@@ -1343,7 +1343,7 @@ const handleSaveAndClose = async () => {
              </button>
 
              <div className="mt-8">
-               <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-[0.2em]">Mi Café OS • 2026</span>
+               <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-[0.2em]">Cariñito Mío</span>
              </div>
           </div>
         </div>
@@ -1453,7 +1453,7 @@ const handleSaveAndClose = async () => {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6 text-slate-900">
-              <h3 className="text-2xl font-black italic tracking-tight">{appearance==='workspace'?'Nuevo cliente':'Nuevo Miembro'}</h3>
+              <h3 className="text-2xl font-black italic tracking-tight">{appearance==='workspace'?'Nuevo cliente':'Nuevo cliente'}</h3>
               <button disabled={isRegistering} aria-label="Cerrar nuevo cliente" onClick={() => setShowCustomerModal(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
             </div>
             <form onSubmit={handleRegisterCustomer} className="space-y-4">

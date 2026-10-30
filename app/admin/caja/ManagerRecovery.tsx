@@ -16,7 +16,9 @@ export default function ManagerRecovery({actor,status,reload}:{actor:string;stat
       if(recover||hasDrawerRequest(localStorage,actor,'manager_close')){
         const result=await recoverDrawerRequest(supabase,localStorage,actor,'manager_close');if(!result)throw new Error('No hay un cierre pendiente de recuperar.');
       }else{
-        if(!summary||!confirmed||!count.trim()||!Number.isFinite(total)||total<0||Number(count)<0||Number(usd)<0||reason.trim().length<3)throw new Error('Cuenta el efectivo y escribe el motivo.');
+        if(!summary||!confirmed||!count.trim()||!Number.isFinite(total)||total<0||Number(count)<0||Number(usd)<0
+          ||Math.round(Number(count)*100)/100!==Number(count)||Math.round(Number(usd||0)*100)/100!==Number(usd||0)
+          ||reason.trim().length<3)throw new Error('Cuenta el efectivo con máximo dos decimales y escribe el motivo.');
         if(!confirm(`Cerrar definitivamente el turno de ${status.active?.cashier_name} con $${total.toFixed(2)} MXN contados. Diferencia $${(total-summary.expected_cash).toFixed(2)}. Revisa cualquier orden sin cobrar o impresión pendiente. ¿Confirmar?`))return;
         await drawerWrite(supabase,localStorage,actor,'manager_close',{register:summary.register_id,counted:total,count_confirmed:true,reason:reason.trim(),preview:{cash_sales:summary.cash_sales,total_sales:summary.total_sales,expenses_revision:summary.expenses_revision}});
       }
