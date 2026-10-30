@@ -170,7 +170,7 @@ duplicate. Do not press charge again or bypass this guard by deleting files.
 
 ## Tomorrow's physical test
 
-The current kit is **V5**, superseding V4. Its runtime is Node 24.22.2 x64 with
+The current kit is **V6**, superseding V5 and V4. Its runtime is Node 24.22.2 x64 with
 SQLite 3.53.4. When upgrading an existing installation, preserve its persistent
 journal in place; never replace it with a fresh kit's empty journal to retry
 previous orders.

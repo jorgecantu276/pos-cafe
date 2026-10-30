@@ -37,7 +37,7 @@ await copyFile(process.execPath, path.join(destination, 'node.exe'));
 const licenseUrl = 'https://raw.githubusercontent.com/nodejs/node/v24.22.2/LICENSE';
 const response = await fetch(licenseUrl); assert.ok(response.ok, 'Exact Node runtime license is required');
 await writeFile(path.join(destination, 'Node-LICENSE.txt'), await response.text());
-const instructions = `CARIÑITO MÍO — PHYSICAL PRINTER TEST KIT V5 — 31 OCTOBER 2026
+const instructions = `CARIÑITO MÍO — PHYSICAL PRINTER TEST KIT V6 — 31 OCTOBER 2026
 
 This is the actual shared print dispatcher and Windows driver adapter bundled
 with Node 24.22.2 x64. No npm install, internet or Supabase access is needed.
@@ -45,11 +45,16 @@ It does not install/replace the cafe POS. All sample records remain local.
 It never charges a customer, changes inventory, installs drivers, pairs devices,
 changes printer defaults, or sends cutter/drawer/RAW commands.
 
+V6 corrects Windows queue-status handling for printing/busy queues. If a previous
+kit was used, stop testing and preserve its WHOLE runtime folder (saved samples,
+journal and companions) in place when updating kit files. A fresh empty journal
+must never be used as a retry of an earlier physical order.
+
 Configured for these exact machines:
 CUSTOMER: POS80 Printer / POS80 5.1.1.43 observed / USB CP001
           VID4B43 PID3830, 203dpi, explicit 72 x 210mm advertised form.
-BARISTA: Y813BT Sticker / Y813BT Label 1.1.3.1 observed / COM3: Bluetooth SPP
-         Y813BT-E08D, 203dpi, VEVOR driver.
+BARISTA: Nulltonex Y813BT Sticker / Y813BT Label 1.1.3.1 originally observed
+         COM3: Bluetooth SPP, Y813BT-E08D, 203dpi; VEVOR package label observed.
          Hybsk 2.25 x 1.25 inch labels = 57.15 x 31.75mm.
          The job selects the advertised 57 x 32mm form.
 
@@ -109,8 +114,11 @@ Open PowerShell in that folder. No administrator access should be required.
    bluetooth-offline, inspect both Windows queues, turn it back on and rerun
    that SAME case. Windows may have accepted the offline job already; wait
    for that existing job to recover instead of creating a replacement.
-   Use usb-offline for an unplugged receipt printer, paper-out for an empty
-   roll, and long-notes for two different drinks with continuation labels.
+   The receipt printer is built into the POS computer. Use usb-offline only
+   if there is a normal external cable that can be safely disconnected;
+   otherwise skip that physical case. Do not open the unit or unplug internal
+   connectors. Use paper-out and whole-PC restart for built-in printer recovery,
+   and long-notes for two different drinks with continuation labels.
    Every barista label now retains the order folio AND its cup number.
    Inspect paper after every fault; an uncertain result remains blocked.
 

@@ -1,4 +1,12 @@
 param([switch]$LayoutOnly)
+function Test-CafePrinterReady([object]$Printer) {
+    # Win32_Printer.PrinterState is an obsolete ENUM, not the Winspool bitmask.
+    # Its Printing=11 / Busy=10 values must not reject a healthy queued order.
+    # Use the supported status and detected-error properties instead.
+    return ($null -ne $Printer -and -not $Printer.WorkOffline -and
+        $Printer.PrinterStatus -notin @(6,7,8,9,11,16) -and
+        $Printer.DetectedErrorState -notin @(4,6,7,8,9,10,11))
+}
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -17,7 +25,7 @@ try {
         exit 0
     }
     $printer = @(Get-CimInstance -ClassName Win32_Printer | Where-Object { $_.Name -ceq $printInput.queue })
-    if ($printer.Count -ne 1 -or $printer[0].WorkOffline -or $printer[0].PrinterStatus -in @(6,7) -or ($printer[0].PrinterState -band 3)) {
+    if ($printer.Count -ne 1 -or -not (Test-CafePrinterReady $printer[0])) {
         throw 'Printer missing, offline, paused or in error'
     }
     if ($printer[0].DriverName -ine $printInput.identity.driver -or $printer[0].PortName.TrimEnd(':') -ine $printInput.identity.port.TrimEnd(':')) {

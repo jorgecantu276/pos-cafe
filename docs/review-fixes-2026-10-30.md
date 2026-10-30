@@ -64,3 +64,43 @@ correct release environment remain deployment gates. GitHub runner execution
 was blocked by account payment/spending settings at the earlier run; local
 passes do not imply hosted CI passed. No merge, hosted business write, driver
 installation or cafe-PC deployment is performed by this fix.
+
+## Follow-up using actual PC evidence
+
+The later console output confirms Windows x64 / interactive PowerShell 5.1,
+i5-8250U (4 cores/8 threads), 7.92 GB RAM, and both exact queues and ports.
+The receipt form is 71.88 x 210.06 mm; the selected label form is 56.9 x 32 mm.
+Both satisfy the helper's 1.5 mm tolerance. The receipt's long default is still
+3276.09 mm, so browser-dialog reprints/closing reports need the short form
+selected; automatic jobs select it explicitly.
+
+The helper incorrectly applied a bit mask to obsolete `Win32_Printer.PrinterState`
+enum values. For example Printing=11 was rejected even for a healthy queue.
+The corrected predicate uses `PrinterStatus` and `DetectedErrorState`, allowing
+busy/printing queues and withholding known faults/offline states. Its actual
+PowerShell function passes 27 synthetic state cases; the full suite passes 116
+tests. V6 includes this fix and the newly observed machine metadata. Prior local
+SQL and HTTP checks remain as documented above; no SQL or app-route code changed
+in this follow-up.
+
+Realtek 0BDA:A728 and the Y813BT entries report device code 0; Intel Bluetooth
+code 22 means disabled. This is not evidence requiring Intel driver repair.
+Matching USB-ID reports in Pop!_OS/Home Assistant concern Linux kernel scanning
+and do not establish a Windows SPP fault. Microsoft documents USB 3.0 device
+interference as a possible Bluetooth issue; test the actual arrangement before
+changing a working adapter/port. Nulltonex guidance supports model-specific
+Windows drivers and custom label sizes; keep the current matched baseline.
+
+The user corrected Windows timezone to Central Standard Time for Matamoros.
+The replacement has not been migrated or installed; no project/listener found
+is expected. Physical paper, loaded-roll alignment, reconnection and full
+replacement deployment remain acceptance work. The built-in receipt printer
+does not require opening the POS unit for USB-disconnection testing.
+
+Sources:
+- https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-printer
+- https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-pnpentity
+- https://support.microsoft.com/en-us/windows/fix-bluetooth-problems-in-windows-723e092f-03fa-858b-5c80-131ec3fba75c
+- https://github.com/pop-os/pop/issues/4135
+- https://github.com/home-assistant/operating-system/issues/5079
+- https://nulltonex.com/pages/y813bt-video-tutorial-1
