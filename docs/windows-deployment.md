@@ -43,22 +43,64 @@ for a deliberate physical acceptance run. Confirm sticker stock separately.
 The service-role key, if needed for staff management, belongs only in this local
 private configuration. It is not the public build key.
 
-Run as the signed-in Windows cashier, not as SYSTEM:
+After the responsible person has prepared this machine's private configuration,
+the cashier double-clicks **Open-POS.cmd** inside the prepared release folder.
+The default configuration is the sibling `pos-cafe-config.json`, outside the
+version folder. No terminal commands, dependency installation or administrator
+account are needed each morning. Keep the **Caja - POS Cafe** window open; it
+can be minimized. Close that window, or press Ctrl+C there, to stop its server.
+
+For a configuration in another local folder, the responsible person can make
+an optional desktop shortcut once, from the prepared release folder:
 
 ```
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Start-POS.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-POS-shortcut.ps1 -ConfigPath D:\POS-Cafe-Test\private\pos-cafe-config.json
 ```
 
-The launcher uses the bundled Node, binds only to `127.0.0.1`, refuses an occupied
-port, opens the default browser and retains the server until the launch window
-is closed. Choose another local port in the configuration if the old POS needs
-3000. It installs no drivers or services and changes no global Node installation.
-Network browser access is not enabled; wireless HDMI can mirror this local
-screen. Actual Windows scaling, touch and printer output still require testing.
+This explicit installer creates only **Caja POS Cafe** on the current user's
+desktop. It refuses to replace an existing shortcut. Recreate the shortcut
+deliberately when changing release folders; keep the same private configuration
+and current external print journal. It creates no scheduled task, service or
+automatic Windows startup entry.
+
+The launcher uses bundled Node and binds only to `127.0.0.1`. Opening it again
+reuses the same running release and unchanged configuration, after checking a
+per-configuration Windows lock, live process identities, the actual local
+listener and the server's launch identity. An occupied port belonging to an
+unrelated application, another release or an unverified old POS is refused;
+the other program is left running. Choose another local port in the private
+configuration if the old POS needs 3000.
+
+If the server exits unexpectedly, the same launcher makes at most three
+restarts after 1, 2 and 4 seconds, with the same external print journal. It
+performs no sale submission or print replay. After the limit it leaves a clear
+message; the error log is `pos-cafe-config.json.server-error.log` beside the
+private configuration. The adjacent `.instance.json` is temporary ownership
+state, not a sales record or print journal. Do not copy it between PCs.
+
+Run as the signed-in Windows cashier. The helpers install no drivers or services
+and change no global Node installation. Network browser access is not enabled;
+wireless HDMI can mirror this local screen. Actual Windows scaling, touch,
+startup/restart behavior on the café PC and printer output still require testing.
+
+## Automatic business-data copies
+
+With the matching server service-role key configured, the launcher enables a
+daily encrypted copy and a background checkpoint after a confirmed close or
+handoff. The defaults are `pos-cafe-backups` and the separate
+`pos-cafe-backup-recovery.key`, beside the private configuration. The owner
+can check the last result under **Administración > Respaldos**. Keep these paths
+outside all version folders, preserve the key, and copy the encrypted archive
+and key separately off this PC. Backup failures do not block cashier operations.
+
+The release includes the verifier under `backup-tools`. It checks and optionally
+decrypts an archive; it does not restore a hosted project. See
+[business-backups.md](business-backups.md) for the recovery limits and the
+separate local print journal. Rehearse a full recovery before live use.
 
 ## Matching database and rollback
 
-Provision the chosen client test project, apply the retained migrations 001, 002, 004, 005, 006, 007, 008 and 009 in order and
+Provision the chosen client test project, apply the retained migrations 001, 002, 004, 005, 006, 007, 008, 009, 010, 011 and 012 in order and
 create confirmed staff profiles. Review the legacy compatibility requirements
 before applying to any existing database. Test against a separate synthetic
 catalog and explicit test quantities, not live business records. Inventory has been removed at the owner's request; this candidate does not check or deduct pieces/ingredients. The app still

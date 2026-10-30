@@ -22,6 +22,8 @@ interface RegisterProps{
   customerSearchError?:string;customerSearching?:boolean;onRetryCustomerSearch?:()=>void;
   onNewCustomer:()=>void;onRemoveCustomer:()=>void;orderType:string;onOrderType:(s:string)=>void;
   onReprint:(ticket?:string)=>void;notices:ReactNode;
+  favoriteProductIds?:readonly string[];favoritesError?:string;recentTicketsContent?:ReactNode;
+  favoritesLoading?:boolean;onRetryFavorites?:()=>void;
 }
 export default function PrototypeRegister(p:RegisterProps){
   const [category,setCategory]=useState('Todos'),[page,setPage]=useState(0),[selection,setSelection]=useState('');

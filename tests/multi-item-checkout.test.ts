@@ -18,6 +18,8 @@ import * as salePrinting from '../lib/sale-printing';
 import * as shift from '../lib/shift';
 import * as types from '../lib/pos-types';
 import * as resource from '../lib/use-resource';
+import * as shortcuts from '../lib/register-shortcuts';
+import RecentTickets from '../app/register/RecentTickets';
 import * as drafts from '../lib/cart-draft';
 import * as shiftState from '../lib/shift-state';
 import PrintDispatch from '../app/register/PrintDispatch';
@@ -51,6 +53,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
       assert.ok(table in fixtures,`Unexpected table ${table}`);
       const query=Object.assign(Promise.resolve({data:fixtures[table],error:null}),{select:()=>query,eq:()=>query,order:()=>query,abortSignal:()=>query,single:()=>query,maybeSingle:()=>query});return query;
     },rpc:(name:string,args:{p_payload:checkout.CheckoutPayload})=>{
+      if(name==='get_register_shortcuts'){const result=Promise.resolve({error:null,data:{product_ids:[],revision:0}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:'mixed-user',cashier_name:'Prueba'},handoff:null,cashiers:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_shift_summary'){
         const result=Promise.resolve({error:null,data:{register_id:'local-shift',status:'open',opened_at:'2026-10-30T12:00:00Z',starting_cash:100,
@@ -74,6 +77,8 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     './WorkspaceRegister':{default:WorkspaceRegister,WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog,__esModule:true},'./workspace.css':{},
     '@/lib/pos-types':types,'@/lib/use-resource':resource,'@/lib/cart-draft':drafts,'next/navigation':{useRouter:()=>router}};
   const source=readFileSync(new URL('../app/register/Register.tsx',import.meta.url),'utf8');
+  imports['@/lib/register-shortcuts'] = shortcuts;
+  imports['./RecentTickets'] = { default: RecentTickets, __esModule: true };
   const compiled=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   const exports:{default?:ComponentType<{appearance:'workspace'}>}={},nodeRequire=createRequire(import.meta.url);
   new Function('require','exports',compiled)((name:string)=>name === '@/components/ProductPhoto' ? {default:ProductPhoto,__esModule:true} : imports[name]??nodeRequire(name),exports);

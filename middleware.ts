@@ -6,6 +6,7 @@ import { loginReturnTarget } from '@/lib/login-return';
 import { withDeadline } from '@/lib/request-deadline';
 
 export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname === '/api/local-instance') return NextResponse.next();
   const updates = new Map<string, { name: string; value: string; options: CookieOptions }>();
   const authHeaders = new Headers();
   const complete = (response: NextResponse) => {

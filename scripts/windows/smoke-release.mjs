@@ -32,6 +32,15 @@ try {
     await new Promise(resolve => setTimeout(resolve, 500));
   }
   assert.ok(ready, 'Prepared release did not become ready: ' + logs);
+  const identityResponse = await fetch('http://127.0.0.1:3119/api/local-instance');
+  assert.equal(identityResponse.status,200);
+  assert.equal(identityResponse.headers.get('Cache-Control'),'no-store');
+  const identity = await identityResponse.json();
+  assert.equal(identity.protocol,1);
+  assert.ok(identity.instanceToken && identity.releaseId && identity.configId);
+  // Reopening the actual Next release must reuse its process, not launch another.
+  execFileSync(powershell,['-NoLogo','-NoProfile','-File',path.join(relocated,'Start-POS.ps1'),'-ConfigPath',configPath,'-NoBrowser'],{windowsHide:true,stdio:'pipe',timeout:45000});
+  assert.deepEqual(await (await fetch('http://127.0.0.1:3119/api/local-instance')).json(),identity);
   for (const [url,status] of [['/login',200],['/product-photos/matcha.webp',200],['/product-photos/cheesecake.webp',200],['/sw.js',200],['/api/users',401]]) {
     const response = await fetch('http://127.0.0.1:3119' + url, {signal:AbortSignal.timeout(15000)});
     assert.equal(response.status,status,url);
@@ -42,7 +51,9 @@ try {
   assert.equal(existsSync(path.join(relocated,'database-migrations/202610280003_inventory.sql')),false);
   assert.ok(existsSync(path.join(relocated,'database-migrations/202610300005_single_drawer.sql')));
   assert.ok(existsSync(path.join(relocated,'database-migrations/202610300006_loyalty_phone.sql')));
-  for(const name of ['202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql'])assert.ok(existsSync(path.join(relocated,'database-migrations',name)));
+  for(const name of ['202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql','202610300010_register_shortcuts.sql','202610300011_recent_tickets.sql','202610300012_business_backups.sql','schema.snapshot.json'])assert.ok(existsSync(path.join(relocated,'database-migrations',name)));
+  for(const name of ['Open-POS.cmd','Install-POS-shortcut.ps1'])assert.ok(existsSync(path.join(relocated,name)));
+  for(const name of ['backup-tools/scripts/backups/inspect.mjs','backup-tools/lib/business-backup-format.mjs'])assert.ok(existsSync(path.join(relocated,name)));
   // Mismatched runtime config is rejected before binding a server port.
   writeFileSync(configPath, JSON.stringify({...config,SupabaseUrl:'http://127.0.0.1:59998'}));
   assert.throws(() => execFileSync(powershell,['-NoProfile','-File',path.join(relocated,'Start-POS.ps1'),'-ConfigPath',configPath,'-NoBrowser'],{windowsHide:true,stdio:'pipe'}));

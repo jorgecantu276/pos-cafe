@@ -4,6 +4,7 @@ import { ArrowUpRight, Banknote, ChevronRight, ClipboardList, Coffee, ContactRou
 const dailyTools = [
   { name: 'Ventas', detail: 'Historial y comprobantes', path: 'ventas', icon: ReceiptText },
   { name: 'Productos', detail: 'Catálogo y opciones', path: 'productos', icon: Coffee },
+  { name: 'Favoritos de caja', detail: 'Selección y orden compartidos', path: 'favoritos', icon: Coffee },
   { name: 'Caja y tipo de cambio', detail: 'Turnos, entregas y recuperación', path: 'caja', icon: Banknote },
   { name: 'Cortes de caja', detail: 'Conteos y reportes de turno', path: 'cortes', icon: ClipboardList },
   { name: 'Recuperar impresión', detail: 'Revisar copias pendientes', path: 'impresion', icon: Printer },
@@ -14,6 +15,7 @@ const managementTools = [
   { name: 'Usuarios', detail: 'Contraseñas y permisos', path: 'usuarios', icon: UsersRound },
   { name: 'Cupones', detail: 'Estado de promociones', path: 'cupones', icon: TicketPercent },
   { name: 'Ajustes', detail: 'Datos de los tickets', path: 'ajustes', icon: Settings2 },
+  { name: 'Respaldos', detail: 'Última copia y recuperación', path: 'respaldos', icon: ClipboardList },
 ];
 
 export default function Administration() {

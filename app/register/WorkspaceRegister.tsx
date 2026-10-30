@@ -4,9 +4,11 @@ import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type R
 import ProductPhoto from '@/components/ProductPhoto';
 import { Keyboard, Minus, Plus, Search, X, Pencil, Trash2, Printer, UserRound, ChevronRight, Coffee, Settings2, ArrowRight } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/pos-types';
+import { hasPreparationNote, preparationNoteChoices, togglePreparationNote } from '@/lib/register-shortcuts';
 
 type RegisterProps = ComponentProps<typeof import('./PrototypeRegister').default> & {
   orderNote: string; onOrderNote: (value: string) => void;
+  favoriteProductIds?: readonly string[]; favoritesError?: string; favoritesLoading?: boolean; onRetryFavorites?: () => void; recentTicketsContent?: ReactNode;
 };
 type CheckoutProps = ComponentProps<typeof import('./PrototypeRegister').PrototypeCheckout>;
 type CustomizationProps = Omit<ComponentProps<typeof import('./PrototypeRegister').PrototypeCustomization>, 'onOption'> & {
@@ -62,6 +64,10 @@ export default function WorkspaceRegister(p: RegisterProps) {
   const [keyboard, setKeyboard] = useState(false);
   const [ticket, setTicket] = useState('');
   const catalogRef = useRef<HTMLDivElement>(null);
+  const favorites = useMemo(() => {
+    const active = new Map(p.products.filter(product => product.is_active).map(product => [product.id, product]));
+    return [...new Set(p.favoriteProductIds ?? [])].slice(0, 8).map(id => active.get(id)).filter((product): product is CatalogProduct => Boolean(product));
+  }, [p.products, p.favoriteProductIds]);
   const groups = useMemo(() => {
     const active = p.products.filter(product => product.is_active);
     const groups = new Map<string, CatalogProduct[]>();
@@ -94,6 +100,11 @@ export default function WorkspaceRegister(p: RegisterProps) {
           <button type="button" aria-label="Tickets" className="workspace-icon" onClick={() => setPanel('ticket')}><Printer size={21} /></button>
         </div>
         <div className="workspace-catalog-scroll" ref={catalogRef}>
+          {!p.search.trim() && (favorites.length > 0 || p.isAdmin || p.favoritesError || p.favoritesLoading) && <section className="workspace-product-group workspace-favorites-group" aria-label="Favoritos" aria-busy={p.favoritesLoading || undefined}><div className="workspace-favorites-heading"><h2>Favoritos</h2>{p.isAdmin && <a href="/admin/favoritos">Elegir favoritos</a>}</div>
+            {p.favoritesLoading && <p role="status" className="workspace-favorites-message">Cargando favoritos…</p>}
+            {p.favoritesError && <div role="status" className="workspace-favorites-message"><span>{p.favoritesError}</span>{p.onRetryFavorites && <button type="button" disabled={p.favoritesLoading} onClick={p.onRetryFavorites}>Reintentar favoritos</button>}</div>}
+            {favorites.length > 0 ? <div className="workspace-product-grid">{favorites.map(product => <ProductButton key={product.id} product={product} disabled={p.disabled} onProduct={p.onProduct}/>)}</div> : !p.favoritesError && !p.favoritesLoading && <p className="workspace-favorites-message">Elige hasta 8 productos para tenerlos a la mano.</p>}
+          </section>}
           {groups.map(([name, products]) => <section key={name} className="workspace-product-group" aria-label={name}>
             <h2>{name}</h2><div className="workspace-product-grid">{products.map(product => <ProductButton key={product.id} product={product} disabled={p.disabled} onProduct={p.onProduct} />)}</div>
           </section>)}
@@ -112,7 +123,7 @@ export default function WorkspaceRegister(p: RegisterProps) {
           <button type="button" className="workspace-pay" aria-label="Cobrar" disabled={!p.items.length || p.disabled} onClick={p.onCheckout}>Cobrar<ArrowRight size={22} aria-hidden="true" /></button></footer>
       </aside>
     </main>
-    {panel === 'ticket' && <WorkspaceDialog title="Reimprimir ticket" onClose={() => setPanel(null)} className="workspace-ticket-dialog"><div className="workspace-dialog-content"><label>Folio<input aria-label="Folio del ticket" inputMode="numeric" value={ticket} onChange={event => setTicket(event.target.value.replace(/\D/g, ''))} /></label><WorkspaceKeyboard numeric value={ticket} onChange={value => { if (/^\d*$/.test(value)) setTicket(value); }} />
+    {panel === 'ticket' && <WorkspaceDialog title="Reimprimir ticket" onClose={() => setPanel(null)} className="workspace-ticket-dialog"><div className="workspace-dialog-content">{p.recentTicketsContent}<label>Folio<input aria-label="Folio del ticket" inputMode="numeric" value={ticket} onChange={event => setTicket(event.target.value.replace(/\D/g, ''))} /></label><WorkspaceKeyboard numeric value={ticket} onChange={value => { if (/^\d*$/.test(value)) setTicket(value); }} />
       <div className="workspace-actions"><button type="button" onClick={() => p.onReprint()}>Último ticket</button><button type="button" className="workspace-primary" disabled={!ticket} onClick={() => p.onReprint(ticket)}>Buscar ticket</button></div></div></WorkspaceDialog>}
     {panel === 'customer' && <WorkspaceDialog title="Cliente" onClose={() => setPanel(null)}><div className="workspace-dialog-content"><div className="workspace-input-row"><input aria-label="Buscar cliente" placeholder="Teléfono del cliente" value={p.customerSearch} onChange={event => p.onCustomerSearch(event.target.value)} /><button type="button" onClick={() => { setPanel(null); p.onNewCustomer(); }}>Nuevo cliente</button></div>
       {p.customerSearching?<p role="status">Buscando cliente…</p>:p.customerSearchError?<p role="alert">{p.customerSearchError} <button type="button" onClick={p.onRetryCustomerSearch}>Reintentar búsqueda</button></p>:p.customerSearch.trim().length>=2&&!p.suggestions.length?<p>No hay coincidencias. Revisa el teléfono antes de registrar.</p>:null}
@@ -131,8 +142,9 @@ export function WorkspaceCustomization(p: CustomizationProps) {
       const selected = p.extras.some(extra => extra.name === name && (!extra.phase || extra.phase === step.id));
       return <button type="button" key={name} aria-pressed={selected} onClick={() => p.onOption(name, index)}>{name}{Number(extra?.price) > 0 && <span>+{money(Number(extra?.price))}</span>}</button>;
     })}</div></fieldset>)}
+    <div className="workspace-preparation-chips" role="group" aria-label="Notas rápidas de preparación">{preparationNoteChoices.map(choice => <button type="button" key={choice} aria-pressed={hasPreparationNote(p.note, choice)} disabled={!hasPreparationNote(p.note, choice) && togglePreparationNote(p.note, choice) === p.note} onClick={() => p.onNote(togglePreparationNote(p.note, choice))}>{choice}</button>)}</div>
     <button type="button" className="workspace-note-toggle" aria-expanded={notes} onClick={() => setNotes(!notes)}><Pencil size={17} />{p.note || 'Nota de preparación'}</button>
-    {notes && <><input aria-label="Notas de preparación" value={p.note} maxLength={1000} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
+    {notes && <><textarea aria-label="Notas de preparación" rows={2} value={p.note} maxLength={1000} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
   </div><footer>{p.onRemove && <button type="button" onClick={p.onRemove}>Quitar</button>}<span className="workspace-custom-price">{money((p.quantity ?? 1) * (Number(p.product.basePrice ?? p.product.price) + p.extras.reduce((sum, extra) => sum + extra.price, 0)))}</span><button type="button" className="workspace-primary" onClick={p.onConfirm}>{p.quantity !== undefined ? 'Listo' : 'Agregar'}</button></footer></WorkspaceDialog>;
 }
 
