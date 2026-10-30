@@ -15,6 +15,7 @@ export interface PrintConfig {
 export function printConfig(env: Record<string, string | undefined> = process.env): PrintConfig {
   if (!['mock', 'windows'].includes(env.POS_PRINT_MODE ?? '')) throw new Error('Falta activar y configurar la impresión local. La venta ya está guardada; no vuelvas a cobrar.');
   if (!env.POS_PRINT_DATA_DIR || !path.isAbsolute(env.POS_PRINT_DATA_DIR)) throw new Error('Configura una carpeta absoluta y permanente para el registro de impresión.');
+  if (/^(?:\\\\|\/\/)/.test(env.POS_PRINT_DATA_DIR)) throw new Error('El registro de impresión requiere un disco local; no uses una carpeta de red.');
   const queues = { customer: env.POS_PRINT_CUSTOMER_QUEUE || machine.customer.queue, barista: env.POS_PRINT_BARISTA_QUEUE || machine.barista.queue };
   if (queues.customer.toLowerCase() === queues.barista.toLowerCase()) throw new Error('Cliente y barra deben tener colas distintas.');
   const widthMm = Number(env.POS_PRINT_BARISTA_WIDTH_MM || machine.barista.selectedWidthMm), heightMm = Number(env.POS_PRINT_BARISTA_HEIGHT_MM || machine.barista.selectedHeightMm);

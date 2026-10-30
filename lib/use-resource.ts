@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage } from './pos-types';
+import { withDeadline } from './request-deadline';
 
 // Loads are read-only. Mount/filter changes publish only after I/O, while an
 // explicit refresh enters loading immediately in the user's event handler.
@@ -30,7 +31,7 @@ export function useResource<T>(load: (signal: AbortSignal) => Promise<T>, initia
     const request = new AbortController();
     current.current?.abort();
     current.current = request;
-    void load(request.signal).then(value => accept(request, value)).catch(failure => reject(request, failure));
+    void withDeadline(() => load(request.signal), { signal: request.signal }).then(value => accept(request, value)).catch(failure => reject(request, failure));
     return () => { current.current?.abort(); };
   }, [load, accept, reject]);
 
@@ -40,7 +41,7 @@ export function useResource<T>(load: (signal: AbortSignal) => Promise<T>, initia
     current.current = request;
     setLoading(true);
     setError(null);
-    try { accept(request, await load(request.signal)); }
+    try { accept(request, await withDeadline(() => load(request.signal), { signal: request.signal })); }
     catch (failure) { reject(request, failure); }
   }, [load, accept, reject]);
   return { data, setData, loading: loading || settled?.load !== load, error, reload };

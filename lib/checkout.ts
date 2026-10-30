@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CartItem } from '../store/useCartStore';
+import { withDeadline } from './request-deadline';
 
 export interface CheckoutPayload {
   register_id: string;
@@ -58,9 +59,9 @@ export function checkoutPayload(items: readonly CartItem[], fields: Omit<Checkou
     extra_ids: (i.product.displayExtras ?? []).map(e => e.id!), note: i.product.note?.trim() || '' })) };
 }
 // Exactly one RPC; no client-side stock, prices, points or order writes.
-export async function executeCheckout(client: Pick<SupabaseClient, 'rpc'>, pending: CheckoutReview): Promise<SavedOrder> {
+export async function executeCheckout(client: Pick<SupabaseClient, 'rpc'>, pending: CheckoutReview, timeoutMs = 12_000): Promise<SavedOrder> {
   if (!pending.requestId || !pending.payload) throw new Error('Venta antigua sin identidad de transacción. Requiere conciliación del responsable.');
-  const { data, error } = await client.rpc('pos_checkout', { p_request: pending.requestId, p_payload: pending.payload });
+  const { data, error } = await withDeadline(() => client.rpc('pos_checkout', { p_request: pending.requestId, p_payload: pending.payload }), { timeoutMs });
   if (error) {
     // A PostgreSQL error confirms rollback. A transport failure says nothing
     // about commit, so it must retain the exact request for recovery.

@@ -4,13 +4,18 @@ import { createHash } from 'node:crypto';
 import { mkdir, copyFile, readFile, writeFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const destination = process.argv[2];
 const issuerSource = process.argv[3];
 assert.ok(destination && path.isAbsolute(destination), 'Pass a new absolute output directory whose parent exists');
 if (issuerSource) assert.ok(path.isAbsolute(issuerSource), 'The optional issuer profile must use an absolute local path');
-assert.equal(process.platform, 'win32'); assert.equal(process.arch, 'x64'); assert.equal(process.version, 'v24.14.1');
+assert.equal(process.platform, 'win32'); assert.equal(process.arch, 'x64'); assert.equal(process.version, 'v24.22.2');
+const probe = new DatabaseSync(':memory:');
+const sqlite = probe.prepare('SELECT sqlite_version() AS version,sqlite_source_id() AS sourceId').get();
+probe.close();
+assert.equal(sqlite.version, '3.53.4', 'Package only the verified patched SQLite runtime');
 await mkdir(destination); // Never overwrite a previously delivered kit/journal.
 await mkdir(path.join(destination, 'scripts/printing'), { recursive: true });
 const bundle = await build({ entryPoints: [path.join(root, 'scripts/printing/physical-test.ts')],
@@ -29,13 +34,13 @@ if (issuerSource) {
   await writeFile(path.join(destination, 'receipt-issuer.json'), JSON.stringify(Object.fromEntries(fields.map(field => [field, value[field]])), null, 2));
 }
 await copyFile(process.execPath, path.join(destination, 'node.exe'));
-const licenseUrl = 'https://raw.githubusercontent.com/nodejs/node/v24.14.1/LICENSE';
+const licenseUrl = 'https://raw.githubusercontent.com/nodejs/node/v24.22.2/LICENSE';
 const response = await fetch(licenseUrl); assert.ok(response.ok, 'Exact Node runtime license is required');
 await writeFile(path.join(destination, 'Node-LICENSE.txt'), await response.text());
-const instructions = `CARIÑITO MÍO — PHYSICAL PRINTER TEST KIT V4 — 31 OCTOBER 2026
+const instructions = `CARIÑITO MÍO — PHYSICAL PRINTER TEST KIT V5 — 31 OCTOBER 2026
 
 This is the actual shared print dispatcher and Windows driver adapter bundled
-with Node 24.14.1 x64. No npm install, internet or Supabase access is needed.
+with Node 24.22.2 x64. No npm install, internet or Supabase access is needed.
 It does not install/replace the cafe POS. All sample records remain local.
 It never charges a customer, changes inventory, installs drivers, pairs devices,
 changes printer defaults, or sends cutter/drawer/RAW commands.
@@ -140,6 +145,6 @@ for (const file of files) {
   hashes.push({ file, bytes: (await stat(path.join(destination, file))).size, sha256: createHash('sha256').update(bytes).digest('hex') });
 }
 await writeFile(path.join(destination, 'manifest.json'), JSON.stringify({ builtOn: '2026-10-30', targetTestDate: '2026-10-31',
-  platform: 'Windows x64', node: process.version, sourceModules: Object.keys(bundle.metafile.inputs),
+  platform: 'Windows x64', node: process.version, sqlite, sourceModules: Object.keys(bundle.metafile.inputs),
   runtimeLicenseSource: licenseUrl, labelSource: 'User-supplied Hybsk packaging images', issuerProfile: issuerSource ? 'receipt-issuer.json' : null, files: hashes }, null, 2));
 console.log('Prepared exact-machine physical test kit: ' + destination);

@@ -37,6 +37,7 @@ export function GET() { return Response.json({release:${JSON.stringify(recoveryP
   const next = require.resolve('next/dist/bin/next');
   const env = { ...process.env, NODE_ENV: 'production', NEXT_PUBLIC_SUPABASE_URL: config.api,
     POS_PRINT_MODE: printing ? 'mock' : 'disabled', POS_PRINT_DATA_DIR: printing?.directory || '', POS_PRINT_MOCK_FAULTS: printing?.faults || '',
+    POS_RECEIPT_ISSUER_FILE: printing?.issuer || '',
     NEXT_PUBLIC_SUPABASE_ANON_KEY: config.anon, SUPABASE_SERVICE_ROLE_KEY: config.service };
   console.log('Building an isolated production app against local Supabase…');
   await run(process.execPath, [next, 'build', '--webpack'], { cwd: app, env });

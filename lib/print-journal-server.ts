@@ -19,6 +19,13 @@ function canonical(value: unknown): unknown {
 export class PrintJournal {
   private db: DatabaseSync;
   constructor(filename: string, private adapter: PrintAdapter, private clock = Date.now) {
+    const probe = new DatabaseSync(':memory:');
+    try {
+      const { version } = probe.prepare('SELECT sqlite_version() AS version').get() as { version: string };
+      const [major, minor, patch] = version.split('.').map(Number);
+      if (!(major > 3 || (major === 3 && (minor > 51 || (minor === 51 && patch >= 3)))))
+        throw new Error('Actualiza el runtime de impresión: se requiere SQLite 3.51.3 o posterior. Conserva el registro existente.');
+    } finally { probe.close(); }
     mkdirSync(path.dirname(filename), { recursive: true });
     this.db = new DatabaseSync(filename);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;
@@ -80,11 +87,11 @@ export class PrintJournal {
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
-  async dispatch(owner: string, orderId: string, only?: PrintAudience) {
-    await Promise.all((only ? [only] : audiences).map(audience => this.send(owner, orderId, audience)));
+  async dispatch(owner: string, orderId: string, only?: PrintAudience, eligible?: () => Promise<boolean>) {
+    await Promise.all((only ? [only] : audiences).map(audience => this.send(owner, orderId, audience, eligible)));
     return this.get(owner, orderId);
   }
-  private async send(owner: string, orderId: string, audience: PrintAudience) {
+  private async send(owner: string, orderId: string, audience: PrintAudience, eligible?: () => Promise<boolean>) {
     const claim = randomUUID();
     // Expired preparation is safe to reclaim: the old worker must win the CAS below
     // before it can touch the spooler. A submitting/uncertain job is NEVER reclaimed.
@@ -97,6 +104,10 @@ export class PrintJournal {
     let submitting = false;
     try {
       prepared = await this.adapter.prepare(this.view(row), JSON.parse(row.document));
+      // Preparation can wait on Windows. Re-read authoritative eligibility only
+      // after it completes, before the durable handoff fence. An already handed
+      // off Windows job cannot be recalled by a later database cancellation.
+      if (eligible && !await eligible()) { this.cancel(owner, orderId); return; }
       const changed = this.db.prepare(`UPDATE jobs SET state='submitting',lease=?,updated=?,message='Entregando a Windows'
         WHERE order_id=? AND audience=? AND claim=? AND state='preparing'`).run(this.clock() + 120_000, this.now(), orderId, audience, claim);
       if (!changed.changes) return;
@@ -107,7 +118,7 @@ export class PrintJournal {
     } catch (error) {
       const message = submitting ? 'Resultado incierto. Revisa la cola de Windows y el papel; no se reenviará automáticamente.'
         : (error instanceof Error ? error.message : 'No se pudo preparar la impresora.');
-      this.db.prepare(`UPDATE jobs SET state=?,message=?,updated=? WHERE order_id=? AND audience=? AND claim=?`)
+      this.db.prepare(`UPDATE jobs SET state=?,message=?,updated=? WHERE order_id=? AND audience=? AND claim=? AND state IN ('preparing','submitting')`)
         .run(submitting ? 'uncertain' : 'blocked', message, this.now(), orderId, audience, claim);
     } finally { prepared?.dispose(); }
   }

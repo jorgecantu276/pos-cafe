@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as ts from 'typescript';
-import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview } from '../lib/checkout';
+import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, type CheckoutReview } from '../lib/checkout';
 import { errorMessage } from '../lib/pos-types';
 import { rememberSalePrint } from '../lib/sale-printing';
 import { customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
@@ -23,7 +23,7 @@ function handler(name: string, context: Record<string, unknown>, file='../app/re
   return new Function(...Object.keys(context),compiled+';return extracted;')(...Object.values(context));
 }
 
-function checkoutHarness(storage=new Map<string,string>(), online=true, retire=()=>{}) {
+function checkoutHarness(storage=new Map<string,string>(), online=true, retire=()=>{}, timeoutMs=12_000) {
   let calls=0,successful=false;
   const alerts:string[]=[];
   let settle!: (value: unknown)=>void;
@@ -36,7 +36,7 @@ function checkoutHarness(storage=new Map<string,string>(), online=true, retire=(
     localStorage:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)},
     navigator:{onLine:online},setIsProcessingCheckout:()=>{},getTotal:()=>60,items:[item],isPaymentInsufficient:false,activeCustomer:null,
     registerId:'register',paymentMethod:'Efectivo',parseAmount:Number,amountReceivedMXN:100,amountReceivedUSD:0,orderType:'En Local',orderNote:'',
-    CheckoutRejected,checkoutPayload,executeCheckout,readCheckoutReview,rememberSalePrint,setCheckoutReview:()=>{},setSavedSale:()=>{},setLastOrderId:()=>{},setShowCheckoutModal:()=>{},setShowPostSaleModal:(v:boolean)=>successful=v,
+    CheckoutRejected,checkoutPayload,executeCheckout:(client:Parameters<typeof executeCheckout>[0],pending:CheckoutReview)=>executeCheckout(client,pending,timeoutMs),readCheckoutReview,rememberSalePrint,setCheckoutReview:()=>{},setSavedSale:()=>{},setLastOrderId:()=>{},setShowCheckoutModal:()=>{},setShowPostSaleModal:(v:boolean)=>successful=v,
     clearCart:()=>{},
     alert:(message:string)=>alerts.push(message),
     supabase:{rpc:(name:string)=>{assert.equal(name,'pos_checkout');calls++;return response;}},
@@ -50,6 +50,16 @@ test('double-click on a slow transaction sends one RPC; lost response retains it
   h.settle({data:null,error:{message:'Failed to fetch',code:''}});await first;
   assert.equal(h.successful,false);assert.equal(h.storage.get('test-user'),JSON.stringify(pending));
 });
+test('actual checkout handler releases a stalled confirmation and keeps its persisted recovery identity', async () => {
+  const h = checkoutHarness(undefined, true, undefined, 10);
+  const first = h.fn(); assert.equal(h.calls, 1);
+  const pending = h.storage.get('test-user'); await first;
+  assert.equal(h.storage.get('test-user'), pending); assert.equal(h.successful, false);
+  assert.match(h.alerts[0], /tardó demasiado.*\nNo vuelvas a cobrar/);
+  h.settle({ data: { id: 'one-sale', ticket_number: 12, total: 60, items: [], status: 'completed' }, error: null });
+  await h.fn(); assert.equal(h.successful, true); assert.equal(h.storage.has('test-user'), false);
+});
+
 test('refresh recovery sends the persisted payload rather than the new cart',async()=>{
   const pending={startedAt:'2026-10-27',total:90,requestId:'saved-key',payload:{expected_total:90}};
   const h=checkoutHarness(new Map([['test-user',JSON.stringify(pending)]]));

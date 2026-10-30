@@ -4,6 +4,7 @@ import type { PrintJournal } from './print-journal-server';
 import type { PrintConfig } from './windows-print-server';
 import { AccessError, isAuthUnavailable } from './user-management';
 import { readReceiptIssuer } from './receipt-issuer-server';
+import { withDeadline } from './request-deadline';
 
 export function requireLocalPrintRequest(request: Request) {
   const url = new URL(request.url), origin = request.headers.get('origin');
@@ -19,10 +20,10 @@ export function requireLocalPrintRequest(request: Request) {
 export async function handlePrintRequest(request: Request, client: SupabaseClient, journal: PrintJournal, config: PrintConfig) {
   requireLocalPrintRequest(request);
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]);
-  const { data: { user }, error } = await client.auth.getUser();
+  const { data: { user }, error } = await withDeadline(() => client.auth.getUser(), { signal });
   if (isAuthUnavailable(error)) throw new AccessError('No se pudo comprobar la sesión de impresión.', 503);
   if (error || !user) throw new AccessError('Inicia sesión para consultar la impresión.', 401);
-  const profile = await client.from('profiles').select('role,is_active').eq('id', user.id).abortSignal(signal).single();
+  const profile = await withDeadline(() => client.from('profiles').select('role,is_active').eq('id', user.id).abortSignal(signal).single(), { signal });
   if (profile.error) throw new AccessError('No se pudo comprobar el perfil de impresión.', 503);
   if (!profile.data?.is_active || !['admin', 'cashier', 'barista'].includes(profile.data.role)) throw new AccessError('Sin acceso a impresión.', 403);
   if (request.method === 'GET') return { mode: config.mode, jobs: journal.list(user.id) };
@@ -34,7 +35,7 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
     || (input.audience !== undefined && !['customer', 'barista'].includes(input.audience))
     || Object.keys(input).some(key => !['orderId', 'audience'].includes(key))) throw new AccessError('Solicitud de impresión inválida.', 400);
   // Browser supplies only identity, never prices, preparation text, queue names or paths.
-  const sale = await client.from('orders').select('id,ticket_number,status,cashier_id,receipt_snapshot').eq('id', input.orderId).abortSignal(signal).single();
+  const sale = await withDeadline(() => client.from('orders').select('id,ticket_number,status,cashier_id,receipt_snapshot').eq('id', input.orderId).abortSignal(signal).single(), { signal });
   if (sale.error) throw new AccessError('No se pudo consultar la venta confirmada. Reintenta impresión; no vuelvas a cobrar.', sale.error.code === 'PGRST116' ? 404 : 503);
   if (!sale.data || sale.data.cashier_id !== user.id) throw new AccessError('La venta no pertenece a esta caja.', 403);
   if (sale.data.status !== 'completed') {
@@ -46,5 +47,11 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
   try { issuer = readReceiptIssuer(); }
   catch { /* The customer job is visibly withheld; a fiscal-config error must not stop barista instructions. */ }
   journal.ensure(user.id, order, config.queues, { issuer });
-  return { mode: config.mode, jobs: await journal.dispatch(user.id, order.id, input.audience) };
+  return { mode: config.mode, jobs: await journal.dispatch(user.id, order.id, input.audience, async () => {
+    const guardSignal = AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]);
+    const current = await withDeadline(() => client.from('orders').select('status,cashier_id').eq('id', order.id).abortSignal(guardSignal).single(), { signal: guardSignal });
+    if (current.error || !current.data || current.data.cashier_id !== user.id)
+      throw new Error('No se pudo confirmar la venta antes de imprimir. Recupera esta misma copia; no vuelvas a cobrar.');
+    return current.data.status === 'completed';
+  }) };
 }

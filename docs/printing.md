@@ -24,6 +24,13 @@ defaults. The user subsequently supplied Hybsk packaging images specifying
 57 × 32 mm form. This stock is selected in the machine profile and test kit.
 Tomorrow still needs a physical check that this exact roll is loaded.
 
+The user confirms **Nulltonex** branding. Its [Y813BT support](https://nulltonex.com/pages/y813bt-video-tutorial-1)
+and [model-specific driver selection](https://nulltonex.com/pages/y813) take
+precedence over model-family examples from other brands. Keep the existing
+driver baseline until measured; an app-only sample does not verify our Windows
+queue path. Keep the small cafe label size above; the vendor's shipping-label
+example is not our selected stock.
+
 The helper checks the named queue's driver and port and selects a matching
 advertised form. It never falls back to the default printer, PDF or AnyDesk,
 changes Windows defaults, pairs devices, installs drivers, or sends RAW,
@@ -33,9 +40,11 @@ field programmatically. Physical model/roll/cutter/drawer remain unverified.
 
 ## Runtime configuration
 
-Use the tested Node 24.14.1 Windows x64 runtime (including built-in SQLite) and
+Use the tested Node 24.22.2 Windows x64 runtime (including built-in SQLite) and
 run the local POS under the signed-in Windows user's desktop session. The
 PowerShell/.NET desktop helper is not a Windows service printing integration.
+The verified runtime embeds SQLite 3.53.4. Journal creation rejects SQLite older
+than 3.51.3 before opening the journal, addressing the published WAL-reset fix.
 Keep `scripts/printing/windows-print.ps1` and `DesktopPrinter.cs` in the release.
 Chrome/Edge must open the POS through localhost or 127.0.0.1.
 
@@ -128,9 +137,12 @@ proof that every printed statement meets today's requirements.
 The authenticated API accepts only an order UUID and optional audience. It
 re-reads the completed sale snapshot under existing RLS and permits only that
 cashier's jobs. It cannot call checkout, charge, alter stock, or choose an
-arbitrary queue/path/document supplied by the browser. Cancelled jobs not yet
-handed to Windows are withheld. Cancellation cannot recall already accepted
-paper jobs.
+arbitrary queue/path/document supplied by the browser. After Windows preparation,
+each copy re-reads the authoritative sale status before crossing the durable
+submission fence. Cancellation observed at this check cancels outstanding
+preparation; a failed read blocks submission. A stale worker cannot make a
+cancelled job retryable. Cancellation racing after this final read cannot
+atomically recall a Windows handoff; accepted paper jobs cannot be recalled.
 
 | State | Retry behavior |
 |---|---|
@@ -158,8 +170,13 @@ duplicate. Do not press charge again or bypass this guard by deleting files.
 
 ## Tomorrow's physical test
 
+The current kit is **V5**, superseding V4. Its runtime is Node 24.22.2 x64 with
+SQLite 3.53.4. When upgrading an existing installation, preserve its persistent
+journal in place; never replace it with a fresh kit's empty journal to retry
+previous orders.
+
 The portable hardware kit contains the same bundled document generator,
-SQLite dispatcher and Windows adapter, plus Node 24.14.1 and the exact machine
+SQLite dispatcher and Windows adapter, plus Node 24.22.2 and the exact machine
 profile. It creates only a clearly marked synthetic sample sale on local disk;
 it can read an included `receipt-issuer.json` using the same local issuer reader.
 There is no Supabase client, credential, network bridge or business data write.

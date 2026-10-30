@@ -4,7 +4,7 @@ Next.js 16.4.3, React 19, Supabase, TypeScript, Tailwind and Zustand. Build and 
 
 ## Development
 
-Use Node.js 24.14.1 on Windows x64 for the verified development and test environment, then `npm ci`. Next.js requires >=20.9; the DOM test runner requires >=20.19. The café PC's actual Node version, CPU, RAM and display scaling still need measurement.
+Use Node.js 24.22.2 on Windows x64 for the verified development and test environment, then `npm ci`. Next.js requires >=20.9; the DOM test runner requires >=20.19. The café PC's actual Node version, CPU, RAM and display scaling still need measurement.
 
 Keep `.env.local` untracked with `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Account creation also requires the server-only `SUPABASE_SERVICE_ROLE_KEY`. Never expose it through a `NEXT_PUBLIC_` variable. Use a separate Supabase project and synthetic data for development writes.
 

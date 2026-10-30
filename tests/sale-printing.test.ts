@@ -209,6 +209,7 @@ test('mock adapter writes only synthetic spool data and preserves unknown outcom
     assert.equal(spool.length, 2); assert.equal(spool[0].queue, queues.customer); assert.equal(spool[1].queue, queues.barista);
   } finally { journal.close(); remove(directory); }
   assert.throws(() => printConfig({}), /Falta activar/);
+  assert.throws(() => printConfig({ POS_PRINT_MODE: 'mock', POS_PRINT_DATA_DIR: '\\\\server\\share\\print-journal' }), /disco local/);
   assert.throws(() => printConfig({ POS_PRINT_MODE: 'mock', POS_PRINT_DATA_DIR: directory, POS_PRINT_CUSTOMER_QUEUE: 'same', POS_PRINT_BARISTA_QUEUE: 'same' }), /distintas/);
 });
 
@@ -238,4 +239,43 @@ test('actual API accepts only own completed server snapshot; read/retry never in
   } finally { journal.close(); remove(directory); }
   assert.throws(() => requireLocalPrintRequest(new Request('https://remote.example/api/printing', { headers: { 'X-Pos-Print': '1' } })), /caja local/);
   assert.throws(() => requireLocalPrintRequest(new Request('http://127.0.0.1:3000/api/printing', { headers: { 'X-Pos-Print': '1', Origin: 'https://evil.example' } })), /caja local/);
+});
+
+for (const lateState of ['cancelled', 'read-failed']) test(`cancellation/eligibility after paused Windows preparation withholds both copies: ${lateState}`, async () => {
+  const directory = scratch(), order = sale(), submitted: PrintAudience[] = [];
+  let status = 'completed', failed = false, prepared = 0, disposed = 0, release!: () => void, ready!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const bothPrepared = new Promise<void>(resolve => { ready = resolve; });
+  const journal = new PrintJournal(path.join(directory, 'jobs.sqlite'), { async prepare(job) {
+    if (++prepared === 2) ready(); await gate;
+    return { async submit() { submitted.push(job.audience); }, dispose() { disposed++; } };
+  } });
+  const client = { auth: { getUser: async () => ({ data: { user: { id: 'cashier' } }, error: null }) }, from(table: string) {
+    const query = { select: () => query, eq: () => query, abortSignal: () => query, single: async () => ({
+      error: table === 'orders' && failed ? { code: '', message: 'Synthetic unavailable backend' } : null,
+      data: table === 'profiles' ? { role: 'cashier', is_active: true }
+        : { id: order.id, ticket_number: order.ticket_number, status, cashier_id: 'cashier', receipt_snapshot: order },
+    }) }; return query;
+  }, rpc() { assert.fail('No business writes'); } } as unknown as SupabaseClient;
+  const request = () => new Request('http://127.0.0.1:3000/api/printing', { method: 'POST', headers: { 'X-Pos-Print': '1' }, body: JSON.stringify({ orderId: order.id }) });
+  try {
+    const run = handlePrintRequest(request(), client, journal, printConfig({ POS_PRINT_MODE: 'mock', POS_PRINT_DATA_DIR: directory }));
+    await bothPrepared;
+    if (lateState === 'cancelled') status = 'cancelled'; else failed = true;
+    release(); await run;
+    assert.equal(disposed, 2); assert.deepEqual(submitted, []);
+    assert.ok(journal.get('cashier', order.id).every(j => j.state === (failed ? 'blocked' : 'cancelled')));
+    if (!failed) { await assert.rejects(handlePrintRequest(request(), client, journal, printConfig({ POS_PRINT_MODE: 'mock', POS_PRINT_DATA_DIR: directory })), /no está completada/); }
+  } finally { release(); journal.close(); remove(directory); }
+});
+
+test('a failed stale worker cannot resurrect locally cancelled preparation', async () => {
+  const directory = scratch(), order = sale(); let release!: () => void, ready!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; }), prepared = new Promise<void>(resolve => { ready = resolve; });
+  const journal = new PrintJournal(path.join(directory, 'jobs.sqlite'), { async prepare() { ready(); await gate; throw new Error('Late preparation failure'); } });
+  try {
+    journal.ensure('cashier', order, queues); const run = journal.dispatch('cashier', order.id);
+    await prepared; journal.cancel('cashier', order.id); release(); await run;
+    assert.ok(journal.get('cashier', order.id).every(j => j.state === 'cancelled'));
+  } finally { release(); journal.close(); remove(directory); }
 });

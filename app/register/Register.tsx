@@ -6,7 +6,7 @@ import './prototype.css';
 import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
 import './workspace.css';
 
-import { catalogProduct, type CatalogProduct, type Customer, type ExtraRow, type SaleItem, type WizardStep, errorMessage } from '@/lib/pos-types';
+import { catalogProduct, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { customizeProduct, useCartStore, type CartExtra, type CartItem, type Product } from '@/store/useCartStore';
@@ -15,12 +15,14 @@ import { useResource } from '@/lib/use-resource';
 import { useRouter } from 'next/navigation';
 import { escapeHtml, openPrintWindow, writePrintDocument } from '@/lib/printing';
 import PrintDispatch from './PrintDispatch';
+import { printHistoricalReceipt } from '@/lib/receipt-reprint';
 import './printing.css';
 import { rememberSalePrint } from '@/lib/sale-printing';
-import { isCanceled, saveShiftBeforeExit, type ShiftReport } from '@/lib/shift';
+import { saveShiftBeforeExit, type ShiftReport } from '@/lib/shift';
 import { closeShift, expenseRequestKey, loadShiftSummary, recoverPendingExpenses, recoverShiftClose, restoreShiftExpenses, saveShiftExpenses, type ShiftSummary } from '@/lib/shift-state';
 import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, withCheckoutLock, type CheckoutReview, type SavedOrder } from '@/lib/checkout';
 import { bindCartDraft, cartDraftKey, type CartDraftBinding } from '@/lib/cart-draft';
+import { withDeadline } from '@/lib/request-deadline';
 import {
   Coffee, Minus, Plus, Trash2, CreditCard, ShoppingBag,
   Loader2, Search, X, UserPlus, Edit3, LogOut, Wallet,
@@ -152,7 +154,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   }, [router]);
 
   const loadPOS = useCallback(async (signal: AbortSignal) => {
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { user }, error: authError } = await withDeadline(() => supabase.auth.getUser(), { signal });
     if (authError) throw authError;
     if (!user) return null;
     if (sessionActor !== null && user.id !== sessionActor) throw new Error('La sesión está cambiando. Reintenta la conexión.');
@@ -602,93 +604,12 @@ const handleSaveAndClose = async () => {
 
   // 🟢 NUEVA FUNCIÓN: REIMPRIMIR HISTÓRICO (Por ID o Último)
   const reprintHistoricalTicket = async (ticketNum?: string) => {
+    const target = openPrintWindow();
+    if (!target) return;
     try {
-      let query = supabase.from('orders').select('*, order_items(quantity, unit_price, total_price, notes, product_snapshot, products(name))');
-
-      if (ticketNum) {
-        query = query.eq('ticket_number', parseInt(ticketNum));
-      } else {
-        query = query.order('created_at', { ascending: false }).limit(1);
-      }
-
-      const { data, error } = await query.single();
-
-      if (error || !data) {
-        alert('Ticket no encontrado. Por favor verifica el folio.');
-        return;
-      }
-
-      const printWindow = openPrintWindow();
-      if (!printWindow) return;
-
-      const ticketDate = new Date(data.created_at).toLocaleString('es-MX', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', hour12: true
-      });
-
-      const formattedTicketId = String(data.ticket_number).padStart(4, '0');
-
-      const content = `
-        <div style="width: 72mm; font-family: 'Helvetica', 'Arial', sans-serif; color: #000; padding: 10px; margin: 0 auto; line-height: 1.4;">
-          <div style="text-align: center; margin-bottom: 15px;">
-            <img src="https://actv.mx/wp-content/uploads/2026/05/Logo-Carinito-Mio.jpg" style="width: 180px; margin-bottom: 10px;">
-            <h1 style="font-size: 24px; margin: 0; font-weight: 900;">Cariñito Mío</h1>
-            <p style="font-size: 11px; margin: 5px 0;">Calle Fuerza Aérea #37, Fraccionamiento Moderno,<br>H. Matamoros, Tam, México, 87380</p>
-            <div style="display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 13px; font-weight: bold;">
-               <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" style="width: 14px;">+52 868 305 4668
-            </div>
-            <div style="margin-top: 5px; font-size: 10px; font-weight: bold; border: 1px solid #000; display: inline-block; padding: 2px 5px;">REIMPRESIÓN</div>
-            ${isCanceled(data.status) ? '<div style="margin-top: 5px; background: #000; color: #fff; padding: 2px; font-weight: bold; text-transform: uppercase;">*** CANCELADO ***</div>' : ''}
-            ${data.status === 'pending' ? '<div style="font-weight: bold;">*** VENTA PENDIENTE DE REVISIÓN ***</div>' : ''}
-          </div>
-          <div style="border-top: 1px dashed #ccc; margin: 10px 0;"></div>
-          <div style="font-size: 12px; margin-bottom: 10px;">
-            <div style="display: flex; justify-content: space-between;">
-              <span><b>Folio:</b> #${formattedTicketId}</span>
-              <span><b>Fecha:</b> ${ticketDate}</span>
-            </div>
-          </div>
-          <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
-          <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
-            <thead>
-              <tr style="border-bottom: 1px solid #eee;">
-                <th style="text-align: left; padding: 5px 0;">Cant.</th><th style="text-align: left; padding: 5px 0;">Producto</th><th style="text-align: right; padding: 5px 0;">Importe</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${data.order_items.map((i: SaleItem) => {
-                const pInfo = i.product_snapshot || (Array.isArray(i.products) ? i.products[0] : i.products);
-                return `
-                <tr style="vertical-align: top;">
-                  <td style="padding: 8px 0; font-weight: bold;">${i.quantity}</td>
-                  <td style="padding: 8px 0;"><div style="font-weight: bold;">${escapeHtml(pInfo?.name || 'Producto')}</div>${i.notes ? `<div style="font-size: 10px;">${escapeHtml(i.notes)}</div>` : ''}</td>
-                  <td style="padding: 8px 0; text-align: right;">$${Number(i.total_price || 0).toFixed(2)}</td>
-                </tr>
-              `}).join('')}
-            </tbody>
-          </table>
-          <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
-          <div style="font-size: 14px; margin-bottom: 20px;">
-            <div style="display: flex; justify-content: space-between; font-weight: 900; font-size: 18px; margin-bottom: 5px;">
-              <span>TOTAL MXN:</span><span>$${Number(data.total).toFixed(2)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 5px; color: #444; font-size: 12px; font-weight: bold;">
-              <span>Método de Pago:</span><span style="text-transform: uppercase;">${escapeHtml(data.payment_method || 'N/A')}</span>
-            </div>
-          </div>
-          <div style="text-align: center; margin-top: 25px;">
-            <p style="font-size: 11px; font-weight: bold; margin-bottom: 10px;">¡Síguenos en Instagram!</p>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://www.instagram.com/_carinitomio/" style="width: 100px;">
-            <p style="font-size: 10px; font-weight: bold; margin-top: 10px;">¡GRACIAS POR TU VISITA!</p>
-          </div>
-        </div>
-      `;
-
-      writePrintDocument(printWindow, content, 'receipt', `Reimpresión - #${formattedTicketId}`);
-      setTicketSearchTerm(''); // Limpiar buscador tras imprimir
-    } catch (err: unknown) {
-      alert('Error: ' + errorMessage(err));
-    }
+      await printHistoricalReceipt(target, ticketNum ? { ticketNumber: ticketNum.replace(/^0+(?=\d)/, '') } : {});
+      setTicketSearchTerm('');
+    } catch (error) { alert('Error: ' + errorMessage(error)); }
   };
 
   const processCheckout = async () => {

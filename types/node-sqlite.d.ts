@@ -2,7 +2,7 @@
 // Remove this narrow declaration when upgrading @types/node to 24 or later.
 declare module 'node:sqlite' {
   export class DatabaseSync {
-    constructor(filename: string);
+    constructor(filename: string, options?: { readOnly?: boolean });
     exec(sql: string): void;
     prepare(sql: string): {
       run(...values: (string | number | null)[]): { changes: number | bigint };

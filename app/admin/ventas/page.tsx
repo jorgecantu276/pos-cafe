@@ -1,12 +1,13 @@
 'use client';
 
-import { type Sale, type SaleItem, errorMessage } from '@/lib/pos-types';
+import { type Sale, errorMessage } from '@/lib/pos-types';
 
 import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
 import LoadFailure from '@/app/LoadFailure';
-import { escapeHtml, openPrintWindow, writePrintDocument } from '@/lib/printing';
+import { openPrintWindow } from '@/lib/printing';
+import { printHistoricalReceipt } from '@/lib/receipt-reprint';
 import { ReportFilters, ReportPagination } from '../ReportControls';
 import { loadReport, reportParams, reportQuery, reportMoney, reportDate, reportPeriod, type SalesReport } from '@/lib/reports';
 import { isCanceled } from '@/lib/shift';
@@ -51,82 +52,11 @@ export default function VentasPage() {
   ];
 
   // 🟢 FUNCIÓN PARA REIMPRIMIR TICKET
-  const handleReprintTicket = (order: Sale) => {
-    const printWindow = openPrintWindow();
-    if (!printWindow) return;
-
-    const ticketDate = new Date(order.created_at).toLocaleString('es-MX', { 
-      day: '2-digit', month: '2-digit', year: 'numeric', 
-      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Matamoros'
-    });
-
-    const content = `
-      <div style="width: 72mm; font-family: 'Helvetica', 'Arial', sans-serif; color: #000; padding: 10px; margin: 0 auto; line-height: 1.4;">
-        
-        <div style="text-align: center; margin-bottom: 15px;">
-          <img src="https://actv.mx/wp-content/uploads/2026/05/Logo-Carinito-Mio.jpg" style="width: 180px; margin-bottom: 10px;">
-          <h1 style="font-size: 24px; margin: 0; font-weight: 900;">Cariñito Mío</h1>
-          <p style="font-size: 11px; margin: 5px 0;">Calle Fuerza Aérea #37, Fraccionamiento Moderno,<br>H. Matamoros, Tam, México, 87380</p>
-          <div style="display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 13px; font-weight: bold;">
-             +52 868 305 4668
-          </div>
-          ${isCanceled(order.status) ? '<div style="margin-top: 10px; background: #000; color: #fff; padding: 5px; font-weight: bold; text-transform: uppercase;">*** TICKET CANCELADO ***</div>' : ''}
-          ${order.status === 'pending' ? '<div style="font-weight: bold;">*** VENTA PENDIENTE DE REVISIÓN ***</div>' : ''}
-          <div style="margin-top: 5px; font-size: 10px; font-weight: bold; border: 1px solid #000; display: inline-block; padding: 2px 5px;">REIMPRESIÓN</div>
-        </div>
-
-        <div style="border-top: 1px dashed #ccc; margin: 10px 0;"></div>
-
-        <div style="font-size: 12px; margin-bottom: 10px;">
-          <div style="display: flex; justify-content: space-between;">
-            <span><b>Folio:</b> #${String(order.ticket_number ?? order.id.split('-')[0]).padStart(4, '0')}</span>
-            <span><b>Fecha:</b> ${ticketDate}</span>
-          </div>
-        </div>
-
-        <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
-
-        <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
-          <thead>
-            <tr style="border-bottom: 1px solid #eee;">
-              <th style="text-align: left; padding: 5px 0;">Cant.</th>
-              <th style="text-align: left; padding: 5px 0;">Producto</th>
-              <th style="text-align: right; padding: 5px 0;">Importe</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${order.order_items.map((i: SaleItem) => {
-              const pInfo = i.product_snapshot || (Array.isArray(i.products) ? i.products[0] : i.products);
-              return `
-              <tr style="vertical-align: top;">
-                <td style="padding: 8px 0; font-weight: bold;">${i.quantity}</td>
-                <td style="padding: 8px 0;">
-                  <div style="font-weight: bold;">${escapeHtml(pInfo?.name || 'Producto')}</div>
-                  ${i.notes ? `<div style="font-size: 10px;">${escapeHtml(i.notes)}</div>` : ''}
-                </td>
-                <td style="padding: 8px 0; text-align: right;">$${Number(i.total_price || 0).toFixed(2)}</td>
-              </tr>
-            `}).join('')}
-          </tbody>
-        </table>
-
-        <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
-
-        <div style="font-size: 14px; margin-bottom: 20px;">
-          <div style="display: flex; justify-content: space-between; font-weight: 900; font-size: 18px; margin-bottom: 5px;">
-            <span>TOTAL MXN:</span>
-            <span>$${Number(order.total).toFixed(2)}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 5px; color: #444; font-size: 12px; font-weight: bold;">
-            <span>Método de Pago:</span>
-            <span style="text-transform: uppercase;">${escapeHtml(order.payment_method || 'N/A')}</span>
-          </div>
-        </div>
-
-      </div>
-    `;
-
-    writePrintDocument(printWindow, content, 'receipt', `Reimpresión - ${String(order.ticket_number ?? order.id.split('-')[0]).padStart(4, '0')}`);
+  const handleReprintTicket = async (order: Sale) => {
+    const target = openPrintWindow();
+    if (!target) return;
+    try { await printHistoricalReceipt(target, { orderId: order.id }); }
+    catch (error) { alert('Error: ' + errorMessage(error)); }
   };
 
   const handleCancelOrder = async () => {

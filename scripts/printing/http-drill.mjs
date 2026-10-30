@@ -62,7 +62,10 @@ try {
     const login = await client.auth.signInWithPassword({ email: actor + '@local.invalid', password: 'Synthetic-only' });
     assert.ifError(login.error); cookies.push([...jar].map(([k, v]) => `${k}=${v}`).join('; ')); client.auth.stopAutoRefresh();
   }
-  app = await startApp(config, { port: 3112, printing: { directory, faults } }); await app.ready();
+  const issuer = path.join(directory, 'synthetic-issuer.json');
+  await writeFile(issuer, JSON.stringify({ legalName: 'EMISOR FICTICIO', rfc: 'AAA010101AAA', taxRegime: '601 - General de Ley Personas Morales',
+    establishmentAddress: 'Domicilio ficticio', postalCode: '87380', city: 'Matamoros' }));
+  app = await startApp(config, { port: 3112, printing: { directory, faults, issuer } }); await app.ready();
   const url = 'http://127.0.0.1:3112/api/printing';
   const http = (body, cookie = cookies[0], origin = 'http://127.0.0.1:3112') => fetch(url, {
     method: body ? 'POST' : 'GET', redirect: 'manual', headers: { Cookie: cookie, Origin: origin, 'X-Pos-Print': '1', 'Content-Type': 'application/json' },
@@ -85,6 +88,18 @@ try {
   assert.deepEqual((await spool()).map(j => j.queue).sort(), ['POS80 Printer', 'Y813BT Sticker'].sort());
   const documents = await spool(); assert.match(documents.find(j => j.audience === 'barista').document.sections.flat().join(' '), /Leche de avena.*Sin hielo.*Entregar juntos/);
   pass('Bluetooth retry routes only the missing preparation copy; both copies use the same immutable folio');
+  const receiptUrl = 'http://127.0.0.1:3112/api/receipts?orderId=' + first;
+  const receiptResponse = await fetch(receiptUrl, { headers: { Cookie: cookies[0] }, redirect: 'manual' });
+  assert.equal(receiptResponse.status, 200);
+  const savedReceipt = await receiptResponse.json();
+  assert.equal(savedReceipt.source, 'stored');
+  assert.match(savedReceipt.document.sections.flat().join(' '), /EMISOR FICTICIO.*AAA010101AAA.*Domicilio ficticio/);
+  assert.match(savedReceipt.document.sections.flat().join(' '), /Entregar juntos/);
+  assert.match(savedReceipt.document.sections.flat().join(' '), /Recibido MXN:.*250\.00.*Cambio:.*30\.00/);
+  assert.match(receiptResponse.headers.get('cache-control'), /private.*no-store/);
+  assert.equal((await fetch(receiptUrl, { headers: { Cookie: cookies[1] }, redirect: 'manual' })).status, 404);
+  assert.equal((await spool()).length, 2);
+  pass('Production receipt endpoint preserves stored customer content, denies another cashier and never submits a print job');
   await app.restart(); await post({ orderId: first }); assert.equal((await spool()).length, 2);
   pass('Production process restart preserves the disk journal and cannot reprint either accepted copy');
   const second = newSale(4002); await writeFile(faults, JSON.stringify({ barista: 'uncertain' }));

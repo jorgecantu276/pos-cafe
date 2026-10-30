@@ -10,20 +10,21 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { loginReturnTarget } from '@/lib/login-return';
+import { RequestTimeout, withDeadline } from '@/lib/request-deadline';
 import { Keyboard, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const [users, setUsers] = useState<LoginProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
-  
+
   const [selectedUsername, setSelectedUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [showPass, setShowPass] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
-  
+
   const router = useRouter();
 
 
@@ -31,8 +32,8 @@ export default function LoginPage() {
   useEffect(() => {
     const fetchProfiles = async () => {
       try {
-        const { data, error } = await supabase.rpc('pos_login_profiles');
-          
+        const { data, error } = await withDeadline(() => supabase.rpc('pos_login_profiles'));
+
         if (error) throw error;
         setUsers(data || []);
       } catch (err) {
@@ -59,19 +60,19 @@ export default function LoginPage() {
       // 🟢 2. RECONSTRUIR EL CORREO FANTASMA PARA EL LOGIN
       const fakeEmail = `${selectedUsername.replace(/\s+/g, '').toLowerCase()}@carinitomio.local`;
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({ 
-        email: fakeEmail, 
-        password 
-      });
-      
+      const { error: signInError } = await withDeadline(() => supabase.auth.signInWithPassword({
+        email: fakeEmail,
+        password
+      }));
+
       if (signInError) throw signInError;
-      
+
       const target = loginReturnTarget(new URLSearchParams(window.location.search).get('returnTo'));
       router.replace(target);
       router.refresh();
     } catch (failure) {
       const unavailable=failure&&typeof failure==='object'&&('name' in failure&&failure.name==='AuthRetryableFetchError'||'status' in failure&&(Number(failure.status)===0||Number(failure.status)>=500));
-      setError(unavailable?'No se pudo conectar para iniciar sesión. Revisa la conexión y reintenta.':'Contraseña incorrecta. Verifica tu acceso.');
+      setError(unavailable || failure instanceof RequestTimeout ? 'No se pudo conectar para iniciar sesión. Revisa la conexión y reintenta.' : 'Contraseña incorrecta. Verifica tu acceso.');
     } finally {
       setLoading(false);
     }

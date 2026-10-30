@@ -1,3 +1,5 @@
+import * as deadline from '../lib/request-deadline';
+import * as reprint from '../lib/receipt-reprint';
 import {WorkspaceKeyboard} from '../app/register/WorkspaceRegister';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -33,7 +35,7 @@ test('middleware preserves TV destination for expired sessions and safely redire
   let signedIn = false;
   const { middleware } = compile('../middleware.ts', {
     '@supabase/ssr': { createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: signedIn ? { id: 'synthetic' } : null }, error: null }) } }) },
-    '@/lib/login-return': loginReturn, '@/lib/user-management': userManagement,
+    '@/lib/request-deadline':deadline, '@/lib/login-return': loginReturn, '@/lib/user-management': userManagement,
   }) as { middleware: (request: NextRequest) => Promise<Response> };
   const request = (path: string) => middleware(new NextRequest(`http://localhost:3112${path}`));
   const expired = await request('/tv?unrelated=discard');
@@ -59,7 +61,7 @@ test('actual login form preserves TV destination through failed authentication a
     const client = { rpc: async () => ({ data: [{ id: 'test-admin', username: 'testowner', full_name: 'Prueba local', avatar_url: null }], error: null }),
       auth: { signInWithPassword: async () => ({ error: fail ? { message: 'Synthetic rejection' } : null }) } };
     const Page = compile('../app/login/page.tsx', {
-      '@/lib/supabase': { supabase: client }, '@/lib/login-return': loginReturn,
+      '@/lib/request-deadline':deadline, '@/lib/receipt-reprint':reprint, '@/lib/supabase': { supabase: client }, '@/lib/login-return': loginReturn,
       '../register/WorkspaceRegister': {WorkspaceKeyboard}, '../register/workspace.css':{}, './login.css':{},
       'next/navigation': { useRouter: () => ({ replace: (url: string) => destinations.push(url), refresh: () => refreshes++ }) },
     }).default as ComponentType;
