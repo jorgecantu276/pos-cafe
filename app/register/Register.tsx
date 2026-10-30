@@ -760,7 +760,7 @@ const handleSaveAndClose = async () => {
                 <p className="text-slate-400 text-xs font-medium leading-relaxed">Inicia el turno verificando el efectivo inicial y el tipo de cambio del día.</p>
               </div>
               {appearance==='prototype'?<div className="flex flex-col gap-3">
-                {isAdmin&&<a href="/admin/inventario" className="text-white underline">Administrar sin abrir caja</a>}
+                {isAdmin&&<a href="/admin" className="text-white underline">Administrar sin abrir caja</a>}
                 <button onClick={()=>void handleLogout()} className="text-white border border-white/40">Cambiar usuario</button>
               </div>:<div className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">Mi Café System • 2026</div>}
             </div>

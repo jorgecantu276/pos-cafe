@@ -70,7 +70,7 @@ export default function VentasPage() {
       await cancelLegacySale(supabase, selectedOrder.id);
       setQuery(previous => ({ ...previous, page: 0, asOf: null }));
       setSelectedOrder(null);
-      alert('Venta marcada como cancelada. No se ejecutó devolución de dinero ni reposición de inventario.');
+      alert('Venta marcada como cancelada. No se ejecutó devolución de dinero.');
 
     } catch (error: unknown) {
       alert('Hubo un error al cancelar la orden: ' + errorMessage(error));
@@ -123,7 +123,7 @@ export default function VentasPage() {
             {isCanceled(selectedOrder.status) && (
               <div className="bg-red-50 text-red-600 border border-red-200 p-4 rounded-xl flex items-center gap-3 mb-6">
                 <AlertCircle size={20} />
-                <p className="text-sm font-bold">Esta venta está marcada como cancelada. La cancelación no devuelve dinero ni repone inventario.</p>
+                <p className="text-sm font-bold">Esta venta está marcada como cancelada. La cancelación no devuelve dinero.</p>
               </div>
             )}
 

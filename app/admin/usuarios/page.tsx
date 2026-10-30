@@ -194,7 +194,7 @@ const handleSaveUser = async (e: React.FormEvent) => {
               <ShieldCheck size={20} />
            </div>
            <h5 className="font-semibold text-[#1d1d1f]">Administradores</h5>
-           <p className="text-sm text-[#86868b] leading-relaxed font-medium">Control total. Pueden acceder a inventarios, cortes z globales, configuraciones y usuarios.</p>
+           <p className="text-sm text-[#86868b] leading-relaxed font-medium">Control total. Pueden acceder a ventas, productos, cortes de caja, configuraciones y usuarios.</p>
         </div>
         <div className="bg-[#f5f5f7] p-8 rounded-[24px] space-y-3 border border-slate-100/50">
            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm text-[#86868b]">

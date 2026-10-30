@@ -29,7 +29,7 @@ export default function CancelacionesPage() {
     setActionLoading(orderId);
     try {
       await cancelLegacySale(supabase, orderId);
-      alert('Venta marcada como cancelada. No se ejecutó devolución de dinero ni reposición de inventario.');
+      alert('Venta marcada como cancelada. No se ejecutó devolución de dinero.');
       fetchOrders();
     } catch (err: unknown) {
       alert('Error: ' + errorMessage(err));

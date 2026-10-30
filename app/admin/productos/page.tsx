@@ -151,7 +151,6 @@ export default function ProductosPage() {
             <>
               <input type="url" placeholder="URL de la imagen (Opcional)" value={formData.image_url} className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" onChange={e => setFormData({...formData, image_url: e.target.value})} />
               <p className="text-sm text-slate-500">Pega el enlace de su foto propia cuando esté lista. Si está vacío o la foto no carga, se muestra una imagen provisional.</p>
-              <p className="text-sm text-slate-500">Las existencias se registran en <a className="underline" href="/admin/inventario">Inventario</a>. Un producto nuevo comienza en cero.</p>
               
               {/* 🟢 SELECTOR DE CATEGORÍAS (PRODUCTOS) */}
               <div className="relative w-full">
@@ -253,7 +252,7 @@ export default function ProductosPage() {
                 <button onClick={() => handleEdit(p, 'items')} className="bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors p-2.5 rounded-xl">
                   <Edit2 size={18}/>
                 </button>
-                <button aria-label={`Desactivar ${p.name}`} onClick={async () => { if(confirm('¿Desactivar este producto? Su historial y existencias se conservarán.')) { const r=await supabase.from('products').update({is_active:false}).eq('id', p.id); if(r.error){alert(errorMessage(r.error));return;} fetchData(); } }} className="bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors p-2.5 rounded-xl">
+                <button aria-label={`Desactivar ${p.name}`} onClick={async () => { if(confirm('¿Desactivar este producto? Su historial se conservará.')) { const r=await supabase.from('products').update({is_active:false}).eq('id', p.id); if(r.error){alert(errorMessage(r.error));return;} fetchData(); } }} className="bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors p-2.5 rounded-xl">
                   <Trash2 size={18}/>
                 </button>
               </div>
