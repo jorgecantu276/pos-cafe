@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import ProductPhoto from '@/components/ProductPhoto';
-import { Keyboard, Minus, Plus, Search, X, Pencil, Trash2, Printer } from 'lucide-react';
+import { Keyboard, Minus, Plus, Search, X, Pencil, Trash2, Printer, UserRound, ChevronRight, Coffee, Settings2, ArrowRight } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/pos-types';
 
 type RegisterProps = ComponentProps<typeof import('./PrototypeRegister').default> & {
@@ -51,7 +51,7 @@ const ProductButton = memo(function ProductButton({ product, disabled, onProduct
   product: CatalogProduct; disabled: boolean; onProduct: RegisterProps['onProduct'];
 }) {
   return <button className="workspace-product has-photo" disabled={disabled}
-    onClick={() => onProduct(product)} aria-label={`${product.name}, ${money(Number(product.price))}`}>
+    onClick={() => onProduct(product)} title={product.name} aria-label={`${product.name}, ${money(Number(product.price))}`}>
     <ProductPhoto product={product} width={72} height={72} />
     <span className="workspace-product-copy"><strong>{product.name}</strong><span>{money(Number(product.price))}</span></span>
   </button>;
@@ -81,15 +81,18 @@ export default function WorkspaceRegister(p: RegisterProps) {
     <main className="workspace-body">
       <section className="workspace-catalog" aria-label="Menú de productos">
         <header className="workspace-simple-toolbar">
-          {p.isAdmin ? <a href="/admin" className="workspace-admin-gateway">Administración</a> : <strong className="workspace-wordmark">Cariñito Mío</strong>}
+          <div className="workspace-identity"><span className="workspace-brand-icon" aria-hidden="true"><Coffee size={23} /></span><div><strong className="workspace-wordmark">Cariñito Mío</strong><span className="workspace-cashier"><span aria-hidden="true" />{p.userName}</span></div></div>
+          <div className="workspace-shift-actions">{p.isAdmin && <a href="/admin" className="workspace-admin-gateway"><Settings2 size={18} />Administración</a>}
+            {p.onHandoff && <button type="button" className="workspace-handoff" onClick={p.onHandoff}>Cambiar cajero</button>}
+            <button type="button" onClick={p.onCloseShift}>Terminar turno</button></div>
+        </header>
+        <div className="workspace-menu-heading"><div><h1>Menú</h1><span>{count} productos</span></div>
           <div className="workspace-search"><Search size={20} /><input aria-label="Buscar producto" placeholder="Buscar producto" value={p.search} onChange={event => filter(event.target.value)} />
             {p.search && <button type="button" aria-label="Limpiar búsqueda" className="workspace-icon" onClick={() => filter('')}><X size={20} /></button>}
             <button type="button" className="workspace-icon" aria-label="Teclado de búsqueda" aria-pressed={keyboard} onClick={() => setKeyboard(!keyboard)}><Keyboard size={22} /></button>
           </div>
           <button type="button" aria-label="Tickets" className="workspace-icon" onClick={() => setPanel('ticket')}><Printer size={21} /></button>
-          {p.onHandoff && <button type="button" className="workspace-handoff" onClick={p.onHandoff}>Cambiar cajero</button>}
-          <button type="button" onClick={p.onCloseShift}>Terminar turno</button>
-        </header>
+        </div>
         <div className="workspace-catalog-scroll" ref={catalogRef}>
           {groups.map(([name, products]) => <section key={name} className="workspace-product-group" aria-label={name}>
             <h2>{name}</h2><div className="workspace-product-grid">{products.map(product => <ProductButton key={product.id} product={product} disabled={p.disabled} onProduct={p.onProduct} />)}</div>
@@ -99,14 +102,14 @@ export default function WorkspaceRegister(p: RegisterProps) {
         {keyboard && <div className="workspace-search-keys"><div><button type="button" onClick={() => setKeyboard(false)}>Listo</button></div><WorkspaceKeyboard value={p.search} onChange={filter} /></div>}
       </section>
       <aside className="workspace-order" aria-label="Orden actual"><header><h1>Orden actual</h1>
-        <button type="button" className="workspace-icon" aria-label="Vaciar orden" disabled={!p.items.length || p.disabled} onClick={() => { if (confirm('¿Vaciar esta orden?')) p.onClear(); }}><Trash2 size={21} /></button></header>
-        <button type="button" className="workspace-order-client" disabled={p.disabled} onClick={() => setPanel('customer')}>{p.customer?.name ?? 'Cliente (opcional)'}</button>
+        <span className="workspace-order-count">{p.items.reduce((sum, item) => sum + item.quantity, 0)}</span><button type="button" className="workspace-icon" aria-label="Vaciar orden" disabled={!p.items.length || p.disabled} onClick={() => { if (confirm('¿Vaciar esta orden?')) p.onClear(); }}><Trash2 size={20} /></button></header>
+        <button type="button" className="workspace-order-client" disabled={p.disabled} onClick={() => setPanel('customer')}><UserRound size={19} /><span>{p.customer?.name ?? 'Cliente (opcional)'}</span><ChevronRight size={18} /></button>
         <div className="workspace-order-lines">{p.items.map(item => <button type="button" className="workspace-order-line" key={item.id} aria-label={`Editar ${item.product.name}`} disabled={p.disabled} onClick={() => p.onEdit(item)}>
           <span><span className="workspace-line-count">{item.quantity} × </span>{item.product.name}</span><strong>{money(Math.round(item.quantity * item.product.price * 100) / 100)}</strong>
           {(item.product.displayExtras?.length || item.product.note) ? <small>{[...(item.product.displayExtras ?? []).map(extra => extra.name), item.product.note].filter(Boolean).join(' · ')}</small> : null}
-        </button>)}{!p.items.length && <p className="workspace-empty">Toca un producto.</p>}</div>
-        <footer className="workspace-order-footer"><div className="workspace-total"><span>Total</span><strong>{money(p.total)}</strong></div>
-          <button type="button" className="workspace-pay" aria-label="Cobrar" disabled={!p.items.length || p.disabled} onClick={p.onCheckout}>Cobrar</button></footer>
+        </button>)}{!p.items.length && <div className="workspace-empty-order"><Coffee size={34} aria-hidden="true" /><strong>Orden vacía</strong><p>Toca un producto del menú.</p></div>}</div>
+        <footer className="workspace-order-footer"><div className="workspace-total"><span>Total <small>MXN</small></span><strong>{money(p.total)}</strong></div>
+          <button type="button" className="workspace-pay" aria-label="Cobrar" disabled={!p.items.length || p.disabled} onClick={p.onCheckout}>Cobrar<ArrowRight size={22} aria-hidden="true" /></button></footer>
       </aside>
     </main>
     {panel === 'ticket' && <WorkspaceDialog title="Reimprimir ticket" onClose={() => setPanel(null)} className="workspace-ticket-dialog"><div className="workspace-dialog-content"><label>Folio<input aria-label="Folio del ticket" inputMode="numeric" value={ticket} onChange={event => setTicket(event.target.value.replace(/\D/g, ''))} /></label><WorkspaceKeyboard numeric value={ticket} onChange={value => { if (/^\d*$/.test(value)) setTicket(value); }} />
@@ -141,19 +144,19 @@ export function WorkspaceCheckout(p: CheckoutProps) {
   const parse = (value: string | number) => Number(String(value || 0).replace(',', '.'));
   const received = Math.round((parse(p.mxn) + parse(p.usd) * p.exchangeRate) * 100) / 100;
   const key = (value: string) => { if (/^\d{0,8}(?:\.\d{0,2})?$/.test(value)) (currency === 'MXN' ? p.onMXN : p.onUSD)(value); };
-  return <WorkspaceDialog title="Cobrar" onClose={p.onClose} busy={p.busy} className="workspace-checkout"><div className="workspace-dialog-content"><div className="workspace-checkout-summary"><div><span>Total MXN</span><strong>{money(p.total)}</strong></div><select aria-label="Tipo de pedido" value={p.orderType} disabled={p.busy} onChange={event => p.onOrderType(event.target.value)}><option value="En Local">Para aquí</option><option value="Para Llevar">Para llevar</option></select></div>
+  return <WorkspaceDialog title="Cobrar" onClose={p.onClose} busy={p.busy} className="workspace-checkout"><div className="workspace-dialog-content"><div className={`workspace-checkout-main ${cash ? 'has-cash' : ''}`}><section className="workspace-checkout-details"><div className="workspace-checkout-summary"><div><span>Total MXN</span><strong>{money(p.total)}</strong></div><select aria-label="Tipo de pedido" value={p.orderType} disabled={p.busy} onChange={event => p.onOrderType(event.target.value)}><option value="En Local">Para aquí</option><option value="Para Llevar">Para llevar</option></select></div>
     <div className="workspace-payment-methods" aria-label="Método de pago">{['Efectivo', 'Mixto', 'Tarjeta', 'Otro'].map(method => <button type="button" key={method} disabled={p.busy} aria-pressed={p.method === method} onClick={() => { p.onMethod(method); setCardConfirmed(false); setCurrency('MXN'); }}>{method === 'Mixto' ? 'MXN + USD' : method}</button>)}</div>
-    {cash && <div className="workspace-cash-grid"><section><label>Recibido MXN<input aria-label="Recibido MXN" inputMode="decimal" disabled={p.busy} value={p.mxn} onFocus={() => setCurrency('MXN')} onChange={event => p.onMXN(event.target.value)} /></label>
+    {cash && <div className="workspace-cash-fields"><label>Recibido MXN<input aria-label="Recibido MXN" inputMode="decimal" disabled={p.busy} value={p.mxn} onFocus={() => setCurrency('MXN')} onChange={event => p.onMXN(event.target.value)} /></label>
       {p.method === 'Mixto' && <label>Recibido USD<input aria-label="Recibido USD" inputMode="decimal" disabled={p.busy} value={p.usd} onFocus={() => setCurrency('USD')} onChange={event => p.onUSD(event.target.value)} /></label>}
       {p.method === 'Efectivo' && <button type="button" disabled={p.busy} onClick={() => { p.onMXN(String(p.total)); p.onUSD(''); }}>Importe exacto</button>}
       {p.method === 'Mixto' && <p className="workspace-caption">1 USD = {p.exchangeRate} MXN</p>}
       <div className={`workspace-change ${received < p.total ? 'is-short' : ''}`}><span>{received < p.total ? 'Faltan MXN' : 'Cambio MXN'}</span><strong>{money(Math.abs(received - p.total))}</strong></div>
-    </section><WorkspaceKeyboard numeric label={`Teclado ${currency}`} disabled={p.busy} value={String(currency === 'MXN' ? p.mxn : p.usd)} onChange={key} /></div>}
+    </div>}
     {p.method === 'Tarjeta' && <label className="workspace-card-confirm"><input type="checkbox" disabled={p.busy} checked={cardConfirmed} onChange={event => setCardConfirmed(event.target.checked)} />Pago aprobado en la terminal</label>}
     {p.method === 'Otro' && <p className="workspace-caption">Registra la venta después de recibir el pago.</p>}
-    <button type="button" className="workspace-note-toggle" aria-expanded={notes} disabled={p.busy} onClick={() => setNotes(!notes)}>{p.note || 'Nota de la orden'}</button>
+    </section><section className="workspace-checkout-keypad">{cash && <WorkspaceKeyboard numeric label={`Teclado ${currency}`} disabled={p.busy} value={String(currency === 'MXN' ? p.mxn : p.usd)} onChange={key} />}<button type="button" className="workspace-note-toggle" aria-expanded={notes} disabled={p.busy} onClick={() => setNotes(!notes)}>{p.note || 'Nota de la orden'}</button>
     {notes && <><input aria-label="Notas de la orden" maxLength={1000} value={p.note} disabled={p.busy} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard disabled={p.busy} value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
-  </div><footer><button type="button" className="workspace-primary" disabled={p.busy || p.insufficient || (p.method === 'Tarjeta' && !cardConfirmed)} onClick={p.onConfirm}>{p.busy ? 'Confirmando…' : 'Confirmar Pago'}</button></footer></WorkspaceDialog>;
+  </section></div></div><footer><button type="button" className="workspace-primary" disabled={p.busy || p.insufficient || (p.method === 'Tarjeta' && !cardConfirmed)} onClick={p.onConfirm}>{p.busy ? 'Confirmando…' : 'Confirmar Pago'}</button></footer></WorkspaceDialog>;
 }
 
 export function WorkspaceOpening(p: {

@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { loginReturnTarget } from '@/lib/login-return';
 import { RequestTimeout, withDeadline } from '@/lib/request-deadline';
-import { Keyboard, Eye, EyeOff } from 'lucide-react';
+import { Keyboard, Eye, EyeOff, Coffee, Check, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
   const [users, setUsers] = useState<LoginProfile[]>([]);
@@ -87,10 +87,10 @@ export default function LoginPage() {
 
   const selectedUser = users.find(u => u.username === selectedUsername);
 
-  return <main className="workspace-login"><header><strong>Cariñito Mío</strong><span>Caja</span></header><section className="workspace-login-panel"><h1>Iniciar sesión</h1>
+  return <main className="workspace-login"><header><span className="workspace-login-brand"><Coffee size={22} /><strong>Cariñito Mío</strong></span><span>Caja</span></header><section className="workspace-login-panel"><div className="workspace-login-heading"><span aria-hidden="true"><Coffee size={30} /></span><h1>Iniciar sesión</h1><p>Selecciona tu perfil para abrir la caja.</p></div>
     <form onSubmit={handleLogin}><fieldset disabled={loading} className="workspace-login-profiles"><legend>Perfil</legend>
       {loadingUsers ? <p role="status">Cargando perfiles…</p> : users.map(user => <button type="button" key={user.id} aria-label={user.full_name} aria-pressed={selectedUsername === user.username} onClick={() => handleUserSelect(user.username || '')}>
-        <strong><span>{user.full_name.split(' ')[0]}</span> {user.full_name.split(' ').slice(1).join(' ')}</strong><small>{user.username}</small>
+        <span className="workspace-login-avatar" aria-hidden="true">{user.full_name.trim().split(/\s+/).map(word => word[0]).slice(0, 2).join('')}</span><span className="workspace-login-profile-copy"><strong><span>{user.full_name.split(' ')[0]}</span> {user.full_name.split(' ').slice(1).join(' ')}</strong><small>{user.username}</small></span>{selectedUsername === user.username && <Check size={21} aria-hidden="true" />}
       </button>)}
       {!loadingUsers && !users.length && <p>No hay perfiles disponibles.</p>}
     </fieldset>
@@ -100,6 +100,6 @@ export default function LoginPage() {
     </div></label>
     {keyboard && <div className="workspace-login-keys"><WorkspaceKeyboard value={password} onChange={setPassword} disabled={loading} /></div>}
     {error && <p role="alert" className="workspace-login-error">{error}</p>}
-    <button className="workspace-login-submit" type="submit" disabled={loading || !selectedUsername || !password}>{loading ? 'Entrando…' : 'Acceder'}</button>
+    <button className="workspace-login-submit" type="submit" disabled={loading || !selectedUsername || !password}>{loading ? 'Entrando…' : 'Acceder'}<ArrowRight size={20} aria-hidden="true" /></button>
     </form></section></main>;
 }

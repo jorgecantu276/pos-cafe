@@ -1,5 +1,7 @@
 # Touch workspace
 
+The October 30 redesign uses iOS-inspired light surfaces, rounded controls and restrained blue accents. Cashier identity stays visible, the payment area stays fixed, and forms fit the café screen without hiding their actions. Plain Spanish labels and all employee-recovery controls remain intact. No external font download or heavy blur is required.
+
 The default register keeps the original owner's workflow: catalog on the left, current order on the right, item adjustments on tap and payment. The rejected Juniper prototype and original owner register remain available with server environment `POS_REGISTER_UI=prototype` or `POS_REGISTER_UI=owner`; restart the server after changing appearance. The default is `workspace`. All three use the same current checkout, reporting, shift and recovery contracts.
 
 The user's supplied Windows display screenshot shows 1366×768 at 60 Hz and Intel UHD Graphics 620. The café PC reports an i5-8250U and 7.92 GB RAM. Actual scaling, touch calibration and app performance still need measurement. Browser checks target 1366×650 and 1093×560 as conservative working viewports; they are not hardware benchmarks.

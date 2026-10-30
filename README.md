@@ -1,6 +1,6 @@
 # Cariñito Mío POS
 
-Next.js 16.4.3, React 19, Supabase, TypeScript, Tailwind and Zustand. Build and test on this development Windows PC; distribute reviewed releases to the café PC through GitHub. The default is a plain Spanish touch workspace that preserves the original catalog-left/order-right workflow. Retain the owner and Juniper layouts with `POS_REGISTER_UI=owner` or `POS_REGISTER_UI=prototype`. See [workspace design and rollback](docs/workspace.md).
+Next.js 16.4.3, React 19, Supabase, TypeScript, Tailwind and Zustand. Build and test on this development Windows PC; distribute reviewed releases to the café PC through GitHub. The default is an iOS-inspired light touch workspace with plain Spanish copy, visible cashier identity and the original catalog-left/order-right workflow. Retain the owner and Juniper layouts with `POS_REGISTER_UI=owner` or `POS_REGISTER_UI=prototype`. See [workspace design and rollback](docs/workspace.md).
 
 ## Development
 

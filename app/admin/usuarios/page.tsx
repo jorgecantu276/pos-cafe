@@ -246,15 +246,17 @@ export default function UsuariosPage() {
                     <div className="grid grid-cols-3 gap-3">
                       <button
                         type="button"
+                        aria-pressed={formData.role === 'admin'}
                         onClick={() => setFormData({...formData, role: 'admin'})}
                         className={`p-3 rounded-xl border-2 font-bold text-sm transition-all flex items-center justify-center gap-2 ${formData.role === 'admin' ? 'border-[#0071e3] text-[#0071e3] bg-blue-50/50' : 'border-slate-100 text-slate-500 bg-white hover:border-slate-200'}`}
                       >
                         <ShieldCheck size={16} /> Administrador
                       </button>
-                      <button type="button" onClick={() => setFormData({...formData, role: 'cashier'})}
+                      <button type="button" aria-pressed={formData.role === 'cashier'} onClick={() => setFormData({...formData, role: 'cashier'})}
                         className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 ${formData.role === 'cashier' ? 'border-[#1d1d1f] text-[#1d1d1f] bg-slate-50' : 'border-slate-100 text-slate-500 bg-white'}`}><Wallet size={16} /> Cajero</button>
                       <button
                         type="button"
+                        aria-pressed={formData.role === 'barista'}
                         onClick={() => setFormData({...formData, role: 'barista'})}
                         className={`p-3 rounded-xl border-2 font-bold text-sm transition-all flex items-center justify-center gap-2 ${formData.role === 'barista' ? 'border-[#1d1d1f] text-[#1d1d1f] bg-slate-50' : 'border-slate-100 text-slate-500 bg-white hover:border-slate-200'}`}
                       >
