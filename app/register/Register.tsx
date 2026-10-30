@@ -7,6 +7,8 @@ import { loadDrawerStatus, recoverDrawerRequest, beginDrawerHandoff, enrollCusto
 import PrototypeRegister, {PrototypeCheckout, PrototypeCustomization} from './PrototypeRegister';
 import './prototype.css';
 import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
+import RecentTickets from './RecentTickets';
+import { loadRegisterShortcuts } from '@/lib/register-shortcuts';
 import './workspace.css';
 
 import { catalogProduct, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
@@ -63,6 +65,10 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   };
 
   const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>([]);
+  const [favoritesError, setFavoritesError] = useState('');
+  const [favoritesLoading, setFavoritesLoading] = useState(true);
+  const [favoritesAttempt, setFavoritesAttempt] = useState(0);
   const [dbExtras, setDbExtras] = useState<ExtraRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [ticketSearchTerm, setTicketSearchTerm] = useState(''); // 🟢 ESTADO PARA BUSCAR TICKET
@@ -73,6 +79,17 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   const [closeAction, setCloseAction] = useState<'close'|'handoff'>('close');
   const [countConfirmed,setCountConfirmed] = useState(false);
   const [handoffTarget, setHandoffTarget] = useState('');
+
+  useEffect(() => {
+    if (!drawerActor || (sessionActor !== null && drawerActor !== sessionActor)) return;
+    const controller = new AbortController();
+    void loadRegisterShortcuts(supabase, controller.signal).then(value => {
+      if (!controller.signal.aborted) setFavoriteProductIds(value.product_ids);
+    }).catch(() => {
+      if (!controller.signal.aborted) setFavoritesError('No se pudieron cargar los favoritos. Puedes usar el catálogo.');
+    }).finally(() => { if (!controller.signal.aborted) setFavoritesLoading(false); });
+    return () => controller.abort();
+  }, [drawerActor, sessionActor, favoritesAttempt]);
 
   // ESTADOS DE TURNO
   const [registerId, setRegisterId] = useState('');
@@ -150,7 +167,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
       shiftSaved.current = false; closedShiftReport.current = null;
       useCartStore.getState().clearCart(); setActiveCustomer(null); setCheckoutReview(null);
       setIsProcessingCheckout(false); setShowCheckoutModal(false); setShowPostSaleModal(false); setSelectedProduct(null); setSavedSale(null);
-      setProducts([]); setDbExtras([]); setDraftError(null); setCustomerError(null);
+      setProducts([]); setFavoriteProductIds([]); setFavoritesError(''); setFavoritesLoading(true); setDbExtras([]); setDraftError(null); setCustomerError(null);
       router.replace('/login'); router.refresh();
     });
     window.addEventListener('storage', changed);
@@ -364,6 +381,8 @@ const handleSaveAndClose = async () => {
         const report = closeAction === 'handoff' ? await beginDrawerHandoff(supabase, localStorage, owner, summary, countedCash, handoffTarget) : await closeShift(supabase, localStorage, owner, summary, countedCash);
         if (draftOwner.current !== owner) throw new Error('El corte se guardó para la sesión anterior.');
         shiftSaved.current = true; closedShiftReport.current = report;
+        // The confirmed closing is saved first; a backup failure never blocks handoff.
+        void fetch('/api/backups', { method: 'POST', headers: { 'X-Pos-Backup': 'checkpoint' }, keepalive: true }).catch(() => {});
         return {error:null};
       }, async () => {
         try { if (printWindow && closedShiftReport.current) printZReport(printWindow, closedShiftReport.current); }
@@ -888,6 +907,8 @@ const handleSaveAndClose = async () => {
       )}
 
       {appearance!=='owner' ? <RegisterView products={products} items={items} total={getTotal()} search={searchTerm} onSearch={setSearchTerm}
+        favoriteProductIds={favoriteProductIds} favoritesError={favoritesError} favoritesLoading={favoritesLoading} onRetryFavorites={()=>{setFavoritesLoading(true);setFavoritesError('');setFavoritesAttempt(value=>value+1);}}
+        recentTicketsContent={<RecentTickets key={drawerActor} onReprint={ticket=>void reprintHistoricalTicket(ticket)} disabled={isProcessingCheckout || isClosingShift}/>}
         userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout}
         onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={updateQuantity} onRemove={removeItem} onClear={handleClearOrder} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
         onHandoff={()=>void handleOpenCierre('handoff')}

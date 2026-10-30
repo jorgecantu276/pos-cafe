@@ -59,8 +59,14 @@ cpSync(process.execPath, path.join(destination, 'node.exe'));
 const nodeLicense = path.join(path.dirname(process.execPath), 'LICENSE');
 assert.ok(existsSync(nodeLicense), 'The official Node distribution LICENSE must accompany node.exe.');
 cpSync(nodeLicense, path.join(destination, 'Node-LICENSE.txt'));
-cpSync(path.join(root, 'scripts/windows/Start-POS.ps1'), path.join(destination, 'Start-POS.ps1'));
+for (const file of ['Start-POS.ps1', 'Open-POS.cmd', 'Install-POS-shortcut.ps1']) cpSync(path.join(root, 'scripts/windows', file), path.join(destination, file));
 cpSync(path.join(root, 'supabase/migrations'), path.join(destination, 'database-migrations'), { recursive: true });
+cpSync(path.join(root, 'supabase/schema.snapshot.json'), path.join(destination, 'database-migrations/schema.snapshot.json'));
+mkdirSync(path.join(destination, 'backup-tools/scripts/backups'), { recursive: true });
+mkdirSync(path.join(destination, 'backup-tools/lib'), { recursive: true });
+cpSync(path.join(root, 'scripts/backups/inspect.mjs'), path.join(destination, 'backup-tools/scripts/backups/inspect.mjs'));
+cpSync(path.join(root, 'lib/business-backup-format.mjs'), path.join(destination, 'backup-tools/lib/business-backup-format.mjs'));
+cpSync(path.join(root, 'docs/business-backups.md'), path.join(destination, 'backup-tools/README.md'));
 writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: 1, builtAt: new Date().toISOString(),
   sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   sourceDirty: !!execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(),
@@ -69,6 +75,7 @@ writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: 
 }, null, 2));
 writeFileSync(path.join(destination, 'pos-cafe-config.example.json'), JSON.stringify({ SupabaseUrl: url.origin, SupabaseAnonKey: key,
   SupabaseServiceRoleKey: '', Port: 3000, PrintMode: 'mock', PrintDataDirectory: '', ReceiptIssuerFile: '', StickerStockConfirmed: false,
+  BackupDirectory: '', BackupRecoveryKeyFile: '',
 }, null, 2));
 // Ensure release contents are ordinary copied files, with no junction back to this PC.
 function releaseFiles(folder, prefix = '') {

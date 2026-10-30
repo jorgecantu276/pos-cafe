@@ -1,0 +1,14 @@
+.workspace-favorites{max-width:960px;margin:auto}
+.workspace-favorites h1{margin:0 0 8px}
+.workspace-favorites p{color:#657084;font-size:14px;line-height:1.55}
+.workspace-favorites-selected{list-style:none;padding:0;margin:18px 0;display:grid;gap:8px}
+.workspace-favorites-selected li{display:flex;gap:6px;align-items:center;border:1px solid #e2e7ee;border-radius:14px;padding:8px 10px 8px 15px}
+.workspace-favorites-selected li>span{flex:1;min-width:0}
+.workspace-favorites-selected small{display:block;color:#a05520;font-size:12px}
+.workspace-favorites-selected button{display:grid;place-items:center;width:48px;min-width:48px;background:#f4f7fb;border:1px solid #e2e7ee}
+.workspace-favorites-actions{display:flex;gap:12px;flex-wrap:wrap}
+.workspace-favorites-catalog{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
+.workspace-favorites-catalog button{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:64px;padding:12px;text-align:left;border:1px solid #e2e7ee;background:#f8fafd;font:inherit}
+.workspace-favorites-catalog small{font-size:12px;color:#657084;white-space:nowrap}
+@media(max-width:800px){.workspace-favorites-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:500px){.workspace-favorites-catalog{grid-template-columns:1fr}}

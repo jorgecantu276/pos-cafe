@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronRight, Settings2 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import './workspace-admin.css';
 
-const pageNames: Record<string, string> = { ventas: 'Ventas', productos: 'Productos', caja: 'Caja y tipo de cambio', cortes: 'Cortes de caja', impresion: 'Recuperar impresión', clientes: 'Clientes', cancelaciones: 'Cancelaciones', usuarios: 'Equipo', cupones: 'Cupones', ajustes: 'Ajustes' };
+const pageNames: Record<string, string> = { ventas: 'Ventas', productos: 'Productos', favoritos: 'Favoritos en caja', respaldos: 'Respaldos', caja: 'Caja y tipo de cambio', cortes: 'Cortes de caja', impresion: 'Recuperar impresión', clientes: 'Clientes', cancelaciones: 'Cancelaciones', usuarios: 'Equipo', cupones: 'Cupones', ajustes: 'Ajustes' };
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const page = pageNames[usePathname().split('/')[2]];

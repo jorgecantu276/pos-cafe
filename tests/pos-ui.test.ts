@@ -20,6 +20,8 @@ import PrintDispatch from '../app/register/PrintDispatch';
 import * as shift from '../lib/shift';
 import * as types from '../lib/pos-types';
 import * as resource from '../lib/use-resource';
+import * as shortcuts from '../lib/register-shortcuts';
+import RecentTickets from '../app/register/RecentTickets';
 import * as drafts from '../lib/cart-draft';
 import * as shiftState from '../lib/shift-state';
 import PrototypeRegister, {PrototypeCheckout,PrototypeCustomization} from '../app/register/PrototypeRegister';
@@ -48,7 +50,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
   }
   cart.useCartStore.getState().clearCart();
   let root = createRoot(dom.window.document.getElementById('root')!);
-  const fixtureProduct = { id: 'local-coffee', name: 'Cappuccino', price: 80, category: 'Bebidas', image_url: null, is_active: true, customizable: false, wizard_steps: [] };
+  const fixtureProduct = { id: '00000000-0000-4000-8000-000000000001', name: 'Cappuccino', price: 80, category: 'Bebidas', image_url: null, is_active: true, customizable: false, wizard_steps: [] };
   const fixtures: Record<string, unknown> = {
     profiles: { full_name: 'Prueba local', role, is_active: true },
     products: [fixtureProduct], extras: [],
@@ -59,6 +61,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
   const delayedAuth = new Promise<void>(resolve => { release = resolve; });
   let submitted: checkout.CheckoutPayload | undefined;
   let authenticatedUser='fixture-user';
+  let favoriteReads=0;
   let authChanged!: (_event:string, session:{user:{id:string}}|null)=>void;
   const client = {
     auth: { getUser: async () => { await delayedAuth; return { data: { user: { id: authenticatedUser } }, error: null }; },
@@ -71,6 +74,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
       return query;
     },
     rpc: (name: string, args: { p_payload: checkout.CheckoutPayload }) => {
+      if(name==='get_register_shortcuts'){favoriteReads++;const result=Promise.resolve(favoriteReads===1?{error:{message:'Synthetic favorites connection failure'},data:null}:{error:null,data:{product_ids:[fixtureProduct.id],revision:1}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:authenticatedUser,cashier_name:'Prueba'},handoff:null,cashiers:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_shift_summary') {
         const result=Promise.resolve({error:null,data:{register_id:'local-shift',status:'open',opened_at:'2026-10-27T12:00:00Z',
@@ -94,6 +98,8 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
   const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020,
     module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   const exports: { default?: ComponentType<{appearance:'owner'|'prototype'|'workspace'}> } = {};
+  imports['@/lib/register-shortcuts'] = shortcuts;
+  imports['./RecentTickets'] = { default: RecentTickets, __esModule: true };
   new Function('require', 'exports', compiled)((name: string) => name === '@/components/ProductPhoto' ? { default: ProductPhoto, __esModule: true } : imports[name] ?? nodeRequire(name), exports);
   const button = (text: string) => {
     const element = [...dom.window.document.querySelectorAll('button')].find(b => (b.getAttribute('aria-label')??b.textContent?.trim()) === text);
@@ -119,6 +125,14 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     assert.ok(product); await click(appearance==='workspace'?product:product.parentElement!);
     assert.equal(cart.useCartStore.getState().getTotal(), 80);
     if (appearance === 'workspace') {
+      assert.match(screen.textContent!, /No se pudieron cargar los favoritos/);
+      const cartBeforeFavorites = dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user'));
+      await click(button('Reintentar favoritos'));
+      assert.equal(favoriteReads, 2);
+      assert.equal(cart.useCartStore.getState().getTotal(), 80);
+      assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user')), cartBeforeFavorites);
+      assert.equal(screen.querySelectorAll('.workspace-favorites-group .workspace-product').length, 1);
+      assert.doesNotMatch(screen.textContent!, /No se pudieron cargar los favoritos/);
       assert.equal(screen.querySelector('.workspace-categories'), null);
       assert.equal(screen.querySelector('[aria-label="Aumentar cantidad"]'), null);
       await click(button('Editar Cappuccino'));
