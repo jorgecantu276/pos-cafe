@@ -7,6 +7,17 @@ import { errorMessage } from '../lib/pos-types';
 import { rememberSalePrint } from '../lib/sale-printing';
 import { customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
 
+test('quick loyalty enrollment selects the new customer for the current order with optional contact fields',async()=>{
+  const person={id:'new-member',name:'Ana',points:50};let selected:unknown,hidden=false,saving=false;
+  await handler('handleRegisterCustomer',{
+    registeringCustomer:{current:false},setCustomerRegisterError:(message:string)=>assert.equal(message,''),setIsRegistering:(value:boolean)=>saving=value,
+    draftOwner:{current:'cashier'},supabase:{},localStorage:{},customerForm:{firstName:'Ana',lastName:'',birthDate:'',whatsapp:'',acceptPromos:false},
+    enrollCustomer:async(_client:unknown,_storage:unknown,actor:string,payload:unknown)=>{assert.equal(actor,'cashier');assert.deepEqual(payload,{name:'Ana',birthday:null,phone:'',promos:false});return person;},
+    selectCustomer:(value:unknown)=>selected=value,setShowCustomerModal:(value:boolean)=>hidden=!value,setCustomerForm:()=>{},
+  })({preventDefault(){}});
+  assert.equal(selected,person);assert.equal(hidden,true);assert.equal(saving,false);
+});
+
 // Exercise the actual page handlers with browser/network dependencies replaced;
 // no request reaches Supabase and no print dialog is opened by these checks.
 function handler(name: string, context: Record<string, unknown>, file='../app/register/Register.tsx'): (...args: unknown[]) => unknown {
@@ -168,7 +179,7 @@ test('direct logout preserves expense and uncertain closing records for the same
 test('actual closing handler loads one authoritative summary and preserves the dialog on failed reads',async()=>{
   let queryCalls=0,opened=false,cash=0,expenses:unknown;const notices:string[]=[];
   const snapshot={register_id:'r',status:'open',cash_sales:33030,expenses:[],expenses_revision:2,total_sales:33890};
-  const common={registerId:'r',checkoutReview:null,checkoutInFlight:{current:false},expenseInFlight:{current:false},expenseError:null,
+  const common={items:[],setCloseAction:()=>{},setHandoffTarget:()=>{},DENOMINATIONS:[100],setBreakdown:()=>{},setDollarsInBox:()=>{},registerId:'r',checkoutReview:null,checkoutInFlight:{current:false},expenseInFlight:{current:false},expenseError:null,
     draftOwner:{current:'a'},shiftSummary:{current:null},supabase:{},
     localStorage:{getItem:()=>null},expenseRequestKey:()=>'',setExpenses:(value:unknown)=>expenses=value,
     setCashSales:(value:number)=>cash=value,setShowCierre:(value:boolean)=>opened=value,alert:(value:string)=>notices.push(value)};

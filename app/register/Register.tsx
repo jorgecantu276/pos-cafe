@@ -2,6 +2,8 @@
 
 import Image from 'next/image';
 import ProductPhoto from '@/components/ProductPhoto';
+import DrawerGate from './DrawerGate';
+import { loadDrawerStatus, recoverDrawerRequest, beginDrawerHandoff, enrollCustomer, hasDrawerRequest, type DrawerStatus } from '@/lib/drawer';
 import PrototypeRegister, {PrototypeCheckout, PrototypeCustomization} from './PrototypeRegister';
 import './prototype.css';
 import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
@@ -64,6 +66,10 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   const [ticketSearchTerm, setTicketSearchTerm] = useState(''); // 🟢 ESTADO PARA BUSCAR TICKET
   const [userName, setUserName] = useState('Barista');
   const [isAdmin,setIsAdmin]=useState(false);
+  const [drawer, setDrawer] = useState<DrawerStatus | null>(null);
+  const [drawerActor, setDrawerActor] = useState('');
+  const [closeAction, setCloseAction] = useState<'close'|'handoff'>('close');
+  const [handoffTarget, setHandoffTarget] = useState('');
 
   // ESTADOS DE TURNO
   const [registerId, setRegisterId] = useState('');
@@ -163,6 +169,9 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
     if (profile.error || !profile.data?.is_active || !['admin','cashier','barista'].includes(profile.data.role)) throw new Error('Tu perfil no tiene acceso o falta actualizar la base de datos.');
     await recoverPendingExpenses(supabase, localStorage, user.id);
     await recoverShiftClose(supabase, localStorage, user.id);
+    await recoverDrawerRequest(supabase, localStorage, user.id, 'handoff');
+    await recoverDrawerRequest(supabase, localStorage, user.id, 'accept');
+    const drawer = await loadDrawerStatus(supabase, signal);
     const [catalog, extras, shift] = await Promise.all([
       supabase.from('products').select('*').order('name').abortSignal(signal),
       supabase.from('extras').select('*').order('phase').abortSignal(signal),
@@ -171,12 +180,14 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
     for (const result of [catalog, extras, shift]) if (result.error) throw result.error;
     if (shift.data && !shift.data.exchange_rate) throw new Error('El turno anterior requiere conciliación antes de usar esta versión.');
     const summary = shift.data ? await restoreShiftExpenses(supabase, localStorage, user.id, shift.data.id, signal) : null;
-    return { user, profile:profile.data, products:(catalog.data || []).map(catalogProduct), extras:(extras.data || []) as ExtraRow[], shift:shift.data, summary };
+    return { user, drawer, profile:profile.data, products:(catalog.data || []).map(catalogProduct), extras:(extras.data || []) as ExtraRow[], shift:shift.data, summary };
   }, [sessionActor]);
   const applyPOS = useCallback((data: Awaited<ReturnType<typeof loadPOS>> | null) => {
     if (!data) { router.replace('/login'); return; }
     setUserName(data.profile.full_name);
     setIsAdmin(data.profile.role==='admin');
+    setDrawer(data.drawer);
+    setDrawerActor(data.user.id);
     draftOwner.current = data.user.id;
     checkoutReviewKey.current = `mi_cafe_checkout_review:${data.user.id}`;
     setPrintCheckoutKey(`mi_cafe_checkout_review:${data.user.id}`);
@@ -214,7 +225,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
       setExchangeRate(String(shift.exchange_rate));
       setExpenses(data.summary!.expenses); setCashSales(data.summary!.cash_sales);
       setShowApertura(false);
-    } else { setRegisterId(''); setExpenses([]); setCashSales(0); setShowApertura(true); }
+    } else { setRegisterId(''); setExpenses([]); setCashSales(0); setExchangeRate(data.drawer.rate ? String(data.drawer.rate) : ''); setShowApertura(true); }
   }, [router]);
   const { loading, error: loadError, reload: fetchData } = useResource(loadPOS, null, applyPOS);
 
@@ -290,16 +301,19 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
     await updateExpenses(expenses.filter((_, i) => i !== index));
   };
 
-  const handleOpenCierre = async () => {
+  const handleOpenCierre = async (action: 'close'|'handoff' = 'close') => {
     if (!registerId || checkoutReview || checkoutInFlight.current) { alert('Resuelve la venta pendiente antes de cerrar el turno.'); return; }
 
     if (expenseInFlight.current || expenseError) { alert('Recupera los gastos antes de abrir el corte.'); return; }
+    if (action === 'handoff' && items.length) { alert('Termina o vacía la orden actual antes de entregar la caja.'); return; }
     const owner = draftOwner.current;
     try {
       const summary = await loadShiftSummary(supabase, registerId);
       if (draftOwner.current !== owner || summary.status !== 'open') return;
       if (localStorage.getItem(expenseRequestKey(owner))) throw new Error('Hay un gasto pendiente de recuperar.');
       shiftSummary.current = summary; setExpenses(summary.expenses); setCashSales(summary.cash_sales);
+      setCloseAction(action); setHandoffTarget('');
+      setBreakdown(DENOMINATIONS.reduce((acc, den) => ({ ...acc, [den]: 0 }), {})); setDollarsInBox('');
       setShowCierre(true);
     } catch (failure) { alert('No se pudo consultar el corte. El turno sigue abierto. ' + errorMessage(failure)); }
   };
@@ -440,6 +454,11 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
 
 const handleSaveAndClose = async () => {
     if (closingShift.current || expenseInFlight.current || expenseError || !shiftSummary.current) return;
+    if (!Number.isFinite(countedCash) || countedCash<0 || countedCash>10000000 || Object.values(breakdown).some(q=>!Number.isInteger(q)||q<0)
+      || !Number.isFinite(parseAmount(dollarsInBox)) || parseAmount(dollarsInBox)<0 || Math.round(parseAmount(dollarsInBox)*100)/100!==parseAmount(dollarsInBox)) {
+      alert('Revisa el conteo: piezas enteras y dólares con máximo dos decimales, sin cantidades negativas.');return;
+    }
+    if(closeAction==='handoff'&&(!handoffTarget||items.length)){alert('Selecciona al siguiente cajero y termina o vacía la orden actual.');return;}
     const summary = shiftSummary.current, owner = draftOwner.current;
     closingShift.current = true;
     setIsClosingShift(true);
@@ -448,7 +467,7 @@ const handleSaveAndClose = async () => {
     try {
       await saveShiftBeforeExit(async () => {
         if (shiftSaved.current) return { error: null };
-        const report = await closeShift(supabase, localStorage, owner, summary, countedCash);
+        const report = closeAction === 'handoff' ? await beginDrawerHandoff(supabase, localStorage, owner, summary, countedCash, handoffTarget) : await closeShift(supabase, localStorage, owner, summary, countedCash);
         if (draftOwner.current !== owner) throw new Error('El corte se guardó para la sesión anterior.');
         shiftSaved.current = true; closedShiftReport.current = report;
         return {error:null};
@@ -469,7 +488,14 @@ const handleSaveAndClose = async () => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const registeringCustomer = useRef(false);
+  const [customerRegisterError, setCustomerRegisterError] = useState('');
   const [customerForm, setCustomerForm] = useState({ firstName: '', lastName: '', birthDate: '', whatsapp: '', acceptPromos: false });
+  const handleOpenCustomerModal = () => {
+    try { setCustomerRegisterError(hasDrawerRequest(localStorage,draftOwner.current,'customer') ? 'Hay un alta sin confirmar. Reintentar recupera los datos originales y evita duplicar al cliente.' : ''); }
+    catch(error) { setCustomerRegisterError(errorMessage(error)); }
+    setShowCustomerModal(true);
+  };
 
   const handleCustomerSearchInput = async (value: string) => {
     setCustomerSearch(value);
@@ -520,18 +546,21 @@ const handleSaveAndClose = async () => {
 
   const handleRegisterCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (registeringCustomer.current) return;
+    registeringCustomer.current = true; setCustomerRegisterError('');
     setIsRegistering(true);
     try {
-      const { data, error } = await supabase.rpc('pos_register_customer', {
-        p_name: `${customerForm.firstName} ${customerForm.lastName}`, p_birth_date: customerForm.birthDate || null,
-        p_phone: customerForm.whatsapp, p_promos: customerForm.acceptPromos,
+      const actor = draftOwner.current;
+      const customer = await enrollCustomer(supabase, localStorage, actor, {
+        name: `${customerForm.firstName} ${customerForm.lastName}`.trim(), birthday: customerForm.birthDate || null,
+        phone: customerForm.whatsapp, promos: customerForm.acceptPromos,
       });
-      if (error) throw error;
-      alert(`¡Éxito! Código: ${data.customer_code}`);
+      if (draftOwner.current !== actor) return;
+      selectCustomer(customer);
       setShowCustomerModal(false);
       setCustomerForm({ firstName: '', lastName: '', birthDate: '', whatsapp: '', acceptPromos: false });
-    } catch (error: unknown) { alert(errorMessage(error)); }
-    finally { setIsRegistering(false); }
+    } catch (error: unknown) { setCustomerRegisterError(errorMessage(error)); }
+    finally { registeringCustomer.current = false; setIsRegistering(false); }
   };
 
   const buildWizardSteps = useCallback((product: Product): WizardStep[] => {
@@ -738,15 +767,17 @@ const handleSaveAndClose = async () => {
   const RegisterView = appearance === 'workspace' ? WorkspaceRegister : PrototypeRegister;
   const CheckoutView = appearance === 'workspace' ? WorkspaceCheckout : PrototypeCheckout;
   const CustomizationView = appearance === 'workspace' ? WorkspaceCustomization : PrototypeCustomization;
+  const drawerBlocked = Boolean(showApertura && drawer && (drawer.handoff || (drawer.active && drawer.active.cashier_id !== drawerActor) || drawer.rate === null));
 
   return (
     <div className={`flex h-screen bg-[#F5F5F7] text-[#1D1D1F] font-sans antialiased overflow-hidden ${appearance==='workspace'?'pos-workspace':appearance==='prototype'?'pos-prototype':''}`}>
 
       {/* MODAL: APERTURA DE TURNO */}
-      {showApertura && appearance==='workspace' && <WorkspaceOpening userName={userName} isAdmin={isAdmin} denominations={DENOMINATIONS} counts={breakdown} onCounts={setBreakdown}
+      {drawerBlocked && drawer && <DrawerGate client={supabase} status={drawer} actor={drawerActor} isAdmin={isAdmin} reload={fetchData} logout={()=>void handleLogout()}/>}
+      {showApertura && !drawerBlocked && appearance==='workspace' && <WorkspaceOpening userName={userName} isAdmin={isAdmin} denominations={DENOMINATIONS} counts={breakdown} onCounts={setBreakdown}
         rate={exchangeRate} onRate={setExchangeRate} dollars={dollarsInBox} onDollars={setDollarsInBox} total={calculateTotalCash()} busy={openingShift}
         disabled={loading||!!loadError} onOpen={()=>void handleStartShift()} onLogout={()=>void handleLogout()} />}
-      {showApertura && appearance!=='workspace' && (
+      {showApertura && !drawerBlocked && appearance!=='workspace' && (
         <div className="fixed inset-0 bg-[#F5F5F7] z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[32px] w-full max-w-[950px] shadow-2xl flex overflow-hidden animate-in fade-in zoom-in-95 duration-500">
             <div className="w-1/3 bg-[#1d1d1f] p-8 text-white flex flex-col justify-between">
@@ -776,7 +807,7 @@ const handleSaveAndClose = async () => {
                       placeholder="0.00"
                       className="w-full bg-[#f5f5f7] rounded-xl py-3 pl-10 pr-4 text-base font-black outline-none border-2 border-transparent focus:border-[#0071e3]/20 transition-all"
                       value={exchangeRate}
-                      onChange={(e) => setExchangeRate(e.target.value)}
+                      readOnly
                     />
                   </div>
                 </div>
@@ -834,7 +865,7 @@ const handleSaveAndClose = async () => {
       {/* MODAL: CIERRE DE TURNO CON GASTOS Y ARQUEO */}
       {showCierre && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[32px] w-full max-w-[950px] shadow-2xl flex overflow-hidden animate-in zoom-in-95 duration-200">
+          <div role="dialog" aria-modal="true" aria-label={closeAction==='handoff'?'Entregar caja':'Cierre de caja'} className="bg-white rounded-[32px] w-full max-w-[950px] max-h-[calc(100dvh-24px)] overflow-y-auto shadow-2xl flex animate-in zoom-in-95 duration-200">
 
              {/* PANEL IZQUIERDO: RESUMEN Y MATEMÁTICA */}
              <div className="w-1/3 bg-[#1d1d1f] p-8 text-white flex flex-col justify-between">
@@ -865,7 +896,7 @@ const handleSaveAndClose = async () => {
                 <div className="space-y-4">
                    <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">T. Cambio Aplicado: <span className="text-white">${exchangeRate}</span></p>
                    <button onClick={handleLogout} disabled={savingExpense || isClosingShift} className="flex items-center gap-2 text-red-400 font-bold hover:text-red-300 transition-colors text-sm">
-                     <LogOut size={18}/> Cerrar sesión sin Arqueo
+                     <LogOut size={18}/> Salir y dejar mi turno abierto
                    </button>
                 </div>
              </div>
@@ -944,12 +975,14 @@ const handleSaveAndClose = async () => {
                    </div>
                 </div>
 
+                <label className="block mb-3">Operación<select aria-label="Operación de cierre" disabled={isClosingShift} value={closeAction} onChange={e=>setCloseAction(e.target.value as 'close'|'handoff')} className="w-full border rounded p-3"><option value="close">Cerrar caja al terminar</option><option value="handoff">Entregar al siguiente cajero</option></select></label>
+                {closeAction==='handoff'&&<label className="block mb-3">Recibirá la caja<select aria-label="Cajero que recibe" disabled={isClosingShift} value={handoffTarget} onChange={e=>setHandoffTarget(e.target.value)} className="w-full border rounded p-3"><option value="">Selecciona otro cajero</option>{drawer?.cashiers.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select><span>Se guarda tu corte. El siguiente cajero debe iniciar sesión y confirmar el efectivo recibido.</span></label>}
                 <div className="flex gap-4">
                   <button disabled={isClosingShift} onClick={() => setShowCierre(false)} className="flex-1 bg-slate-100 text-slate-600 h-14 rounded-[20px] font-bold hover:bg-slate-200 transition-all disabled:opacity-50">
                     Volver al POS
                   </button>
-                  <button onClick={handleSaveAndClose} disabled={isClosingShift || savingExpense || !!expenseError} className="flex-1 bg-[#1d1d1f] text-white h-14 rounded-[20px] font-bold shadow-xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">
-                    <Printer size={20} /> {isClosingShift ? 'Guardando…' : 'Guardar e Imprimir Z'}
+                  <button onClick={handleSaveAndClose} disabled={isClosingShift || savingExpense || !!expenseError || (closeAction==='handoff'&&(!handoffTarget||items.length>0))} className="flex-1 bg-[#1d1d1f] text-white h-14 rounded-[20px] font-bold shadow-xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">
+                    <Printer size={20} /> {isClosingShift ? 'Guardando…' : closeAction==='handoff' ? 'Guardar corte y entregar caja' : 'Guardar e Imprimir Z'}
                   </button>
                 </div>
              </div>
@@ -960,8 +993,9 @@ const handleSaveAndClose = async () => {
       {appearance!=='owner' ? <RegisterView products={products} items={items} total={getTotal()} search={searchTerm} onSearch={setSearchTerm}
         userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout}
         onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={updateQuantity} onRemove={removeItem} onClear={clearCart} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
+        onHandoff={()=>void handleOpenCierre('handoff')}
         customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
-        onNewCustomer={()=>setShowCustomerModal(true)} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
+        onNewCustomer={handleOpenCustomerModal} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
         orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
         {!showPostSaleModal && printStatus}
         {loadError && (
@@ -1108,7 +1142,8 @@ const handleSaveAndClose = async () => {
               <input type="text" placeholder="¿Qué se te antoja?" value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full bg-white border border-slate-200 rounded-[20px] py-3.5 pl-12 pr-4 outline-none text-sm font-medium focus:ring-4 focus:ring-[#0071e3]/10 transition-all" />
             </div>
 
-            <button onClick={handleOpenCierre} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-3.5 rounded-[20px] hover:bg-slate-50 hover:text-red-500 transition-all font-semibold text-sm shadow-sm">
+            <button onClick={()=>void handleOpenCierre('handoff')} className="border rounded-xl px-4">Cambiar cajero</button>
+            <button onClick={()=>void handleOpenCierre()} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-3.5 rounded-[20px] hover:bg-slate-50 hover:text-red-500 transition-all font-semibold text-sm shadow-sm">
               <LogOut size={18} /> Terminar Turno
             </button>
           </div>
@@ -1177,7 +1212,7 @@ const handleSaveAndClose = async () => {
                   )}
                 </div>
 
-                <button onClick={() => setShowCustomerModal(true)} className="p-3 bg-[#0071e3] text-white rounded-xl shadow-lg shadow-blue-50 hover:scale-105 transition-all flex-shrink-0">
+                <button onClick={handleOpenCustomerModal} className="p-3 bg-[#0071e3] text-white rounded-xl shadow-lg shadow-blue-50 hover:scale-105 transition-all flex-shrink-0">
                   <UserPlus size={18}/>
                 </button>
               </div>
@@ -1522,15 +1557,18 @@ const handleSaveAndClose = async () => {
           <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6 text-slate-900">
               <h3 className="text-2xl font-black italic tracking-tight">{appearance==='workspace'?'Nuevo cliente':'Nuevo Miembro'}</h3>
-              <button onClick={() => setShowCustomerModal(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
+              <button disabled={isRegistering} aria-label="Cerrar nuevo cliente" onClick={() => setShowCustomerModal(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
             </div>
             <form onSubmit={handleRegisterCustomer} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <input type="text" required placeholder="Nombre" className="p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.firstName} onChange={e => setCustomerForm({...customerForm, firstName: e.target.value})} />
-                <input type="text" required placeholder="Apellido" className="p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.lastName} onChange={e => setCustomerForm({...customerForm, lastName: e.target.value})} />
+                <input type="text" placeholder="Apellido (opcional)" className="p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.lastName} onChange={e => setCustomerForm({...customerForm, lastName: e.target.value})} />
               </div>
-              <input type="date" required className="w-full p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.birthDate} onChange={e => setCustomerForm({...customerForm, birthDate: e.target.value})} />
-              <input type="tel" required placeholder="WhatsApp" className="w-full p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.whatsapp} onChange={e => setCustomerForm({...customerForm, whatsapp: e.target.value})} />
+              <label className="block">Cumpleaños (opcional)<input type="date" aria-label="Cumpleaños opcional" className="w-full p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.birthDate} onChange={e => setCustomerForm({...customerForm, birthDate: e.target.value})} /></label>
+              <input type="tel" placeholder="Teléfono / WhatsApp (opcional)" className="w-full p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.whatsapp} onChange={e => setCustomerForm({...customerForm, whatsapp: e.target.value})} />
+              <p>Solo necesitas el nombre. Se seleccionará para esta compra. Puntos iniciales: 50.</p>
+              {customerRegisterError&&<p role="alert">{customerRegisterError}</p>}
+              {customerRegisterError&&<button type="button" disabled={isRegistering} onClick={()=>void handleRegisterCustomer({preventDefault(){}} as React.FormEvent)}>Reintentar la misma alta</button>}
               <button type="submit" disabled={isRegistering} className="w-full bg-[#0071e3] text-white py-4 rounded-2xl font-bold flex justify-center items-center gap-2">
                 {isRegistering ? <Loader2 className="animate-spin" /> : 'Registrar Cliente'}
               </button>

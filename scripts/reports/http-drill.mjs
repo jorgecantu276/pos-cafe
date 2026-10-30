@@ -26,6 +26,8 @@ try {
     const id=randomUUID();ids[product.name]=id;
     await db.query('insert into products(id,name,price,category,is_active,customizable,wizard_steps) values($1,$2,$3,$4,true,false,$5)',[id,product.name,product.price_mxn,product.category,[]]);
   }
+  await db.query("update cash_registers set status='closed' where status='open'");
+  ok(await admin.rpc('pos_set_drawer_rate',{p_request:randomUUID(),p_payload:{rate:20}}));
   const register=ok(await cashier.rpc('pos_open_shift',{p_request:randomUUID(),p_cash:100,p_rate:20}));
   await reportHttpCases({db,admin,cashier,anonymous,menu,ids,register,pass:message=>console.log('PASS '+message)});
   await clone.verifyArchive();

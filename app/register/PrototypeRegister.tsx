@@ -17,7 +17,7 @@ function Sheet({title,children,onClose}:{title:string;children:ReactNode;onClose
 interface RegisterProps{
   products:CatalogProduct[];items:CartItem[];total:number;search:string;onSearch:(s:string)=>void;
   userName:string;isAdmin:boolean;disabled:boolean;onProduct:(p:Product)=>void;onEdit:(i:CartItem)=>void;
-  onQuantity:(id:string,q:number)=>void;onRemove:(id:string)=>void;onClear:()=>void;onCheckout:()=>void;onCloseShift:()=>void;
+  onQuantity:(id:string,q:number)=>void;onRemove:(id:string)=>void;onClear:()=>void;onCheckout:()=>void;onCloseShift:()=>void;onHandoff?:()=>void;
   customer:Customer|null;customerSearch:string;onCustomerSearch:(s:string)=>void;suggestions:Customer[];onCustomer:(c:Customer)=>void;
   onNewCustomer:()=>void;onRemoveCustomer:()=>void;orderType:string;onOrderType:(s:string)=>void;
   onReprint:(ticket?:string)=>void;notices:ReactNode;
@@ -33,7 +33,7 @@ export default function PrototypeRegister(p:RegisterProps){
   const search=(s:string)=>{setPage(0);p.onSearch(s);};
   return <div className="prototype-register">
     <header className="prototype-topbar"><div className="prototype-brand"><span>C</span>Cariñito Mío</div><nav aria-label="Caja"><button aria-pressed={sheet!=='orders'} onClick={()=>setSheet('')}>Caja</button><button onClick={()=>setSheet('orders')}>Órdenes</button></nav>
-      <div className="prototype-topright"><span>{p.userName}</span><button onClick={()=>{void document.documentElement.requestFullscreen?.().catch(()=>{});}}>Pantalla completa</button>{p.isAdmin&&<a href="/admin" target="_blank" rel="noreferrer">Administración</a>}<button onClick={p.onCloseShift}>Terminar turno</button></div>
+      <div className="prototype-topright"><span>{p.userName}</span><button onClick={()=>{void document.documentElement.requestFullscreen?.().catch(()=>{});}}>Pantalla completa</button>{p.isAdmin&&<a href="/admin" target="_blank" rel="noreferrer">Administración</a>}{p.onHandoff&&<button onClick={p.onHandoff}>Cambiar cajero</button>}<button onClick={p.onCloseShift}>Terminar turno</button></div>
     </header>
     <div className="prototype-notices">{p.notices}</div>
     <main className="prototype-workspace">

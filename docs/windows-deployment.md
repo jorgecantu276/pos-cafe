@@ -58,7 +58,7 @@ screen. Actual Windows scaling, touch and printer output still require testing.
 
 ## Matching database and rollback
 
-Provision the chosen client test project, apply the retained migrations 001, 002 and 004 in order and
+Provision the chosen client test project, apply the retained migrations 001, 002, 004 and 005 in order and
 create confirmed staff profiles. Review the legacy compatibility requirements
 before applying to any existing database. Test against a separate synthetic
 catalog and explicit test quantities, not live business records. Inventory has been removed at the owner's request; this candidate does not check or deduct pieces/ingredients. The app still

@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { shiftDatabaseCases } from './shift/database-cases.mjs';
 import { reportDatabaseCases } from './reports/database-cases.mjs';
 import { multiItemDatabaseCases } from './printing/multi-item-database-cases.mjs';
+import { drawerDatabaseCases } from './shift/drawer-database-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
 // User-owned TEMP survives PostgreSQL's restricted Windows token; a hosted
@@ -180,6 +181,15 @@ try {
   await db.query(await readFile(resolve(root,'supabase/migrations/202610280004_reports.sql'),'utf8'));
   assertions+=await reportDatabaseCases(db,connection,ids);
   assertions+=await multiItemDatabaseCases(db,connection,ids);
+  // Finish prior synthetic multi-register fixtures before enabling the one-drawer contract.
+  const drawerMigration=await readFile(resolve(root,'supabase/migrations/202610300005_single_drawer.sql'),'utf8');
+  await db.query("insert into cash_registers(opened_by,initial_balance,exchange_rate,status) select $1,0,20,'open' where not exists(select 1 from cash_registers where opened_by=$1 and status='open')",[ids.admin]);
+  await assert.rejects(db.query(drawerMigration),/varios turnos abiertos/);assertions++;
+  await db.query('rollback');
+  assert.equal((await db.query("select to_regclass('public.one_physical_drawer_open') present")).rows[0].present,null);assertions++;
+  await db.query("update cash_registers set status='closed' where status='open'");
+  await db.query(drawerMigration);
+  assertions+=await drawerDatabaseCases(db,connection,ids);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {
   await Promise.allSettled(clients.map(c=>c.end()));

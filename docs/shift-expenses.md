@@ -1,3 +1,5 @@
+> Current single-drawer handoff and saved-rate behavior also requires migration 005. See [single drawer](single-drawer.md). The original multi-cashier independent-shift test scenarios below precede that constraint.
+
 # Expense journal and verified closing
 
 The cashier keeps the same expense controls, closing panel and manual printing
@@ -84,5 +86,5 @@ compatible database contract is unsafe. Preserve all new sales/expense history;
 do not rewind a database after trading resumes.
 
 These checks establish software behavior with synthetic records. Real opening
-inventory, live migration/restore operations, Windows boot/watchdog behavior and
+cash counts, live migration/restore operations, Windows boot/watchdog behavior and
 physical printer/TV acceptance remain deployment requirements.

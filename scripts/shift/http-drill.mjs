@@ -18,7 +18,7 @@ const pass=name=>{checks.push(name);console.log('PASS '+name);};
 const ok=(response,name)=>{assert.ifError(response.error&&new Error(name+': '+response.error.message));return response.data;};
 try {
   const current=await sourceFiles();
-  const migrations=await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql'].map(f=>readFile(path.join(root,'supabase/migrations',f),'utf8')));
+  const migrations=await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300005_single_drawer.sql'].map(f=>readFile(path.join(root,'supabase/migrations',f),'utf8')));
   const hashes=migrations.map((_,i)=>fingerprint(current.snapshot,migrations.slice(0,i+1).join('\n')));
   const directory=path.join(work,'recovery');let selected;
   for(const entry of (await readdir(directory,{withFileTypes:true})).filter(e=>e.isDirectory()&&e.name!=='keys').reverse()){
@@ -57,6 +57,8 @@ try {
   const user=ok(await service.auth.admin.createUser({email,password,email_confirm:true}),'create isolated cashier').user;
   ok(await service.from('profiles').insert({id:user.id,full_name:'Prueba aislada de gastos',username:`shift_${runId.slice(0,8)}`,role:'cashier',is_active:true}),'cashier profile');
   ok(await api.auth.signInWithPassword({email,password}),'real cashier sign-in');
+  await db.query("update cash_registers set status='closed' where status='open'");
+  await db.query('update cafe_private.drawer_settings set rate=20');
   const register=ok(await api.rpc('pos_open_shift',{p_request:randomUUID(),p_cash:100,p_rate:20}),'opening');
   const summary=async()=>ok(await api.rpc('pos_shift_summary',{p_register:register.id}),'server summary');
   assert.ok((await anonymous.rpc('pos_shift_summary',{p_register:register.id})).error);

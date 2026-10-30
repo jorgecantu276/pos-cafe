@@ -109,11 +109,12 @@ export async function stagingTests(config) {
 
     const customer = ok(await cash.rpc('pos_register_customer', { p_name: `Cliente ${prefix}`, p_phone: null, p_birth_date: null, p_promos: false }), 'Customer RPC JSON');
     assert.ok(!Array.isArray(customer) && customer.id); assert.equal(customer.points, 50);
+    ok(await admin.rpc('pos_set_drawer_rate',{p_request:randomUUID(),p_payload:{rate:20}}),'Saved drawer rate');
     const opening = { p_request: randomUUID(), p_cash: 100, p_rate: 20 };
     const register = ok(await cash.rpc('pos_open_shift', opening), 'Opening RPC JSON');
     assert.ok(register.id && !Array.isArray(register));
     assert.equal(ok(await cash.rpc('pos_open_shift', opening), 'Opening retry').id, register.id);
-    const barRegister = ok(await bar.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 0, p_rate: 20 }), 'Second staff opening');
+    denied(await bar.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 0, p_rate: 20 }), 'Second cashier cannot open the occupied physical drawer');
     const payload = { register_id: register.id, items: [{ product_id: product, quantity: 2, extra_ids: [extra], note: 'Sin hielo' }],
       expected_total: 120, payment_method: 'mixto', tender_mxn: 20, tender_usd: 5, customer_id: customer.id, order_type: 'En Local', order_note: 'Prueba aislada' };
     denied(await cash.rpc('pos_checkout', { p_request: randomUUID(), p_payload: { ...payload, expected_total: 1 } }), 'Server-price mismatch rejected');
@@ -149,8 +150,7 @@ export async function stagingTests(config) {
     assert.ok(!Array.isArray(report)); assert.equal(Number(report.total_sales), 0); assert.equal(Number(report.expected_cash), 95);
     assert.equal(ok(await cash.rpc('pos_close_shift', checkedClosing), 'Close retry').id, report.id);
     denied(await cash.rpc('pos_checkout', { p_request: randomUUID(), p_payload: payload }), 'Closed shift checkout denied');
-    const barPreview=ok(await bar.rpc('pos_shift_summary',{p_register:barRegister.id}),'Bar closing preview');
-    ok(await bar.rpc('pos_close_shift', { p_register: barRegister.id, p_counted: 0, p_expenses: [],p_preview:barPreview }), 'Second staff closing');
+
     pass('Cancellation, abandonment and closing/recovery contracts over actual HTTP');
 
     const disabled = await http('PATCH', { id: actors.cashier.id, full_name: 'Prueba desactivada', username: actors.cashier.username, role: 'cashier', is_active: false }, administrator.cookie());

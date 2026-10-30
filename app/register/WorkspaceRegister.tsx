@@ -87,6 +87,7 @@ export default function WorkspaceRegister(p: RegisterProps) {
             <button type="button" className="workspace-icon" aria-label="Teclado de búsqueda" aria-pressed={keyboard} onClick={() => setKeyboard(!keyboard)}><Keyboard size={22} /></button>
           </div>
           <button type="button" aria-label="Tickets" className="workspace-icon" onClick={() => setPanel('ticket')}><Printer size={21} /></button>
+          {p.onHandoff && <button type="button" className="workspace-handoff" onClick={p.onHandoff}>Cambiar cajero</button>}
           <button type="button" onClick={p.onCloseShift}>Terminar turno</button>
         </header>
         <div className="workspace-catalog-scroll" ref={catalogRef}>
@@ -160,14 +161,14 @@ export function WorkspaceOpening(p: {
   dollars: number | ''; onDollars: (value: number | '') => void; total: number;
   busy: boolean; disabled: boolean; onOpen: () => void; onLogout: () => void;
 }) {
-  const [keyboard, setKeyboard] = useState<'rate' | 'dollars' | null>(null);
+  const [keyboard, setKeyboard] = useState<'dollars' | null>(null);
   const [dollarDraft, setDollarDraft] = useState(String(p.dollars));
   return <WorkspaceDialog title="Abrir caja" onClose={p.onLogout} busy={p.busy} className="workspace-opening"><div className="workspace-dialog-content">
-    <div className="workspace-opening-access"><p className="workspace-caption">{p.userName}</p>{p.isAdmin && <a className="workspace-admin-gateway" href="/admin">Administración</a>}</div><div className="workspace-opening-fields"><label>Tipo de cambio MXN / USD<div className="workspace-input-row"><input aria-label="Tipo de cambio MXN por USD" inputMode="decimal" disabled={p.busy} value={p.rate} onChange={event => p.onRate(event.target.value)} /><button type="button" aria-label="Teclado para tipo de cambio" disabled={p.busy} onClick={() => setKeyboard(keyboard === 'rate' ? null : 'rate')}><Keyboard size={22} /></button></div></label>
+    <div className="workspace-opening-access"><p className="workspace-caption">{p.userName}</p>{p.isAdmin && <a className="workspace-admin-gateway" href="/admin">Administración</a>}</div><div className="workspace-opening-fields"><div><p>Tipo de cambio guardado: 1 USD = {p.rate} MXN</p>{p.isAdmin && <a href="/admin/caja">Cambiar con la caja cerrada</a>}</div>
       <label>Dólares iniciales<div className="workspace-input-row"><input aria-label="Dólares iniciales" inputMode="decimal" disabled={p.busy} value={dollarDraft} onChange={event => { setDollarDraft(event.target.value); p.onDollars(event.target.value === '' ? '' : Number(event.target.value)); }} /><button type="button" aria-label="Teclado para dólares iniciales" disabled={p.busy} onClick={() => setKeyboard(keyboard === 'dollars' ? null : 'dollars')}><Keyboard size={22} /></button></div></label></div>
-    {keyboard ? <div className="workspace-opening-keypad"><span>{keyboard === 'rate' ? 'Tipo de cambio' : 'Dólares iniciales'}</span><WorkspaceKeyboard numeric disabled={p.busy} value={String(keyboard === 'rate' ? p.rate : dollarDraft)} onChange={value => {
+    {keyboard ? <div className="workspace-opening-keypad"><span>Dólares iniciales</span><WorkspaceKeyboard numeric disabled={p.busy} value={dollarDraft} onChange={value => {
       if (!/^\d{0,6}(?:\.\d{0,2})?$/.test(value)) return;
-      if (keyboard === 'rate') p.onRate(value); else { setDollarDraft(value); p.onDollars(value === '' ? '' : Number(value)); }
+      setDollarDraft(value); p.onDollars(value === '' ? '' : Number(value));
     }} /><button type="button" onClick={() => setKeyboard(null)}>Listo</button></div> : <><h3>Efectivo inicial en pesos</h3><div className="workspace-denominations">{p.denominations.map(value => <label key={value}><strong>{money(value)}</strong><div><button type="button" aria-label={`Quitar una pieza de ${value} pesos`} disabled={p.busy || !p.counts[value]} onClick={() => p.onCounts({ ...p.counts, [value]: Math.max(0, p.counts[value] - 1) })}><Minus size={18} /></button><input type="number" min="0" step="1" aria-label={`Piezas de ${value} pesos`} disabled={p.busy} value={p.counts[value] || ''} onChange={event => p.onCounts({ ...p.counts, [value]: Number(event.target.value) })} /><button type="button" aria-label={`Agregar una pieza de ${value} pesos`} disabled={p.busy} onClick={() => p.onCounts({ ...p.counts, [value]: p.counts[value] + 1 })}><Plus size={18} /></button></div></label>)}</div></>}
   </div><footer><div><span>Fondo inicial MXN</span><strong>{money(p.total)}</strong></div><button type="button" className="workspace-primary" disabled={p.busy || p.disabled} onClick={p.onOpen}>{p.busy ? 'Abriendo…' : 'Abrir Turno'}</button></footer>
   </WorkspaceDialog>;

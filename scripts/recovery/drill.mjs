@@ -70,6 +70,7 @@ try {
   const product = randomUUID();
   ok(await client.from('products').insert({ id: product, name: `Recuperación ${runId.slice(0, 8)}`, price: 35, is_active: true, customizable: false }), 'Recovery product');
   const current = ok(await client.from('cash_registers').select('id').eq('opened_by', admin.id).eq('status', 'open').maybeSingle(), 'Restored opening');
+  if(!current){await db.query("update cash_registers set status='closed' where status='open'");await db.query('update cafe_private.drawer_settings set rate=20');}
   const register = current || ok(await client.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 0, p_rate: 20 }), 'Recovery opening');
   const request = randomUUID(), payload = { register_id: register.id, items: [{ product_id: product, quantity: 1, extra_ids: [], note: '' }], expected_total: 35,
     payment_method: 'tarjeta', tender_mxn: 0, tender_usd: 0, customer_id: null, order_type: 'En Local', order_note: 'Solo prueba local de rollback' };

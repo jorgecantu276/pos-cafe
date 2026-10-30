@@ -40,6 +40,7 @@ try {
   assert.ok(existsSync(path.join(relocated,'app/scripts/printing/DesktopPrinter.cs')));
   assert.ok(existsSync(path.join(relocated,'database-migrations/202610280004_reports.sql')));
   assert.equal(existsSync(path.join(relocated,'database-migrations/202610280003_inventory.sql')),false);
+  assert.ok(existsSync(path.join(relocated,'database-migrations/202610300005_single_drawer.sql')));
   // Mismatched runtime config is rejected before binding a server port.
   writeFileSync(configPath, JSON.stringify({...config,SupabaseUrl:'http://127.0.0.1:59998'}));
   assert.throws(() => execFileSync(powershell,['-NoProfile','-File',path.join(relocated,'Start-POS.ps1'),'-ConfigPath',configPath,'-NoBrowser'],{windowsHide:true,stdio:'pipe'}));

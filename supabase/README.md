@@ -8,7 +8,8 @@ are historical schema evidence, kept inaccessible to browser writes. No hosted
 business data has been deleted or migrated.
 
 Retained migrations are `202610280001_secure_pos.sql`,
-`202610280002_shift_expenses.sql` and `202610280004_reports.sql`, in that order.
+`202610280002_shift_expenses.sql`, `202610280004_reports.sql` and
+`202610300005_single_drawer.sql`, in that order.
 The removed, unreleased migration 003 is not part of this candidate. Do not
 apply this revised draft to a database that already ran an earlier candidate;
 that requires a deliberate forward migration. No client database has run it.

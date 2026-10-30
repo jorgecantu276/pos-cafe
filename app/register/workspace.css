@@ -82,3 +82,5 @@
 .workspace-register .workspace-admin-gateway,.workspace-dialog .workspace-admin-gateway{display:inline-flex;align-items:center;justify-content:center;min-height:56px;padding:10px 14px;border:1px solid #0067c8;border-radius:5px;color:#0059ad;background:#fff;font-size:16px;font-weight:600;text-decoration:none;white-space:nowrap;touch-action:manipulation}
 .workspace-admin-gateway:active{background:#e9f2fd}.workspace-opening-access{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}.workspace-opening-access .workspace-caption{margin:0}
 @media(max-width:960px){.workspace-simple-toolbar:has(.workspace-admin-gateway){grid-template-columns:auto minmax(130px,1fr) 56px auto}}
+
+.workspace-simple-toolbar:has(.workspace-handoff){grid-template-columns:auto minmax(120px,1fr) 56px auto auto}

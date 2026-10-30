@@ -1,3 +1,5 @@
+import * as drawer from '../lib/drawer';
+import DrawerGate from '../app/register/DrawerGate';
 import * as deadline from '../lib/request-deadline';
 import * as reprint from '../lib/receipt-reprint';
 import ProductPhoto from '../components/ProductPhoto';
@@ -49,6 +51,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
       assert.ok(table in fixtures,`Unexpected table ${table}`);
       const query=Object.assign(Promise.resolve({data:fixtures[table],error:null}),{select:()=>query,eq:()=>query,order:()=>query,abortSignal:()=>query,single:()=>query,maybeSingle:()=>query});return query;
     },rpc:(name:string,args:{p_payload:checkout.CheckoutPayload})=>{
+      if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:'mixed-user',cashier_name:'Prueba'},handoff:null,cashiers:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_shift_summary'){
         const result=Promise.resolve({error:null,data:{register_id:'local-shift',status:'open',opened_at:'2026-10-30T12:00:00Z',starting_cash:100,
           exchange_rate:20,total_sales:0,cash_sales:0,expected_cash:100,expenses:[],expenses_revision:0,payments:{}}});return Object.assign(result,{abortSignal:()=>result});
@@ -65,7 +68,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
       return{error:null,data:receipt};
     }};
   const router={replace(){},refresh(){}};
-  const imports:Record<string,unknown>={'@/lib/request-deadline':deadline, '@/lib/receipt-reprint':reprint, '@/lib/supabase':{supabase:client},'@/store/useCartStore':cart,'@/lib/checkout':checkout,
+  const imports:Record<string,unknown>={ '@/lib/drawer':drawer,'./DrawerGate':{default:DrawerGate,__esModule:true},'@/lib/request-deadline':deadline, '@/lib/receipt-reprint':reprint, '@/lib/supabase':{supabase:client},'@/store/useCartStore':cart,'@/lib/checkout':checkout,
     '@/lib/printing':printing,'@/lib/sale-printing':salePrinting,'./PrintDispatch':{default:PrintDispatch,__esModule:true},'./printing.css':{},
     '@/lib/shift':shift,'@/lib/shift-state':shiftState,'./PrototypeRegister':{default:PrototypeRegister,PrototypeCheckout,PrototypeCustomization,__esModule:true},'./prototype.css':{},
     './WorkspaceRegister':{default:WorkspaceRegister,WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog,__esModule:true},'./workspace.css':{},
