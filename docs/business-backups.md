@@ -66,6 +66,11 @@ and remove the temporary plaintext after the recovery work is complete. The
 `snapshotJson` member is the exact database JSON, including numeric precision.
 Synthetic tests verify encryption/decryption, CLI export, permissions,
 day boundaries, concurrent requests, retention and preservation after failure.
+The isolated PostgreSQL check also rehydrates every captured table into
+temporary typed clones and compares exact row multisets and numeric values,
+while confirming that source rows and sequence counters stay unchanged. This
+checks data fidelity; those clones do not reproduce hosted Auth configuration,
+triggers or foreign-key restoration.
 
 ## Recovery limits and print journal
 
