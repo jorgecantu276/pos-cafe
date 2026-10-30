@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createServerClient } from '@supabase/ssr';
 import { startApp } from '../staging/app.mjs';
 import { work } from '../staging/runtime.mjs';
+await mkdir(work, { recursive: true });
 
 // Own loopback fixture implements READ-ONLY Auth/PostgREST responses. It cannot
 // proxy to a hosted service, charge, change inventory, or submit a physical job.
