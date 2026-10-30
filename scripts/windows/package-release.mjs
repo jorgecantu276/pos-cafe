@@ -44,7 +44,7 @@ stageDependencies(path.join(root, 'node_modules'), path.join(stage, 'node_module
 const env = { ...process.env, POS_RELEASE_BUILD: '1', NEXT_TELEMETRY_DISABLED: '1',
   NEXT_PUBLIC_SUPABASE_URL: url.origin, NEXT_PUBLIC_SUPABASE_ANON_KEY: key };
 delete env.SUPABASE_SERVICE_ROLE_KEY; delete env.SUPABASE_ACCESS_TOKEN; delete env.POS_RECEIPT_ISSUER_FILE;
-const build = spawnSync(process.execPath, [path.join(root, 'node_modules/next/dist/bin/next'), 'build', '--webpack'], { cwd: stage, env, stdio: 'inherit' });
+const build = spawnSync(process.execPath, [path.join(stage, 'node_modules/next/dist/bin/next'), 'build', '--webpack'], { cwd: stage, env, stdio: 'inherit' });
 assert.equal(build.status, 0, 'Production build failed; no release was created.');
 const standalone = path.join(stage, '.next/standalone');
 assert.ok(existsSync(path.join(standalone, 'server.js')), 'Standalone server missing.');
