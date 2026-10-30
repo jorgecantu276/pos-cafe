@@ -58,7 +58,7 @@ export function checkoutPayload(items: readonly CartItem[], fields: Omit<Checkou
   return { ...fields, items: items.map(i => ({ product_id: i.product.id, quantity: i.quantity,
     extra_ids: (i.product.displayExtras ?? []).map(e => e.id!), note: i.product.note?.trim() || '' })) };
 }
-// Exactly one RPC; no client-side stock, prices, points or order writes.
+// Exactly one RPC; prices, points and order writes remain server-authoritative.
 export async function executeCheckout(client: Pick<SupabaseClient, 'rpc'>, pending: CheckoutReview, timeoutMs = 12_000): Promise<SavedOrder> {
   if (!pending.requestId || !pending.payload) throw new Error('Venta antigua sin identidad de transacción. Requiere conciliación del responsable.');
   const { data, error } = await withDeadline(() => client.rpc('pos_checkout', { p_request: pending.requestId, p_payload: pending.payload }), { timeoutMs });

@@ -87,7 +87,7 @@ export interface WizardStep {
 export type CatalogProduct = Product & { is_active: boolean };
 
 export function catalogProduct(row: ProductRow): CatalogProduct {
-  return { ...row, category: row.category ?? '',
+  return { id: row.id, name: row.name, price: row.price, category: row.category ?? '',
     image_url: row.image_url ?? undefined, is_active: row.is_active === true,
     customizable: row.customizable === true, wizard_steps: row.wizard_steps ?? [] };
 }
