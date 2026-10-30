@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -28,7 +28,19 @@ for (const file of files) {
   mkdirSync(path.dirname(path.join(stage, file)), { recursive: true });
   cpSync(path.join(root, file), path.join(stage, file));
 }
-symlinkSync(path.join(root, 'node_modules'), path.join(stage, 'node_modules'), 'junction');
+// A junction for the whole node_modules directory makes Next trace/copy every
+// development dependency. Give the build real directories with immutable file
+// hardlinks instead. The final copy contains ordinary relocatable files.
+function stageDependencies(source, target) {
+  mkdirSync(target, { recursive: true });
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    const from = path.join(source, entry.name), to = path.join(target, entry.name);
+    if (entry.isDirectory()) stageDependencies(from, to);
+    else if (entry.isSymbolicLink()) cpSync(from, to, { recursive: true, dereference: true });
+    else linkSync(from, to);
+  }
+}
+stageDependencies(path.join(root, 'node_modules'), path.join(stage, 'node_modules'));
 const env = { ...process.env, POS_RELEASE_BUILD: '1', NEXT_TELEMETRY_DISABLED: '1',
   NEXT_PUBLIC_SUPABASE_URL: url.origin, NEXT_PUBLIC_SUPABASE_ANON_KEY: key };
 delete env.SUPABASE_SERVICE_ROLE_KEY; delete env.SUPABASE_ACCESS_TOKEN; delete env.POS_RECEIPT_ISSUER_FILE;
@@ -59,12 +71,12 @@ writeFileSync(path.join(destination, 'pos-cafe-config.example.json'), JSON.strin
   SupabaseServiceRoleKey: '', Port: 3000, PrintMode: 'mock', PrintDataDirectory: '', ReceiptIssuerFile: '', StickerStockConfirmed: false,
 }, null, 2));
 // Ensure release contents are ordinary copied files, with no junction back to this PC.
-function inventory(folder, prefix = '') {
+function releaseFiles(folder, prefix = '') {
   return readdirSync(folder, { withFileTypes: true }).flatMap(entry => {
     assert.ok(!entry.isSymbolicLink(), 'A release cannot depend on development-PC symlinks.');
     const relative = path.join(prefix, entry.name), file = path.join(folder, entry.name);
-    return entry.isDirectory() ? inventory(file, relative) : [{ file: relative.replaceAll('\\', '/'), sha256: createHash('sha256').update(readFileSync(file)).digest('hex') }];
+    return entry.isDirectory() ? releaseFiles(file, relative) : [{ file: relative.replaceAll('\\', '/'), sha256: createHash('sha256').update(readFileSync(file)).digest('hex') }];
   });
 }
-writeFileSync(path.join(destination, 'SHA256.json'), JSON.stringify(inventory(destination), null, 2));
+writeFileSync(path.join(destination, 'SHA256.json'), JSON.stringify(releaseFiles(destination), null, 2));
 console.log('Windows release prepared:', destination, url.protocol === 'http:' ? '(LOOPBACK FIXTURE ONLY)' : '(client target; database still requires configuration)');
