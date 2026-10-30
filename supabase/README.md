@@ -8,17 +8,21 @@ are historical schema evidence, kept inaccessible to browser writes. No hosted
 business data has been deleted or migrated.
 
 Retained migrations are `202610280001_secure_pos.sql`,
-`202610280002_shift_expenses.sql`, `202610280004_reports.sql` and
-`202610300005_single_drawer.sql`, in that order.
+`202610280002_shift_expenses.sql`, `202610280004_reports.sql`,
+`202610300005_single_drawer.sql` and `202610300006_loyalty_phone.sql`, in that order.
 The removed, unreleased migration 003 is not part of this candidate. Do not
 apply this revised draft to a database that already ran an earlier candidate;
-that requires a deliberate forward migration. No client database has run it.
+that requires a deliberate forward migration.
 
 The snapshot is the originally captured schema, not a sanitized customer backup
-or an instruction to copy live business records. Before creating the client
-project, prepare its baseline schema and confirmed admin identity, review all
-three migrations, and rehearse on an isolated synthetic database. The client
-account is awaiting email verification. No live hosted setup has been performed.
+or an instruction to copy live business records. A fresh client project was
+provisioned in the client's own account through the CLI on October 30, after the
+local migration rehearsal. It contains the baseline, these five migrations,
+Sandra's administrator profile and the 82 products from the supplied menu, with
+the confirmed milk options. No old-POS customers, sales or shifts were copied.
+The saved USD/MXN rate awaits the owner's value. Credentials, server keys and
+the project-specific runtime configuration remain outside Git. The matching
+application still needs to be installed on the café PC.
 
 SQL tests reconstruct the historical schema and insecure defaults locally,
 prove access controls, pricing, replay, concurrent sales, cash reconciliation,

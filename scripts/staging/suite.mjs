@@ -107,7 +107,7 @@ export async function stagingTests(config) {
     assert.equal(ok(await admin.from('products').select('stock').eq('id', product).single(), 'Legacy balance unchanged').stock, 10);
     pass('Real RLS catalog reads, admin writes and staff stock-write denial');
 
-    const customer = ok(await cash.rpc('pos_register_customer', { p_name: `Cliente ${prefix}`, p_phone: null, p_birth_date: null, p_promos: false }), 'Customer RPC JSON');
+    const customer = ok(await cash.rpc('pos_register_customer', { p_name: `Cliente ${prefix}`, p_phone: '8682345678', p_birth_date: null, p_promos: false }), 'Customer RPC JSON');
     assert.ok(!Array.isArray(customer) && customer.id); assert.equal(customer.points, 50);
     ok(await admin.rpc('pos_set_drawer_rate',{p_request:randomUUID(),p_payload:{rate:20}}),'Saved drawer rate');
     const opening = { p_request: randomUUID(), p_cash: 100, p_rate: 20 };

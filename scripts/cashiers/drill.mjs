@@ -22,7 +22,7 @@ try{
   await rpc(actors.admin,'pos_set_drawer_rate',{rate:20});
   const register=ok(await actors.cashier.api.rpc('pos_open_shift',{p_request:randomUUID(),p_cash:100,p_rate:20}));
   assert.ok((await actors.barista.api.rpc('pos_open_shift',{p_request:randomUUID(),p_cash:0,p_rate:20})).error);
-  const person=await rpc(actors.cashier,'pos_enroll_customer',{name:'Cliente de prueba de entrega',phone:'',birthday:null,promos:false});
+  const person=await rpc(actors.cashier,'pos_enroll_customer',{name:'Cliente de prueba de entrega',phone:'8682345678',birthday:null,promos:false});
   assert.equal(person.customer.points,50);
   const id=randomUUID();await db.query("insert into products(id,name,price,is_active,customizable) values($1,'Venta prueba caja única',50,true,false)",[id]);
   const key=randomUUID(),payload={register_id:register.id,items:[{product_id:id,quantity:1,extra_ids:[],note:''}],expected_total:50,payment_method:'efectivo',tender_mxn:50,tender_usd:0,customer_id:person.customer.id,order_type:'En Local',order_note:''};
@@ -45,5 +45,5 @@ try{
   ok(await actors.barista.api.rpc('pos_close_shift',{p_register:incoming.register.id,p_counted:145,p_expenses:end.expenses,p_preview:end}));
   await rpc(actors.admin,'pos_set_drawer_rate',{rate:19.75});
   await clone.verifyArchive();
-  console.log('PASS real local Auth/PostgREST: one drawer, 20 checkout retries, name-only enrollment, loyalty, separate-cashier counted handoff, acceptance replay, difference audit and saved rate. No hosted data or physical printers.');
+  console.log('PASS real local Auth/PostgREST: one drawer, 20 checkout retries, required-phone enrollment, loyalty, separate-cashier counted handoff, acceptance replay, difference audit and saved rate. No hosted data or physical printers.');
 }finally{for(const c of clients)c.auth.stopAutoRefresh();await clone?.cleanup();}

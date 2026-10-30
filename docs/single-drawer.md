@@ -46,12 +46,15 @@ not a separate-currency bank ledger or cash/card split tender.
 
 ## Quick loyalty enrollment
 
-**Cliente → Nuevo cliente** requires a name only. Surname, phone and birthday are
-optional. Customers do not need email, a password or an Auth account. The new
-customer is automatically selected for the current purchase. Entering a phone
-is useful for finding them later; an already registered normalized phone is
-rejected with a request to select the existing customer instead of duplicating.
-Name-only customers can share a name; they retain distinct customer IDs/codes.
+**Cliente → Nuevo cliente** requires a name and phone (10–15 digits). Surname
+and birthday are optional. Customers do not need email, a password or an Auth
+account. The new customer is selected for the current purchase. Phone is the
+primary search field and appears in search results. Mexican ten-digit numbers
+and their +52 format identify the same person; explicit other country prefixes
+remain distinct. Punctuation is ignored. Duplicate phones are rejected, including
+concurrent registrations and the older registration RPC. Existing customers are
+preserved. Name/code search remains available, and an ambiguous search requires
+choosing a result. Migration 006 enforces this on the server.
 
 The existing 50-point welcome rule is preserved. Completed linked purchases add
 `floor(total MXN / 10)` points, and retries do not award twice. Redemption,

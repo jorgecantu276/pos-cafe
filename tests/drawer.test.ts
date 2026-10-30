@@ -33,8 +33,8 @@ test('customer enrollment retries do not create another person or switch the sub
   const h=harness(),calls:unknown[]=[];let fail=true;
   const client=api(async(_name,args)=>{calls.push(args);return fail?{data:null,error:{message:'Network down',code:''}}:{error:null,data:{request_id:args.p_request,customer:{id:'customer',name:args.p_payload.name,points:50}}};});
   try{
-    await assert.rejects(enrollCustomer(client,h.storage,'a',{name:'Ana',phone:'',birthday:null,promos:false}));
-    fail=false;const person=await enrollCustomer(client,h.storage,'a',{name:'Nombre editado',phone:'',birthday:null,promos:false});
+    await assert.rejects(enrollCustomer(client,h.storage,'a',{name:'Ana',phone:'8682345678',birthday:null,promos:false}));
+    fail=false;const person=await enrollCustomer(client,h.storage,'a',{name:'Nombre editado',phone:'8682345678',birthday:null,promos:false});
     assert.equal(person.name,'Ana');assert.deepEqual(calls[0],calls[1]);assert.equal(h.values.size,0);
   }finally{h.restore();}
 });

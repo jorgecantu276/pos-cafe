@@ -28,8 +28,8 @@ publish only a reviewed commit whose Windows checks pass.
 
 Package the prepared directory as a ZIP in a GitHub release only after its
 target backend is configured and verified. Publishing/installing the final
-client release is still pending the client's email verification and target
-project; a test build using loopback is not that release.
+client release requires the matching client database and configuration; a test
+build using loopback is not that release.
 
 ## Local machine setup
 

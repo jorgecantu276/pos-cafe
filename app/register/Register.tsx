@@ -486,6 +486,7 @@ const handleSaveAndClose = async () => {
   };
 
   const [customerSearch, setCustomerSearch] = useState('');
+  const customerSearchRevision = useRef(0);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const registeringCustomer = useRef(false);
@@ -498,27 +499,21 @@ const handleSaveAndClose = async () => {
   };
 
   const handleCustomerSearchInput = async (value: string) => {
+    const revision = ++customerSearchRevision.current;
     setCustomerSearch(value);
-    if (value.length < 2) {
-      setCustomerSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
+    setCustomerSuggestions([]);
+    if (value.trim().length < 2) { setShowSuggestions(false); return; }
     setShowSuggestions(true);
     try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .or(`name.ilike.%${value}%,customer_code.ilike.%${value}%,phone.ilike.%${value}%`)
-        .limit(5);
-
-      if (!error && data) {
+      const { data, error } = await withDeadline(() => supabase.rpc('pos_search_customers', { p_search: value }));
+      if (revision === customerSearchRevision.current && !error && Array.isArray(data)) {
         setCustomerSuggestions(data);
       }
     } catch (err) { console.error(err); }
   };
 
   const selectCustomer = (customer: Customer) => {
+    customerSearchRevision.current++;
     setCustomerId(customer.id);
     setCustomerRestoring(false);
     setCustomerError(null);
@@ -529,19 +524,17 @@ const handleSaveAndClose = async () => {
   };
 
   const handleSearchCustomer = async () => {
-    if (!customerSearch) return;
+    if (customerSearch.trim().length < 2) return;
+    const revision = ++customerSearchRevision.current;
     try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .or(`customer_code.eq.${customerSearch.toUpperCase()},phone.eq.${customerSearch},name.ilike.%${customerSearch}%`)
-        .limit(1)
-        .single();
-
-      if (error) throw new Error('No encontrado');
-      selectCustomer(data);
-    } catch { alert('Cliente no encontrado'); }
-    finally { setShowSuggestions(false); }
+      const { data, error } = await withDeadline(() => supabase.rpc('pos_search_customers', { p_search: customerSearch }));
+      if (revision !== customerSearchRevision.current) return;
+      if (error) throw new Error('No se pudo buscar. Revisa internet e intenta de nuevo.');
+      if (!Array.isArray(data) || !data.length) { alert('Cliente no encontrado'); return; }
+      // Never silently attach the first of several customers with similar phones/names.
+      if (data.length === 1) selectCustomer(data[0]);
+      else { setCustomerSuggestions(data); setShowSuggestions(true); }
+    } catch (error) { if (revision === customerSearchRevision.current) alert(errorMessage(error)); }
   };
 
   const handleRegisterCustomer = async (e: React.FormEvent) => {
@@ -1184,7 +1177,7 @@ const handleSaveAndClose = async () => {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-[#0071e3] transition-colors" />
                   <input
                     type="text"
-                    placeholder="Nombre, Código o WA"
+                    placeholder="Teléfono del cliente"
                     className="w-full bg-[#F5F5F7] border border-transparent rounded-xl py-3 pl-9 pr-4 text-[13px] font-medium outline-none focus:ring-2 focus:ring-[#0071e3]/20 transition-all"
                     value={customerSearch}
                     onChange={(e) => handleCustomerSearchInput(e.target.value)}
@@ -1565,8 +1558,8 @@ const handleSaveAndClose = async () => {
                 <input type="text" placeholder="Apellido (opcional)" className="p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.lastName} onChange={e => setCustomerForm({...customerForm, lastName: e.target.value})} />
               </div>
               <label className="block">Cumpleaños (opcional)<input type="date" aria-label="Cumpleaños opcional" className="w-full p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.birthDate} onChange={e => setCustomerForm({...customerForm, birthDate: e.target.value})} /></label>
-              <input type="tel" placeholder="Teléfono / WhatsApp (opcional)" className="w-full p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.whatsapp} onChange={e => setCustomerForm({...customerForm, whatsapp: e.target.value})} />
-              <p>Solo necesitas el nombre. Se seleccionará para esta compra. Puntos iniciales: 50.</p>
+              <label className="block">Teléfono / WhatsApp (obligatorio)<input type="tel" inputMode="tel" autoComplete="tel" required maxLength={60} aria-label="Teléfono obligatorio" placeholder="10 dígitos MX o número internacional" className="w-full p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.whatsapp} onChange={e => setCustomerForm({...customerForm, whatsapp: e.target.value})} /></label>
+              <p>Nombre y teléfono obligatorios. Buscarás al cliente por su teléfono. Se seleccionará para esta compra. Puntos iniciales: 50.</p>
               {customerRegisterError&&<p role="alert">{customerRegisterError}</p>}
               {customerRegisterError&&<button type="button" disabled={isRegistering} onClick={()=>void handleRegisterCustomer({preventDefault(){}} as React.FormEvent)}>Reintentar la misma alta</button>}
               <button type="submit" disabled={isRegistering} className="w-full bg-[#0071e3] text-white py-4 rounded-2xl font-bold flex justify-center items-center gap-2">

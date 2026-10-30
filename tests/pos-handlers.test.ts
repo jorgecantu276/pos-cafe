@@ -7,15 +7,40 @@ import { errorMessage } from '../lib/pos-types';
 import { rememberSalePrint } from '../lib/sale-printing';
 import { customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
 
-test('quick loyalty enrollment selects the new customer for the current order with optional contact fields',async()=>{
+test('quick loyalty enrollment selects the new customer for the current order with required phone and optional birthday',async()=>{
   const person={id:'new-member',name:'Ana',points:50};let selected:unknown,hidden=false,saving=false;
   await handler('handleRegisterCustomer',{
     registeringCustomer:{current:false},setCustomerRegisterError:(message:string)=>assert.equal(message,''),setIsRegistering:(value:boolean)=>saving=value,
-    draftOwner:{current:'cashier'},supabase:{},localStorage:{},customerForm:{firstName:'Ana',lastName:'',birthDate:'',whatsapp:'',acceptPromos:false},
-    enrollCustomer:async(_client:unknown,_storage:unknown,actor:string,payload:unknown)=>{assert.equal(actor,'cashier');assert.deepEqual(payload,{name:'Ana',birthday:null,phone:'',promos:false});return person;},
+    draftOwner:{current:'cashier'},supabase:{},localStorage:{},customerForm:{firstName:'Ana',lastName:'',birthDate:'',whatsapp:'8682345678',acceptPromos:false},
+    enrollCustomer:async(_client:unknown,_storage:unknown,actor:string,payload:unknown)=>{assert.equal(actor,'cashier');assert.deepEqual(payload,{name:'Ana',birthday:null,phone:'8682345678',promos:false});return person;},
     selectCustomer:(value:unknown)=>selected=value,setShowCustomerModal:(value:boolean)=>hidden=!value,setCustomerForm:()=>{},
   })({preventDefault(){}});
   assert.equal(selected,person);assert.equal(hidden,true);assert.equal(saving,false);
+});
+
+test('phone lookup ignores a slow older response and sends punctuation as a parameter',async()=>{
+  const pending:Array<(value:unknown)=>void>=[],calls:unknown[]=[];
+  const revision={current:0};let suggestions:unknown=[];
+  const search=handler('handleCustomerSearchInput',{
+    customerSearchRevision:revision,setCustomerSearch:()=>{},setCustomerSuggestions:(value:unknown)=>suggestions=value,setShowSuggestions:()=>{},
+    withDeadline:(action:()=>Promise<unknown>)=>action(),supabase:{rpc:(name:string,args:unknown)=>{calls.push([name,args]);return new Promise(resolve=>pending.push(resolve));}},
+  });
+  const old=search('868'),current=search('+52 (868) 234-5678');
+  pending[1]({data:[{id:'correct'}],error:null});await current;
+  pending[0]({data:[{id:'outdated'}],error:null});await old;
+  assert.deepEqual(suggestions,[{id:'correct'}]);assert.deepEqual(calls[1],['pos_search_customers',{p_search:'+52 (868) 234-5678'}]);
+  const later=search('234');await search('');pending[2]({data:[{id:'late'}],error:null});await later;
+  assert.deepEqual(suggestions,[]);
+});
+
+test('Enter on an ambiguous loyalty lookup requires choosing a customer',async()=>{
+  const matches=[{id:'a'},{id:'b'}];let suggestions:unknown,visible=false;
+  await handler('handleSearchCustomer',{
+    customerSearch:'868',customerSearchRevision:{current:0},withDeadline:(action:()=>Promise<unknown>)=>action(),
+    supabase:{rpc:async()=>({data:matches,error:null})},selectCustomer:()=>assert.fail('Ambiguous search must not select the first person'),
+    setCustomerSuggestions:(value:unknown)=>suggestions=value,setShowSuggestions:(value:boolean)=>visible=value,alert:()=>assert.fail(),
+  })();
+  assert.equal(suggestions,matches);assert.equal(visible,true);
 });
 
 // Exercise the actual page handlers with browser/network dependencies replaced;

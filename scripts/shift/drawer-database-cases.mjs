@@ -75,9 +75,26 @@ export async function drawerDatabaseCases(db, connection, ids) {
   await deny(loser,'select pos_accept_drawer_handoff($1,$2)',[randomUUID(),{handoff:secondKey,counted:150,note:''}]);
   const adminAccepted=await rpc(admin,'pos_accept_drawer_handoff',randomUUID(),{handoff:secondKey,counted:150,note:''});
   await close(admin,adminAccepted.register.id,150);
-  // Name-only enrollment, welcome points, optional birthday, exact retry and first-sale points.
-  const enrollKey=randomUUID(),person={name:'Cliente rápido sintético',phone:'',birthday:null,promos:false};
+  // Required-phone enrollment, welcome points, optional birthday, exact retry and first-sale points.
+  const enrollKey=randomUUID(),person={name:'Cliente rápido sintético',phone:'8682345678',birthday:null,promos:false};
   const member=await rpc(a,'pos_enroll_customer',enrollKey,person);
+  equal(member.customer.phone,'528682345678');
+  for(const phone of [null,'','555','1234567890123456','call 8682345678']) {
+    await deny(a,'select pos_enroll_customer($1,$2)',[randomUUID(),{...person,phone}]);
+    await deny(a,'select pos_register_customer($1,$2,null,false)',[person.name,phone]);
+  }
+  await deny(a,'select pos_register_customer($1,$2,null,false)',[person.name,'+52 (868) 234-5678']);
+  await deny(b,'select pos_enroll_customer($1,$2)',[randomUUID(),{...person,phone:'+52 (868) 234-5678'}]);
+  const search=async(client,text)=>(await client.query('select pos_search_customers($1) r',[text])).rows[0].r;
+  for(const text of ['8682345678','+52 (868) 234-5678','234-5678']) equal((await search(a,text))[0].id,member.customer.id);
+  equal((await search(a,'rápido sintético'))[0].id,member.customer.id);
+  equal(await search(a,'a'),[]);equal(await search(a,'%,phone.eq.anything'),[]);
+  await deny(anon,'select pos_search_customers($1)',['8682345678']);
+  const duplicateRace=await Promise.allSettled([
+    rpc(a,'pos_enroll_customer',randomUUID(),{...person,phone:'8689876543'}),
+    b.query('select pos_register_customer($1,$2,null,false)',[person.name,'+52 868 987 6543']),
+  ]);
+  equal(duplicateRace.filter(result=>result.status==='fulfilled').length,1);
   equal(member.customer.points,50);equal(member.customer.birth_date,null);equal(await rpc(a,'pos_enroll_customer',enrollKey,person),member);
   await deny(b,'select pos_enroll_customer($1,$2)',[enrollKey,person]);
   await deny(a,'select pos_enroll_customer($1,$2)',[enrollKey,{...person,name:'Otro nombre'}]);
