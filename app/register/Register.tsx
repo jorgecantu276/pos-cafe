@@ -16,8 +16,10 @@ import { customizeProduct, useCartStore, type CartExtra, type CartItem, type Pro
 import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
 import { useRouter } from 'next/navigation';
-import { escapeHtml, openPrintWindow, writePrintDocument } from '@/lib/printing';
+import { openPrintWindow } from '@/lib/printing';
 import PrintDispatch from './PrintDispatch';
+import { printSavedShift } from '@/lib/shift-printing';
+import { confirmClosingPrints } from '@/lib/closing-print-check';
 import { printHistoricalReceipt } from '@/lib/receipt-reprint';
 import './printing.css';
 import { rememberSalePrint } from '@/lib/sale-printing';
@@ -69,6 +71,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   const [drawer, setDrawer] = useState<DrawerStatus | null>(null);
   const [drawerActor, setDrawerActor] = useState('');
   const [closeAction, setCloseAction] = useState<'close'|'handoff'>('close');
+  const [countConfirmed,setCountConfirmed] = useState(false);
   const [handoffTarget, setHandoffTarget] = useState('');
 
   // ESTADOS DE TURNO
@@ -254,7 +257,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
         pending = { p_request: crypto.randomUUID(), p_cash: Math.round(calculateTotalCash()*100)/100, p_rate: parseAmount(exchangeRate) };
         localStorage.setItem(openingKey, JSON.stringify(pending));
       }
-      const { data, error } = await supabase.rpc('pos_open_shift', pending);
+      const { data, error } = await withDeadline(() => supabase.rpc('pos_open_shift', pending));
       if (error) throw error;
       if (!data?.id) throw new Error('No se recibió la apertura. Reintenta la misma solicitud.');
       if (data.status !== 'open') { localStorage.removeItem(openingKey); await fetchData(); return; }
@@ -305,14 +308,14 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
     if (!registerId || checkoutReview || checkoutInFlight.current) { alert('Resuelve la venta pendiente antes de cerrar el turno.'); return; }
 
     if (expenseInFlight.current || expenseError) { alert('Recupera los gastos antes de abrir el corte.'); return; }
-    if (action === 'handoff' && items.length) { alert('Termina o vacía la orden actual antes de entregar la caja.'); return; }
+    if (items.length) { alert('Termina o vacía la orden actual antes de cerrar o entregar la caja.'); return; }
     const owner = draftOwner.current;
     try {
       const summary = await loadShiftSummary(supabase, registerId);
       if (draftOwner.current !== owner || summary.status !== 'open') return;
       if (localStorage.getItem(expenseRequestKey(owner))) throw new Error('Hay un gasto pendiente de recuperar.');
       shiftSummary.current = summary; setExpenses(summary.expenses); setCashSales(summary.cash_sales);
-      setCloseAction(action); setHandoffTarget('');
+      setCloseAction(action); setHandoffTarget(''); setCountConfirmed(false);
       setBreakdown(DENOMINATIONS.reduce((acc, den) => ({ ...acc, [den]: 0 }), {})); setDollarsInBox('');
       setShowCierre(true);
     } catch (failure) { alert('No se pudo consultar el corte. El turno sigue abierto. ' + errorMessage(failure)); }
@@ -337,120 +340,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   const countedCash = calculateTotalCash();
   const difference = countedCash - expectedCash;
 
-  // 🟢 NUEVA FUNCIÓN: REPORTE DE CORTE Z
-  const printZReport = (target: Window, report: ShiftReport) => {
-    const startingCash = Number(report.starting_cash);
-    const todaysSales = Number(report.total_sales);
-    const cashSales = Number(report.expected_cash) - startingCash + Number(report.total_expenses);
-    const totalExpenses = Number(report.total_expenses);
-    const expectedCash = Number(report.expected_cash);
-    const countedCash = Number(report.counted_cash);
-    const difference = Number(report.difference);
-    const expenses = report.expenses_detail;
-    const printWindow = target ?? openPrintWindow();
-    if (!printWindow) return;
-
-    const endDate = new Date();
-    const startDate = shiftStartTime ? new Date(shiftStartTime) : endDate;
-
-    const formatTime = (d: Date) => d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const formatDate = (d: Date) => d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-    const content = `
-      <div style="width: 72mm; font-family: 'Helvetica', 'Arial', sans-serif; color: #000; padding: 10px; margin: 0 auto; line-height: 1.4;">
-
-        <div style="text-align: center; margin-bottom: 15px;">
-          <img src="https://actv.mx/wp-content/uploads/2026/05/Logo-Carinito-Mio.jpg" style="width: 180px; margin-bottom: 10px;">
-          <h1 style="font-size: 20px; margin: 0; font-weight: 900; text-transform: uppercase;">Corte de Caja (Z)</h1>
-          <p style="font-size: 11px; margin: 5px 0;">Cariñito Mío - Matamoros</p>
-        </div>
-
-        <div style="border-top: 1px dashed #ccc; margin: 10px 0;"></div>
-
-        <div style="font-size: 12px; margin-bottom: 10px;">
-          <div style="display: flex; justify-content: space-between;">
-            <span><b>Fecha:</b> ${formatDate(endDate)}</span>
-            <span><b>Cajero:</b> ${escapeHtml(userName)}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 4px;">
-            <span><b>Apertura:</b> ${formatTime(startDate)}</span>
-            <span><b>Cierre:</b> ${formatTime(endDate)}</span>
-          </div>
-        </div>
-
-        <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
-
-        <div style="font-size: 14px; margin-bottom: 10px;">
-          <div style="text-transform: uppercase; font-size: 10px; font-weight: 900; color: #666; margin-bottom: 5px;">Resumen Financiero</div>
-
-          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-            <span>Fondo Inicial:</span>
-            <span>$${startingCash.toFixed(2)}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-            <span>Ventas totales (referencia):</span>
-            <span>$${todaysSales.toFixed(2)}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-            <span>(+) Ventas en efectivo:</span>
-            <span>$${cashSales.toFixed(2)}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-            <span>(-) Retiros/Gastos:</span>
-            <span>-$${totalExpenses.toFixed(2)}</span>
-          </div>
-
-          <div style="border-top: 1px dashed #ccc; margin: 5px 0;"></div>
-
-          <div style="display: flex; justify-content: space-between; font-weight: 900; font-size: 16px;">
-            <span>Efectivo Esperado:</span>
-            <span>$${expectedCash.toFixed(2)}</span>
-          </div>
-        </div>
-
-        <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
-
-        <div style="font-size: 14px; margin-bottom: 10px;">
-          <div style="text-transform: uppercase; font-size: 10px; font-weight: 900; color: #666; margin-bottom: 5px;">Arqueo de Caja</div>
-
-          <div style="display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 5px;">
-            <span>Efectivo Contado:</span>
-            <span>$${countedCash.toFixed(2)}</span>
-          </div>
-
-          <div style="display: flex; justify-content: space-between; font-weight: 900; font-size: 15px;">
-            <span>Diferencia:</span>
-            <span>${difference > 0 ? '+' : ''}$${difference.toFixed(2)}</span>
-          </div>
-        </div>
-
-        ${expenses.length > 0 ? `
-          <div style="border-top: 1px dashed #ccc; margin: 10px 0;"></div>
-          <div style="font-size: 12px; margin-bottom: 10px;">
-            <div style="text-transform: uppercase; font-size: 10px; font-weight: 900; color: #666; margin-bottom: 5px;">Detalle de Gastos</div>
-            ${expenses.map(e => `
-              <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <span style="flex: 1; padding-right: 10px; word-break: break-all;">${escapeHtml(e.desc)}</span>
-                <span>$${e.amount.toFixed(2)}</span>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
-
-        <div style="text-align: center; margin-top: 35px;">
-          <p style="font-size: 11px; margin-bottom: 25px;">Firma del Cajero</p>
-          <div style="border-bottom: 1px solid #000; width: 80%; margin: 0 auto 5px auto;"></div>
-          <p style="font-size: 11px; font-weight: bold;">${escapeHtml(userName)}</p>
-          <p style="font-size: 9px; margin-top: 15px; color: #666; line-height: 1.2;">
-            Documento de control interno.<br>Mi Café OS • 2026
-          </p>
-        </div>
-
-      </div>
-    `;
-
-    writePrintDocument(printWindow, content, 'receipt', `Corte Z - ${userName}`);
-  };
+  const printZReport = (target: Window, report: ShiftReport) => printSavedShift(target, {...report,user_name: (report as {user_name?:string}).user_name ?? userName,opened_at:(report as {opened_at?:string}).opened_at ?? shiftStartTime ?? undefined});
 
 const handleSaveAndClose = async () => {
     if (closingShift.current || expenseInFlight.current || expenseError || !shiftSummary.current) return;
@@ -458,13 +348,17 @@ const handleSaveAndClose = async () => {
       || !Number.isFinite(parseAmount(dollarsInBox)) || parseAmount(dollarsInBox)<0 || Math.round(parseAmount(dollarsInBox)*100)/100!==parseAmount(dollarsInBox)) {
       alert('Revisa el conteo: piezas enteras y dólares con máximo dos decimales, sin cantidades negativas.');return;
     }
-    if(closeAction==='handoff'&&(!handoffTarget||items.length)){alert('Selecciona al siguiente cajero y termina o vacía la orden actual.');return;}
+    if(items.length){alert('Termina o vacía la orden actual antes de cerrar o entregar la caja.');return;}
+    if(!countConfirmed){alert('Confirma que terminaste de contar el efectivo, incluso si la caja está vacía.');return;}
+    if(closeAction==='handoff'&&!handoffTarget){alert('Selecciona al siguiente cajero.');return;}
+    if(!confirm(`Efectivo contado: ${countedCash.toFixed(2)} MXN. Diferencia: ${difference.toFixed(2)} MXN. ${countedCash===0?'Confirmas que la caja está vacía. ':''}¿Guardar este corte definitivo?`))return;
     const summary = shiftSummary.current, owner = draftOwner.current;
     closingShift.current = true;
     setIsClosingShift(true);
     // Reserve the popup during the user click; do not print an unsaved close.
     const printWindow = openPrintWindow();
     try {
+      if(!await confirmClosingPrints()){printWindow?.close();return;}
       await saveShiftBeforeExit(async () => {
         if (shiftSaved.current) return { error: null };
         const report = closeAction === 'handoff' ? await beginDrawerHandoff(supabase, localStorage, owner, summary, countedCash, handoffTarget) : await closeShift(supabase, localStorage, owner, summary, countedCash);
@@ -486,6 +380,8 @@ const handleSaveAndClose = async () => {
   };
 
   const [customerSearch, setCustomerSearch] = useState('');
+  const [customerSearchError,setCustomerSearchError] = useState('');
+  const [customerSearching,setCustomerSearching] = useState(false);
   const customerSearchRevision = useRef(0);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
@@ -500,20 +396,22 @@ const handleSaveAndClose = async () => {
 
   const handleCustomerSearchInput = async (value: string) => {
     const revision = ++customerSearchRevision.current;
-    setCustomerSearch(value);
+    setCustomerSearch(value); setCustomerSearchError(''); setCustomerSearching(value.trim().length>=2);
     setCustomerSuggestions([]);
     if (value.trim().length < 2) { setShowSuggestions(false); return; }
     setShowSuggestions(true);
     try {
       const { data, error } = await withDeadline(() => supabase.rpc('pos_search_customers', { p_search: value }));
-      if (revision === customerSearchRevision.current && !error && Array.isArray(data)) {
+      if(error)throw new Error('No se pudo buscar. Revisa internet y toca Reintentar.');
+      if (revision === customerSearchRevision.current && Array.isArray(data)) {
         setCustomerSuggestions(data);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { if(revision===customerSearchRevision.current)setCustomerSearchError(errorMessage(err)); }
+    finally {if(revision===customerSearchRevision.current)setCustomerSearching(false);}
   };
 
   const selectCustomer = (customer: Customer) => {
-    customerSearchRevision.current++;
+    customerSearchRevision.current++; setCustomerSearchError(''); setCustomerSearching(false);
     setCustomerId(customer.id);
     setCustomerRestoring(false);
     setCustomerError(null);
@@ -653,7 +551,7 @@ const handleSaveAndClose = async () => {
 
         let review = existing;
         if (!review) {
-          if (!binding || draftError || customerRestoring || (customerId && activeCustomer?.id !== customerId))
+          if (!binding || draftError || customerRestoring || (activeCustomer?.id ?? null) !== customerId)
             throw new Error('Revisa la recuperación del borrador y su cliente antes de cobrar.');
           const orderTotal = getTotal();
           if (!registerId || !items.length || !Number.isFinite(orderTotal) || orderTotal <= 0 || isPaymentInsufficient) throw new Error('Revisa la orden, el turno y el importe recibido.');
@@ -662,7 +560,7 @@ const handleSaveAndClose = async () => {
             payload: checkoutPayload(items, {
               register_id: registerId, expected_total: orderTotal, payment_method: paymentMethod.toLowerCase(),
               tender_mxn: cash ? parseAmount(amountReceivedMXN) : 0, tender_usd: cash ? parseAmount(amountReceivedUSD) : 0,
-              customer_id: activeCustomer?.id || null, order_type: orderType, order_note: orderNote,
+              customer_id: customerId, order_type: orderType, order_note: orderNote,
             }),
           };
           // Persist the exact identity and payload before the first request.
@@ -727,6 +625,11 @@ const handleSaveAndClose = async () => {
       });
     } catch (error) { if (stillCurrent()) alert(error instanceof Error ? errorMessage(error) : 'No se confirmó el descarte. Conservamos el registro pendiente.'); }
     finally { if (stillCurrent()) { checkoutInFlight.current = false; setIsProcessingCheckout(false); } }
+  };
+
+  const handleClearOrder = () => {
+    clearCart(); setActiveCustomer(null); setCustomerId(null); setCustomerRestoring(false); setCustomerError(null);
+    customerSearchRevision.current++; setCustomerSearch(''); setCustomerSuggestions([]); setCustomerSearchError('');setCustomerSearching(false);
   };
 
   const handleNextOrder = () => {
@@ -970,11 +873,12 @@ const handleSaveAndClose = async () => {
 
                 <label className="block mb-3">Operación<select aria-label="Operación de cierre" disabled={isClosingShift} value={closeAction} onChange={e=>setCloseAction(e.target.value as 'close'|'handoff')} className="w-full border rounded p-3"><option value="close">Cerrar caja al terminar</option><option value="handoff">Entregar al siguiente cajero</option></select></label>
                 {closeAction==='handoff'&&<label className="block mb-3">Recibirá la caja<select aria-label="Cajero que recibe" disabled={isClosingShift} value={handoffTarget} onChange={e=>setHandoffTarget(e.target.value)} className="w-full border rounded p-3"><option value="">Selecciona otro cajero</option>{drawer?.cashiers.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select><span>Se guarda tu corte. El siguiente cajero debe iniciar sesión y confirmar el efectivo recibido.</span></label>}
+                <label className="flex gap-3 items-center mb-4"><input type="checkbox" checked={countConfirmed} disabled={isClosingShift} onChange={e=>setCountConfirmed(e.target.checked)}/>Terminé de contar todo el efectivo; confirmo el importe mostrado (también si es cero).</label>
                 <div className="flex gap-4">
                   <button disabled={isClosingShift} onClick={() => setShowCierre(false)} className="flex-1 bg-slate-100 text-slate-600 h-14 rounded-[20px] font-bold hover:bg-slate-200 transition-all disabled:opacity-50">
                     Volver al POS
                   </button>
-                  <button onClick={handleSaveAndClose} disabled={isClosingShift || savingExpense || !!expenseError || (closeAction==='handoff'&&(!handoffTarget||items.length>0))} className="flex-1 bg-[#1d1d1f] text-white h-14 rounded-[20px] font-bold shadow-xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">
+                  <button onClick={handleSaveAndClose} disabled={!countConfirmed || items.length>0 || isClosingShift || savingExpense || !!expenseError || (closeAction==='handoff'&&(!handoffTarget||items.length>0))} className="flex-1 bg-[#1d1d1f] text-white h-14 rounded-[20px] font-bold shadow-xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">
                     <Printer size={20} /> {isClosingShift ? 'Guardando…' : closeAction==='handoff' ? 'Guardar corte y entregar caja' : 'Guardar e Imprimir Z'}
                   </button>
                 </div>
@@ -985,9 +889,9 @@ const handleSaveAndClose = async () => {
 
       {appearance!=='owner' ? <RegisterView products={products} items={items} total={getTotal()} search={searchTerm} onSearch={setSearchTerm}
         userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout}
-        onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={updateQuantity} onRemove={removeItem} onClear={clearCart} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
+        onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={updateQuantity} onRemove={removeItem} onClear={handleClearOrder} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
         onHandoff={()=>void handleOpenCierre('handoff')}
-        customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
+        customerSearchError={customerSearchError} customerSearching={customerSearching} onRetryCustomerSearch={()=>void handleCustomerSearchInput(customerSearch)} customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
         onNewCustomer={handleOpenCustomerModal} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
         orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
         {!showPostSaleModal && printStatus}

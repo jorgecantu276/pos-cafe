@@ -9,6 +9,8 @@ import { shiftDatabaseCases } from './shift/database-cases.mjs';
 import { reportDatabaseCases } from './reports/database-cases.mjs';
 import { multiItemDatabaseCases } from './printing/multi-item-database-cases.mjs';
 import { drawerDatabaseCases } from './shift/drawer-database-cases.mjs';
+import { employeeDrawerCases } from './shift/employee-database-cases.mjs';
+import { customerCorrectionDatabaseCases } from './customers/correction-database-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
 // User-owned TEMP survives PostgreSQL's restricted Windows token; a hosted
@@ -191,7 +193,11 @@ try {
   await db.query(drawerMigration);
   await db.query(await readFile(resolve(root,'supabase/migrations/202610300006_loyalty_phone.sql'),'utf8'));
   await db.query(await readFile(resolve(root,'supabase/migrations/202610300007_safe_drawer_rate.sql'),'utf8'));
+  await db.query(await readFile(resolve(root,'supabase/migrations/202610300008_employee_drawer_recovery.sql'),'utf8'));
+  await db.query(await readFile(resolve(root,'supabase/migrations/202610300009_customer_correction.sql'),'utf8'));
   assertions+=await drawerDatabaseCases(db,connection,ids);
+  assertions+=await employeeDrawerCases(db,connection,ids);
+  assertions+=await customerCorrectionDatabaseCases(db,connection,ids);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {
   await Promise.allSettled(clients.map(c=>c.end()));

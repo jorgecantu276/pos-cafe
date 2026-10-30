@@ -23,6 +23,7 @@ export default function DrawerGate({ client, status, actor, isAdmin, reload, log
   return <WorkspaceDialog title={handoff ? 'Entrega de caja pendiente' : status.active ? 'Caja ocupada' : 'Configurar caja'} onClose={logout} busy={busy}>
     <div className="workspace-dialog-content">
       {isAdmin && <a className="workspace-admin-gateway" href="/admin/caja">Administrar caja y tipo de cambio</a>}
+      {isAdmin && <a className="workspace-admin-gateway" href="/admin/impresion">Revisar impresión pendiente</a>}
       {handoff ? <>
         <p>{handoff.from_name} entregó ${handoff.delivered.toFixed(2)} MXN para {handoff.to_name}.</p>
         {canAccept ? <>

@@ -18,7 +18,7 @@ const pass=name=>{checks.push(name);console.log('PASS '+name);};
 const ok=(response,name)=>{assert.ifError(response.error&&new Error(name+': '+response.error.message));return response.data;};
 try {
   const current=await sourceFiles();
-  const migrations=await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300005_single_drawer.sql','202610300006_loyalty_phone.sql','202610300007_safe_drawer_rate.sql'].map(f=>readFile(path.join(root,'supabase/migrations',f),'utf8')));
+  const migrations=await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300005_single_drawer.sql','202610300006_loyalty_phone.sql','202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql'].map(f=>readFile(path.join(root,'supabase/migrations',f),'utf8')));
   const hashes=migrations.map((_,i)=>fingerprint(current.snapshot,migrations.slice(0,i+1).join('\n')));
   const directory=path.join(work,'recovery');let selected;
   for(const entry of (await readdir(directory,{withFileTypes:true})).filter(e=>e.isDirectory()&&e.name!=='keys').reverse()){

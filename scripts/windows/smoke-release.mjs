@@ -42,7 +42,7 @@ try {
   assert.equal(existsSync(path.join(relocated,'database-migrations/202610280003_inventory.sql')),false);
   assert.ok(existsSync(path.join(relocated,'database-migrations/202610300005_single_drawer.sql')));
   assert.ok(existsSync(path.join(relocated,'database-migrations/202610300006_loyalty_phone.sql')));
-  assert.ok(existsSync(path.join(relocated,'database-migrations/202610300007_safe_drawer_rate.sql')));
+  for(const name of ['202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql'])assert.ok(existsSync(path.join(relocated,'database-migrations',name)));
   // Mismatched runtime config is rejected before binding a server port.
   writeFileSync(configPath, JSON.stringify({...config,SupabaseUrl:'http://127.0.0.1:59998'}));
   assert.throws(() => execFileSync(powershell,['-NoProfile','-File',path.join(relocated,'Start-POS.ps1'),'-ConfigPath',configPath,'-NoBrowser'],{windowsHide:true,stdio:'pipe'}));

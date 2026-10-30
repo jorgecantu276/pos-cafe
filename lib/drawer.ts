@@ -11,9 +11,9 @@ export interface DrawerStatus {
   handoff: { id: string; from_name: string; to_id: string; to_name: string; delivered: number; rate: number } | null;
   cashiers: { id: string; name: string }[];
 }
-type Operation = 'handoff' | 'accept' | 'rate' | 'reassign' | 'customer';
+type Operation = 'handoff' | 'accept' | 'rate' | 'reassign' | 'customer' | 'manager_close';
 interface Pending { actor: string; operation: Operation; request: string; payload: Record<string, unknown> }
-const functions: Record<Operation, string> = { handoff: 'pos_begin_drawer_handoff', accept: 'pos_accept_drawer_handoff', rate: 'pos_set_drawer_rate', reassign: 'pos_reassign_drawer_handoff', customer: 'pos_enroll_customer' };
+const functions: Record<Operation, string> = { handoff: 'pos_begin_drawer_handoff', accept: 'pos_accept_drawer_handoff', rate: 'pos_set_drawer_rate', reassign: 'pos_reassign_drawer_handoff', customer: 'pos_enroll_customer', manager_close: 'pos_manager_close_drawer' };
 export const drawerRequestKey = (actor: string, operation: Operation) => `pos_drawer_request:v1:${actor}:${operation}`;
 async function rpc(client: Client, name: string, args: object, signal?: AbortSignal) {
   const controller = new AbortController();
@@ -41,7 +41,7 @@ async function submit(client: Client, storage: Storage, pending: Pending) {
     if ((error.code === 'P0001' || /^(22|23)[0-9A-Z]{3}$/.test(error.code || '')) && storage.getItem(key) === raw) storage.removeItem(key);
     throw new Error(error.message);
   }
-  if (!data || data.request_id !== pending.request || (pending.operation === 'handoff' && (data.report?.register_id !== pending.payload.register
+  if (!data || data.request_id !== pending.request || (['handoff','manager_close'].includes(pending.operation) && (data.report?.register_id !== pending.payload.register
       || !['starting_cash','total_sales','total_expenses','expected_cash','counted_cash','difference'].every(key=>Number.isFinite(Number(data.report[key])))))
     || (pending.operation === 'accept' && (typeof data.register?.id !== 'string' || data.register.opened_by !== pending.actor || Number(data.register.initial_balance) !== pending.payload.counted))
     || (pending.operation === 'customer' && (typeof data.customer?.id !== 'string' || typeof data.customer.name !== 'string' || !Number.isFinite(data.customer.points)))

@@ -7,6 +7,32 @@ the USB and Bluetooth handoffs concurrently. Printer speeds and connectivity
 determine when paper actually emerges; simultaneous physical completion cannot
 be promised.
 
+## Recovery across cashier changes
+
+The responsible administrator can open **Administración → Impresión** at
+`/admin/impresion` without opening a drawer. This screen lists outstanding local
+copies from all cashiers and the last 20 completed/cancelled copies, with the
+original cashier's name. A safe retry affects only the selected queued/blocked
+copy; a successful customer ticket is not resent when recovering its barista
+label. Cashiers retain access only to their own queue. The original sale and
+financial cashier ownership never change.
+
+For an uncertain outcome, inspect both physical paper and the Windows queue.
+The administrator can acknowledge that paper printed, without any resend. If
+paper is confirmed missing and no job for that copy remains in Windows, the
+administrator can explicitly authorize one replacement. The same reviewed
+replacement is available for a copy accepted by Windows but later confirmed
+missing. This requires a checked inspection statement, written reason and an
+explicit duplicate warning. Active submissions cannot be overridden. A queued
+Windows job may print later: do not authorize replacement while it remains.
+
+The local SQLite journal records the responsible actor, original cashier,
+ticket/copy, previous state, action, reason and time. The last 50 reviews appear
+on the screen; older reviews remain in the journal. Recovery stores its request
+identity before sending and replays exactly that request after a lost response
+or refresh. Preserve the existing journal when upgrading. Normal polling and
+cashier retry still never resend an uncertain or accepted copy automatically.
+
 ## Exact machine profile
 
 `config/cafe-printers.json` records the original supplied café discovery:

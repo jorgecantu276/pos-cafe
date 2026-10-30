@@ -6,6 +6,7 @@ import { useResource } from '@/lib/use-resource';
 import { drawerWrite, hasDrawerRequest, loadDrawerStatus, recoverDrawerRequest } from '@/lib/drawer';
 import { errorMessage } from '@/lib/pos-types';
 import LoadFailure from '@/app/LoadFailure';
+import ManagerRecovery from './ManagerRecovery';
 
 interface Handoff { id: string; from_name: string; to_name: string; delivered: number; received: number | null; difference: number | null; note: string; created_at: string; accepted_at: string | null }
 export default function DrawerAdmin() {
@@ -40,7 +41,7 @@ export default function DrawerAdmin() {
         <button type="button" className="border rounded p-3" disabled={busy} onClick={()=>void save()}>Recuperar guardado pendiente</button>
       </form>{message && <p role="status">{message}</p>}
     </section>
-    <section className="border rounded-xl bg-white p-5 overflow-auto"><h2>Últimas 50 entregas entre cajeros</h2>
+    <ManagerRecovery actor={data.actor} status={data.status} reload={reload}/><section className="border rounded-xl bg-white p-5 overflow-auto"><h2>Últimas 50 entregas entre cajeros</h2>
       <p>El cajero saliente cuenta y entrega; el entrante confirma con su propia sesión. Se conservan ambos importes y cualquier diferencia.</p>
       <table><thead><tr>{['Fecha','Entrega','Recibe','Entregado MXN','Recibido MXN','Diferencia MXN','Estado / motivo'].map(label=><th className="p-3 text-left" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.history.map(h=><tr key={h.id}><td className="p-3">{new Date(h.created_at).toLocaleString('es-MX',{timeZone:'America/Matamoros'})}</td><td className="p-3">{h.from_name}</td><td className="p-3">{h.to_name}</td><td className="p-3">{h.delivered.toFixed(2)}</td><td className="p-3">{h.received?.toFixed(2)??'Pendiente'}</td><td className="p-3">{h.difference?.toFixed(2)??'—'}</td><td className="p-3">{h.accepted_at?'Aceptada':'Pendiente'} {h.note}</td></tr>)}</tbody></table>

@@ -1,7 +1,7 @@
 # Windows client deployment
 
 Keep the source repository and CI under the developer's GitHub account until
-final client acceptance. Leave PR #1 in draft for review. Repository transfer is
+final client acceptance. The owner authorized merging PR #1 after employee-flow checks pass. Repository transfer is
 the final handoff action, not a deployment prerequisite. The client can own its
 Free Supabase organization from the start; GitHub and Supabase ownership are
 independent. Do not place account passwords, management tokens, fiscal profiles
@@ -58,7 +58,7 @@ screen. Actual Windows scaling, touch and printer output still require testing.
 
 ## Matching database and rollback
 
-Provision the chosen client test project, apply the retained migrations 001, 002, 004 and 005 in order and
+Provision the chosen client test project, apply the retained migrations 001, 002, 004, 005, 006, 007, 008 and 009 in order and
 create confirmed staff profiles. Review the legacy compatibility requirements
 before applying to any existing database. Test against a separate synthetic
 catalog and explicit test quantities, not live business records. Inventory has been removed at the owner's request; this candidate does not check or deduct pieces/ingredients. The app still

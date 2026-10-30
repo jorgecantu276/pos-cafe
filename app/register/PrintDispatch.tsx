@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { forgetSalePrint, pendingSalePrints, type PrintAudience, type SalePrintJob } from '@/lib/sale-printing';
 
-interface Reply { mode: 'mock' | 'windows'; jobs: SalePrintJob[] }
+interface Reply { mode: 'mock' | 'windows'; jobs: SalePrintJob[]; canManage?: boolean }
 const labels = { customer: 'Cliente · USB', barista: 'Barra · Bluetooth' };
 export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkoutKey: string; latestOrderId?: string }) {
   const [jobs, setJobs] = useState<SalePrintJob[]>([]), [error, setError] = useState(''), [mode, setMode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [canManage,setCanManage] = useState(false);
   const refresh = useRef<(orderId?: string, audience?: PrintAudience) => Promise<void>>(async () => {});
   useEffect(() => {
     if (!checkoutKey) return;
@@ -42,7 +43,7 @@ export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkout
         }));
         if (pending.size) result = await request();
         if (active) {
-          setJobs(result.jobs); setMode(result.mode);
+          setJobs(result.jobs); setMode(result.mode);setCanManage(result.canManage === true);
           const failure = outcomes.find(outcome => outcome.status === 'rejected');
           pollNeeded = Boolean(failure) || result.jobs.some(job => ['queued', 'preparing', 'submitting'].includes(job.state));
           setError(failure?.status === 'rejected' ? String(failure.reason?.message || 'Error de envío. Reintenta impresión.') : '');
@@ -67,9 +68,11 @@ export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkout
       {shown.map(job => <div className="print-dispatch-job" key={`${job.orderId}:${job.audience}`}>
         <strong>#{job.ticket} · {labels[job.audience]}</strong><p>{job.queue}</p><p>{job.message}</p>
         {job.state === 'blocked' && <button disabled={busy} onClick={() => { void refresh.current(job.orderId, job.audience); }}>Reintentar {job.audience === 'customer' ? 'cliente' : 'barra'}</button>}
-        {['uncertain', 'submitting'].includes(job.state) && <p>Revisa esta cola y el papel en Windows. No se reimprime para evitar duplicados.</p>}
+        {['uncertain', 'submitting'].includes(job.state) && <p>Revisa esta cola y el papel en Windows. El responsable puede registrar lo ocurrido en Administración → Impresión. No se reenvía automáticamente.</p>}
       </div>)}
       {!shown.length && !error && <p>Las dos copias se envían al confirmar la venta. “Enviado a Windows” requiere comprobar la salida en papel.</p>}
+      {attention.length>0&&<p>Antes de cambiar de cajero, revisa estas copias o avisa al responsable. Los pendientes se conservan por cajero.</p>}
+      {canManage&&<a href="/admin/impresion">Revisar impresión de todos los cajeros</a>}
       <button disabled={busy} onClick={() => { void refresh.current(); }}>{busy ? 'Comprobando…' : 'Actualizar impresión'}</button>
     </div>
   </details>;

@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+export async function employeeDrawerCases(db,connection,ids){
+  let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
+  const a=await connection('authenticated',ids.cashier),b=await connection('authenticated',ids.barista),admin=await connection('authenticated',ids.admin),anon=await connection('anon');
+  const deny=async(c,sql,args=[])=>{await assert.rejects(c.query(sql,args));checks++;};
+  const rpc=async(c,key,payload)=>(await c.query('select pos_manager_close_drawer($1,$2) r',[key,payload])).rows[0].r;
+  const shift=(await a.query('select pos_open_shift($1,123,19.75) r',[randomUUID()])).rows[0].r;
+  const summary=(await admin.query('select pos_shift_summary($1) r',[shift.id])).rows[0].r;
+  const payload={register:shift.id,counted:123,count_confirmed:true,reason:'Cajero ausente, responsable contó la caja',preview:summary};
+  await deny(a,'select pos_manager_close_drawer($1,$2)',[randomUUID(),payload]);
+  await deny(anon,'select pos_manager_close_drawer($1,$2)',[randomUUID(),payload]);
+  for(const changed of [{count_confirmed:false},{reason:''},{counted:-1},{counted:12.345},{actor_id:ids.cashier}])await deny(admin,'select pos_manager_close_drawer($1,$2)',[randomUUID(),{...payload,...changed}]);
+  await a.query('select pos_shift_expenses($1,$2,0,$3)',[shift.id,randomUUID(),JSON.stringify([{desc:'Retiro registrado',amount:5}])]);
+  await deny(admin,'select pos_manager_close_drawer($1,$2)',[randomUUID(),payload]);
+  const fresh=(await admin.query('select pos_shift_summary($1) r',[shift.id])).rows[0].r;
+  const request=randomUUID(),confirmed={...payload,counted:118,preview:fresh};
+  const result=await rpc(admin,request,confirmed);eq(await rpc(admin,request,confirmed),result);
+  eq(result.report.cashier_id,ids.cashier);eq(result.closed_by,ids.admin);eq(result.report.expected_cash,118);eq(result.report.difference,0);
+  const row=(await db.query('select status,opened_by,closed_by from cash_registers where id=$1',[shift.id])).rows[0];
+  eq(row,{status:'closed',opened_by:ids.cashier,closed_by:ids.admin});
+  await deny(admin,'select pos_manager_close_drawer($1,$2)',[request,{...confirmed,counted:0}]);
+  const saved=(await admin.query('select pos_closed_shift($1) r',[result.report.id])).rows[0].r;
+  eq(saved.manager_reason,confirmed.reason);eq(saved.counted_cash,118);eq(saved.user_name,result.report.user_name);
+  eq((await a.query('select pos_closed_shift($1) r',[result.report.id])).rows[0].r,saved);
+  await deny(b,'select pos_closed_shift($1)',[result.report.id]);await deny(anon,'select pos_closed_shift($1)',[result.report.id]);
+  const next=(await b.query('select pos_open_shift($1,118,19.75) r',[randomUUID()])).rows[0].r;
+  eq((await admin.query('select pos_closed_shift($1) r',[result.report.id])).rows[0].r,saved);
+  const last=(await b.query('select pos_shift_summary($1) r',[next.id])).rows[0].r;
+  await b.query('select pos_close_shift($1,118,$2,$3)',[next.id,'[]',last]);
+  console.log(`PASS ${checks} employee drawer recovery/saved reprint assertions`);return checks;
+}

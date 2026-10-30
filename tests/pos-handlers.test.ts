@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import * as ts from 'typescript';
 import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, type CheckoutReview } from '../lib/checkout';
 import { errorMessage } from '../lib/pos-types';
+import {withDeadline} from '../lib/request-deadline';
+import {savedShiftHtml} from '../lib/shift-printing';
+import {confirmClosingPrints} from '../lib/closing-print-check';
 import { rememberSalePrint } from '../lib/sale-printing';
 import { customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
 
@@ -43,10 +46,66 @@ test('Enter on an ambiguous loyalty lookup requires choosing a customer',async()
   assert.equal(suggestions,matches);assert.equal(visible,true);
 });
 
+test('either close operation stops before reading or saving when the employee has an unpaid order',async()=>{
+  for(const action of ['close','handoff']){
+    const alerts:string[]=[];
+    await handler('handleOpenCierre',{registerId:'r',checkoutReview:null,checkoutInFlight:{current:false},expenseInFlight:{current:false},expenseError:null,
+      items:[{id:'unpaid'}],alert:(message:string)=>alerts.push(message),loadShiftSummary:()=>assert.fail('Must resolve unpaid order first')})(action);
+    assert.match(alerts[0],/orden actual/);
+  }
+});
+
+test('an untouched zero count cannot be saved as a closing shortage',async()=>{
+  const alerts:string[]=[];
+  await handler('handleSaveAndClose',{closingShift:{current:false},expenseInFlight:{current:false},expenseError:null,shiftSummary:{current:{}},
+    countedCash:0,breakdown:{100:0},parseAmount:Number,dollarsInBox:'',items:[],countConfirmed:false,
+    alert:(message:string)=>alerts.push(message),openPrintWindow:()=>assert.fail('No close or printing before count confirmation')})();
+  assert.match(alerts[0],/Confirma que terminaste/);
+});
+
+test('clearing an unpaid order clears both the visible and persisted loyalty selection',()=>{
+  let active:unknown={id:'old'},customer:unknown='old',query='old',suggestions:unknown=[{}];const revision={current:1};
+  handler('handleClearOrder',{clearCart:()=>{},setActiveCustomer:(v:unknown)=>active=v,setCustomerId:(v:unknown)=>customer=v,setCustomerRestoring:()=>{},setCustomerError:()=>{},
+    customerSearchRevision:revision,setCustomerSearch:(v:string)=>query=v,setCustomerSuggestions:(v:unknown)=>suggestions=v})();
+  assert.equal(active,null);assert.equal(customer,null);assert.equal(query,'');assert.deepEqual(suggestions,[]);assert.equal(revision.current,2);
+});
+
+test('a phone-search connection failure is visible and cannot look like an unregistered person',async()=>{
+  let error='',searching=false;
+  await handler('handleCustomerSearchInput',{customerSearchRevision:{current:0},setCustomerSearch:()=>{},setCustomerSuggestions:()=>{},setShowSuggestions:()=>{},
+    setCustomerSearchError:(v:string)=>error=v,setCustomerSearching:(v:boolean)=>searching=v,
+    supabase:{rpc:async()=>({data:null,error:{message:'offline'}})}})('8682345678');
+  assert.match(error,/No se pudo buscar.*Reintentar/);assert.equal(searching,false);
+});
+
+test('opening timeout releases employee controls and preserves the exact opening request for retry',async()=>{
+  const memory=new Map<string,string>(),inFlight={current:false};let busy=false,calls=0;
+  const shift={id:'opened',status:'open',initial_balance:100,exchange_rate:18,opened_at:'2026-10-30T12:00:00Z'};
+  const run=handler('handleStartShift',{openingInFlight:inFlight,loading:false,loadError:null,exchangeRate:'18',parseAmount:Number,calculateTotalCash:()=>100,breakdown:{100:1},dollarsInBox:'',
+    setOpeningShift:(v:boolean)=>busy=v,shiftMemoryKey:{current:'opening:a'},localStorage:{getItem:(k:string)=>memory.get(k)??null,setItem:(k:string,v:string)=>memory.set(k,v),removeItem:(k:string)=>memory.delete(k)},
+    withDeadline:(fn:()=>Promise<unknown>)=>withDeadline(fn,{timeoutMs:8}),supabase:{rpc:()=>++calls===1?new Promise(()=>{}):Promise.resolve({data:shift,error:null})},alert:()=>{},fetchData:async()=>{},
+    setRegisterId:()=>{},setStartingCash:()=>{},setExchangeRate:()=>{},setShiftStartTime:()=>{},DENOMINATIONS:[100],setBreakdown:()=>{},setDollarsInBox:()=>{},setShowApertura:()=>{}});
+  await run();const pending=memory.get('opening:a:opening');assert.ok(pending);assert.equal(busy,false);assert.equal(inFlight.current,false);
+  await run();assert.equal(calls,2);assert.equal(memory.has('opening:a:opening'),false);
+});
+
+test('closing-slip reprints use the stored cashier, dates and count rather than current shift data',()=>{
+  const html=savedShiftHtml({id:'closing-id',starting_cash:100,total_sales:50,total_expenses:5,expected_cash:145,counted_cash:140,difference:-5,
+    expenses_detail:[{desc:'Caja <original>',amount:5}],user_name:'Ana <caja>',opened_at:'2026-01-15T12:00:00Z',closed_at:'2026-01-15T18:00:00Z'},true);
+  assert.match(html,/REIMPRESIÓN/);assert.match(html,/Ana &lt;caja&gt;/);assert.match(html,/2026/);assert.match(html,/\$140\.00/);assert.match(html,/\$-5\.00/);
+});
+
+test('a cashier can stop closing when unfinished printing needs attention',async()=>{
+  const original=globalThis.fetch;const notices:string[]=[];
+  globalThis.fetch=async()=>new Response(JSON.stringify({jobs:[{state:'blocked'}]}),{status:200});
+  try{assert.equal(await confirmClosingPrints(message=>{notices.push(message);return false;}),false);assert.match(notices[0],/1 copias.*No vuelvas a cobrar/);}
+  finally{globalThis.fetch=original;}
+});
+
 // Exercise the actual page handlers with browser/network dependencies replaced;
 // no request reaches Supabase and no print dialog is opened by these checks.
 function handler(name: string, context: Record<string, unknown>, file='../app/register/Register.tsx'): (...args: unknown[]) => unknown {
-  context = { errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
+  context = { withDeadline,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
   const source=ts.createSourceFile('page.tsx',readFileSync(new URL(file,import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
   let body='';
   function visit(node: ts.Node) {

@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { serverSupabase } from '@/lib/supabase-server';
-import { AccessError, createStaff, requireAdministrator, userInput } from '@/lib/user-management';
+import { AccessError, createStaff, requireAdministrator, staffProviderFetch, updateStaff, userInput } from '@/lib/user-management';
 
 export async function POST(request: Request) {
   try {
@@ -9,11 +9,11 @@ export async function POST(request: Request) {
     await requireAdministrator(caller);
     const input = userInput(await request.json(), true);
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) throw new AccessError('Falta configurar la administración de usuarios en el servidor.', 503);
-    const privileged = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+    const privileged = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false }, global: { fetch: staffProviderFetch } });
     const user = await createStaff(privileged, input);
     return NextResponse.json({ success: true, user });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo crear el usuario.' }, { status: error instanceof AccessError ? error.status : 400 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo crear el usuario.', uncertain: error instanceof AccessError ? error.uncertain : true }, { status: error instanceof AccessError ? error.status : 502 });
   }
 }
 
@@ -24,13 +24,13 @@ export async function PATCH(request: Request) {
     const raw = await request.json();
     const input = userInput(raw, false);
     if (typeof raw.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(raw.id) || typeof raw.is_active !== 'boolean') throw new AccessError('Perfil inválido.', 400);
-    const { error } = await caller.rpc('pos_manage_profile', {
-      p_id: raw.id, p_name: input.full_name, p_username: raw.username,
-      p_role: input.role, p_avatar: input.avatar_url, p_active: raw.is_active,
-    });
-    if (error) throw new Error(error.message);
-    return NextResponse.json({ success: true });
+    if (input.password && !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new AccessError('Falta configurar la administración de usuarios en el servidor. No se guardó ningún cambio.', 503);
+    const privileged = input.password ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false }, global: { fetch: staffProviderFetch },
+    }) : null;
+    const result = await updateStaff(caller, privileged, raw.id, raw.is_active, input);
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo guardar el usuario.' }, { status: error instanceof AccessError ? error.status : 400 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo guardar el usuario.', uncertain: error instanceof AccessError ? error.uncertain : true }, { status: error instanceof AccessError ? error.status : 502 });
   }
 }

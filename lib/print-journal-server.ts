@@ -9,6 +9,9 @@ import { saleDocuments, type ReceiptOptions, type PrintAudience, type SalePrintD
 interface Row { order_id: string; owner: string; ticket: string; audience: PrintAudience; queue: string; document: string; state: PrintState; message: string; attempts: number; claim: string | null; lease: number; updated: string }
 export interface PreparedPrint { submit(): Promise<void>; dispose(): void }
 export interface PrintAdapter { prepare(job: SalePrintJob, document: SalePrintDocument): Promise<PreparedPrint> }
+export type PrintRecoveryAction = 'retry' | 'confirm_printed' | 'replace_missing';
+export interface PrintRecovery { requestId: string; actor: string; owner: string; orderId: string; audience: PrintAudience; action: PrintRecoveryAction; reason: string }
+export interface PrintRecoveryAudit extends PrintRecovery { previousState: string; createdAt: string; ticket: string }
 const audiences: PrintAudience[] = ['customer', 'barista'];
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -34,7 +37,10 @@ export class PrintJournal {
         order_id TEXT NOT NULL, owner TEXT NOT NULL, ticket TEXT NOT NULL, audience TEXT NOT NULL,
         queue TEXT NOT NULL, document TEXT NOT NULL, state TEXT NOT NULL, message TEXT NOT NULL,
         attempts INTEGER NOT NULL DEFAULT 0, claim TEXT, lease INTEGER NOT NULL DEFAULT 0, updated TEXT NOT NULL,
-        PRIMARY KEY(order_id,audience));`);
+        PRIMARY KEY(order_id,audience));
+      CREATE TABLE IF NOT EXISTS recovery_audit (
+        request_id TEXT PRIMARY KEY, actor TEXT NOT NULL, owner TEXT NOT NULL, order_id TEXT NOT NULL, audience TEXT NOT NULL,
+        action TEXT NOT NULL, reason TEXT NOT NULL, previous_state TEXT NOT NULL, created_at TEXT NOT NULL);`);
   }
   close() { this.db.close(); }
   private now() { return new Date(this.clock()).toISOString(); }
@@ -53,6 +59,48 @@ export class PrintJournal {
   }
   get(owner: string, orderId: string): SalePrintJob[] {
     return (this.db.prepare('SELECT * FROM jobs WHERE owner=? AND order_id=? ORDER BY audience').all(owner, orderId) as Row[]).map(row => this.view(row));
+  }
+  listAll(): (SalePrintJob & { cashierId: string; canRetry: boolean })[] {
+    const rows = this.db.prepare(`SELECT * FROM jobs WHERE state NOT IN ('submitted','cancelled')
+      UNION ALL SELECT * FROM (SELECT * FROM jobs WHERE state IN ('submitted','cancelled') ORDER BY updated DESC LIMIT 20)
+      ORDER BY updated DESC`).all() as Row[];
+    return rows.map(row => ({ ...this.view(row), cashierId: row.owner,
+      canRetry:['queued','blocked'].includes(row.state)||(row.state==='preparing'&&row.lease<this.clock()) }));
+  }
+  recoveryHistory(): PrintRecoveryAudit[] {
+    return (this.db.prepare(`SELECT a.*,j.ticket FROM recovery_audit a JOIN jobs j ON j.order_id=a.order_id AND j.audience=a.audience
+      ORDER BY a.created_at DESC,a.request_id DESC LIMIT 50`).all() as Record<string,string>[])
+      .map(row => ({ requestId: row.request_id, actor: row.actor, owner: row.owner, orderId: row.order_id,
+        audience: row.audience as PrintAudience, action: row.action as PrintRecoveryAction, reason: row.reason,
+        previousState: row.previous_state, createdAt: row.created_at,ticket:row.ticket }));
+  }
+  authorizeRecovery(input: PrintRecovery) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const old = this.db.prepare('SELECT * FROM recovery_audit WHERE request_id=?').get(input.requestId) as Record<string,string> | undefined;
+      if (old) {
+        if (old.actor !== input.actor || old.owner !== input.owner || old.order_id !== input.orderId || old.audience !== input.audience
+          || old.action !== input.action || old.reason !== input.reason) throw new Error('La recuperación pendiente pertenece a otra revisión.');
+        this.db.exec('COMMIT'); return;
+      }
+      const row = this.db.prepare('SELECT * FROM jobs WHERE owner=? AND order_id=? AND audience=?').get(input.owner,input.orderId,input.audience) as Row | undefined;
+      if (!row) throw new Error('No existe esta copia en el registro local.');
+      const uncertain = row.state === 'uncertain' || (row.state === 'submitting' && row.lease < this.clock());
+      if (input.action === 'retry') {
+        if (!['queued','blocked'].includes(row.state) && !(row.state === 'preparing' && row.lease < this.clock()))
+          throw new Error('Esta copia no admite reintento seguro. Actualiza su estado.');
+      } else {
+        if (!uncertain && !(input.action === 'replace_missing' && row.state === 'submitted'))
+          throw new Error('Espera a que termine el envío activo y actualiza antes de resolverlo.');
+        this.db.prepare(`UPDATE jobs SET state=?,message=?,claim=NULL,lease=0,updated=? WHERE owner=? AND order_id=? AND audience=?`)
+          .run(input.action === 'confirm_printed' ? 'submitted' : 'blocked', input.action === 'confirm_printed'
+            ? 'El responsable confirmó la salida en papel. No se reenvió.' : 'El responsable autorizó una reposición tras revisar papel y cola de Windows.',
+          this.now(),input.owner,input.orderId,input.audience);
+      }
+      this.db.prepare('INSERT INTO recovery_audit VALUES(?,?,?,?,?,?,?,?,?)')
+        .run(input.requestId,input.actor,input.owner,input.orderId,input.audience,input.action,input.reason,row.state,this.now());
+      this.db.exec('COMMIT');
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
   cancel(owner: string, orderId: string) {
     this.db.prepare(`UPDATE jobs SET state='cancelled',message='Venta cancelada. No enviar a preparación.',updated=?

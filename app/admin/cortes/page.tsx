@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
 import LoadFailure from '@/app/LoadFailure';
+import {loadSavedShift,printSavedShift} from '@/lib/shift-printing';
+import {openPrintWindow} from '@/lib/printing';
 import { loadReport, reportParams, reportQuery, reportDate, reportMoney, reportPeriod, type ShiftReport } from '@/lib/reports';
 import { ReportFilters, ReportPagination } from '../ReportControls';
 import { loadShiftSummary, type ShiftSummary } from '@/lib/shift-state';
@@ -26,6 +28,11 @@ export default function CortesPage() {
   const loadHistory = useCallback((signal: AbortSignal) => loadReport<ShiftReport>(supabase, 'pos_shift_history', reportParams(query), signal), [query]);
   const { data: history, loading: historyLoading, error: historyError, reload: reloadHistory } = useResource<ShiftReport | null>(loadHistory, null);
   const pastShifts = history?.shifts ?? [];
+  const reprint = async(id:string) => {
+    const target=openPrintWindow();if(!target)return;
+    try{const report=await loadSavedShift(supabase,id);printSavedShift(target,report,true);}
+    catch(error){target.close();alert(error instanceof Error?error.message:'No se pudo recuperar el corte guardado.');}
+  };
 
   useEffect(() => {
     const fetchAllData = async () => {
@@ -189,7 +196,7 @@ export default function CortesPage() {
                   
                   <div className="flex items-center gap-5 w-full md:w-auto">
                     <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 border border-slate-100 group-hover:bg-white group-hover:shadow-md transition-all">
-                      <FileText size={20} strokeWidth={1.5} />
+                      <button type="button" aria-label={`Reimprimir corte de ${shift.user_name}`} onClick={()=>void reprint(shift.id)}><FileText size={20} strokeWidth={1.5} /> Reimprimir Z</button>
                     </div>
                     <div>
                       <div className="flex items-center gap-2 mb-1">

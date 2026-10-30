@@ -10,7 +10,8 @@ business data has been deleted or migrated.
 Retained migrations are `202610280001_secure_pos.sql`,
 `202610280002_shift_expenses.sql`, `202610280004_reports.sql`,
 `202610300005_single_drawer.sql`, `202610300006_loyalty_phone.sql` and
-`202610300007_safe_drawer_rate.sql`, in that order.
+`202610300007_safe_drawer_rate.sql`, `202610300008_employee_drawer_recovery.sql` and
+`202610300009_customer_correction.sql`, in that order.
 The removed, unreleased migration 003 is not part of this candidate. Do not
 apply this revised draft to a database that already ran an earlier candidate;
 that requires a deliberate forward migration.
@@ -18,7 +19,7 @@ that requires a deliberate forward migration.
 The snapshot is the originally captured schema, not a sanitized customer backup
 or an instruction to copy live business records. A fresh client project was
 provisioned in the client's own account through the CLI on October 30, after the
-local migration rehearsal. It contains the baseline, these six migrations,
+local migration rehearsal. It contains the baseline, the retained migrations,
 Sandra's administrator profile and the 82 products from the supplied menu, with
 the confirmed milk options. No old-POS customers, sales or shifts were copied.
 The owner selected an initial rate of 18 MXN per USD. Credentials, server keys and

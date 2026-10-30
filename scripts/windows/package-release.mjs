@@ -79,4 +79,4 @@ function releaseFiles(folder, prefix = '') {
   });
 }
 writeFileSync(path.join(destination, 'SHA256.json'), JSON.stringify(releaseFiles(destination), null, 2));
-console.log('Windows release prepared:', destination, url.protocol === 'http:' ? '(LOOPBACK FIXTURE ONLY)' : '(client target; database still requires configuration)');
+console.log('Windows release prepared:', destination, url.protocol === 'http:' ? '(LOOPBACK FIXTURE ONLY)' : '(client target; verify matching database and private runtime configuration before installation)');

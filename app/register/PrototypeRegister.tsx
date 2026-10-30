@@ -19,6 +19,7 @@ interface RegisterProps{
   userName:string;isAdmin:boolean;disabled:boolean;onProduct:(p:Product)=>void;onEdit:(i:CartItem)=>void;
   onQuantity:(id:string,q:number)=>void;onRemove:(id:string)=>void;onClear:()=>void;onCheckout:()=>void;onCloseShift:()=>void;onHandoff?:()=>void;
   customer:Customer|null;customerSearch:string;onCustomerSearch:(s:string)=>void;suggestions:Customer[];onCustomer:(c:Customer)=>void;
+  customerSearchError?:string;customerSearching?:boolean;onRetryCustomerSearch?:()=>void;
   onNewCustomer:()=>void;onRemoveCustomer:()=>void;orderType:string;onOrderType:(s:string)=>void;
   onReprint:(ticket?:string)=>void;notices:ReactNode;
 }
@@ -58,6 +59,7 @@ export default function PrototypeRegister(p:RegisterProps){
     </main><footer className="prototype-status"><span>MXN · Requiere conexión</span><span>{p.disabled?'Revisa el estado de la orden':'Borrador automático en este navegador'}</span></footer>
     {sheet==='search'&&<Sheet title="Buscar producto" onClose={()=>setSheet('')}><input autoFocus aria-label="Buscar producto" value={p.search} onChange={e=>search(e.target.value)}/><TouchKeyboard value={p.search} onChange={search}/><button className="prototype-primary" onClick={()=>setSheet('')}>Ver productos</button></Sheet>}
     {sheet==='customer'&&<Sheet title="Cliente" onClose={()=>setSheet('')}><input autoFocus aria-label="Buscar cliente" placeholder="Teléfono del cliente" value={p.customerSearch} onChange={e=>p.onCustomerSearch(e.target.value)}/>
+      {p.customerSearching?<p role="status">Buscando cliente…</p>:p.customerSearchError?<p role="alert">{p.customerSearchError} <button onClick={p.onRetryCustomerSearch}>Reintentar búsqueda</button></p>:p.customerSearch.trim().length>=2&&!p.suggestions.length?<p>No hay coincidencias. Revisa el teléfono antes de registrar.</p>:null}
       <div className="prototype-customer-results">{p.suggestions.map(c=><button key={c.id} onClick={()=>{p.onCustomer(c);setSheet('');}}>{c.name} · {c.phone || c.customer_code}</button>)}</div><TouchKeyboard value={p.customerSearch} onChange={p.onCustomerSearch}/>
       <div className="prototype-buttons"><button onClick={()=>{setSheet('');p.onNewCustomer();}}>Nuevo cliente</button>{p.customer&&<button onClick={()=>{p.onRemoveCustomer();setSheet('');}}>Quitar cliente</button>}</div></Sheet>}
     {sheet==='orders'&&<Sheet title="Tickets y órdenes" onClose={()=>setSheet('')}><label>Folio del ticket<input inputMode="numeric" value={ticket} onChange={e=>setTicket(e.target.value)} /></label><TouchKeyboard value={ticket} onChange={setTicket} numeric/>

@@ -68,3 +68,20 @@ replay and first-purchase loyalty. `test:cashiers` now exercises the one-drawer
 flow through real local Auth/PostgREST in a matching owned synthetic restore;
 its former interactive two-independent-shifts scenario is retired. Passing these
 checks does not install the app or verify a physical printer.
+
+## Employee recovery
+
+Both closing operations require the unpaid order to be resolved, an explicit
+completed cash count and final amount confirmation. Printing that needs attention
+must be resolved or explicitly handed to the responsible person. Administration →
+Recuperar impresión lists local copies across cashiers, safely retries blocked
+copies, and records supervised paper confirmation or replacement without
+charging again. Active sends cannot be overridden.
+
+Administration → Caja supports a counted, reasoned supervisor close when the
+original cashier is unavailable. The original cashier remains on the Z report;
+the supervisor and reason are recorded. Exact retries recover the same closure.
+Cortes → Reimprimir Z reads the saved closing data, even after later shifts.
+Clientes → Corregir datos changes name/phone in place without moving points or
+sales. Staff password edits now update the actual login; uncertain saves require
+review before repeating them.
