@@ -1,48 +1,51 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import ProductPhoto from '@/components/ProductPhoto';
+
+import { type ProductRow, type ExtraRow, errorMessage } from '@/lib/pos-types';
+
+import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { PlusCircle, Trash2, Edit2, Package, Loader2, Layers } from 'lucide-react';
+import { useResource } from '@/lib/use-resource';
+import LoadFailure from '@/app/LoadFailure';
+import { PlusCircle, Trash2, Edit2, Loader2, Layers } from 'lucide-react';
 
 export default function ProductosPage() {
   const [activeTab, setActiveTab] = useState<'items' | 'extras'>('items');
-  const [products, setProducts] = useState<any[]>([]);
-  const [extras, setExtras] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   
   const [editingId, setEditingId] = useState<string | number | null>(null);
 
-  // 🟢 Estados para mostrar el input de "Crear Nueva"
+  // Entrada de una categoría o un grupo de extras nuevo.
   const [showNewCat, setShowNewCat] = useState(false);
   const [showNewPhase, setShowNewPhase] = useState(false);
 
-  const initialFormState = { name: '', price: '', category: 'Bebidas', stock: 10, phase: 'Tamaño', customizable: true, image_url: '', wizard_steps: [] as string[] };
+  const initialFormState = { name: '', price: '', category: 'Bebidas', phase: 'Tamaño', customizable: true, image_url: '', wizard_steps: [] as string[] };
   const [formData, setFormData] = useState(initialFormState);
 
-  const fetchData = async () => {
-    setLoading(true);
-    const { data: p } = await supabase.from('products').select('*').order('name');
-    const { data: e } = await supabase.from('extras').select('*').order('phase');
-    setProducts(p || []);
-    setExtras(e || []);
-    setLoading(false);
-  };
+  const loadCatalog = useCallback(async (signal: AbortSignal) => {
+    const [products, extras] = await Promise.all([
+      supabase.from('products').select('*').order('name').abortSignal(signal),
+      supabase.from('extras').select('*').order('phase').abortSignal(signal),
+    ]);
+    if (products.error) throw products.error;
+    if (extras.error) throw extras.error;
+    return { products: (products.data || []) as ProductRow[], extras: (extras.data || []) as ExtraRow[] };
+  }, []);
+  const { data: { products, extras }, loading, error: loadError, reload: fetchData } = useResource(loadCatalog, { products: [], extras: [] });
 
-  useEffect(() => { fetchData(); }, []);
 
-  const handleEdit = (item: any, type: 'items' | 'extras') => {
+  const handleEdit = (item: ProductRow | ExtraRow, type: 'items' | 'extras') => {
     setActiveTab(type);
     setEditingId(item.id);
     setFormData({
       name: item.name || '',
-      price: item.price || '',
-      category: item.category || 'Bebidas',
-      stock: item.stock || 10,
-      phase: item.phase || 'Tamaño',
-      customizable: item.customizable !== false,
-      image_url: item.image_url || '',
-      wizard_steps: item.wizard_steps || [] 
+      price: String(item.price ?? ''),
+      category: 'category' in item ? item.category || 'Bebidas' : 'Bebidas',
+      phase: 'phase' in item ? item.phase : 'Tamaño',
+      customizable: 'customizable' in item && item.customizable === true,
+      image_url: 'image_url' in item ? item.image_url || '' : '',
+      wizard_steps: 'wizard_steps' in item ? item.wizard_steps || [] : []
     });
     setShowNewCat(false);
     setShowNewPhase(false);
@@ -62,12 +65,13 @@ export default function ProductosPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      if (!formData.name.trim() || !Number.isFinite(Number(formData.price)) || Number(formData.price)<0
+        ) throw new Error('Revisa nombre y precio.');
       if (activeTab === 'items') {
         const payload = { 
           name: formData.name, 
           price: parseFloat(formData.price),
           category: formData.category,
-          stock: formData.stock,
           customizable: formData.customizable,
           image_url: formData.image_url,
           wizard_steps: formData.customizable ? formData.wizard_steps : [] 
@@ -100,24 +104,26 @@ export default function ProductosPage() {
       setEditingId(null);
       setFormData(initialFormState);
       fetchData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error al guardar:", error);
-      alert(`Hubo un error al guardar: ${error.message}`);
+      alert(`No se pudo guardar: ${errorMessage(error)}`);
     }
   };
 
-  // 🟢 EXTRAYENDO CATEGORÍAS Y FASES ÚNICAS (Mantenemos las opciones por defecto siempre visibles)
+  // Las opciones habituales también se muestran cuando todavía no hay productos.
   const defaultCategories = ['Bebidas', 'Postres', 'Varios'];
-  const uniqueCategories = Array.from(new Set([...defaultCategories, ...products.map(p => p.category)]));
+  const uniqueCategories = Array.from(new Set([...defaultCategories, ...products.map(p => p.category).filter((c): c is string => Boolean(c))]));
 
   const defaultPhases = ['Tamaño', 'Tipo de Leche', 'Endulzante', 'Sabor'];
   const uniquePhases = Array.from(new Set([...defaultPhases, ...extras.map(e => e.phase)]));
 
-  const groupedExtras = extras.reduce((acc: any, current) => {
+  const groupedExtras = extras.reduce<Record<string, ExtraRow[]>>((acc, current) => {
     if (!acc[current.phase]) acc[current.phase] = [];
     acc[current.phase].push(current);
     return acc;
   }, {});
+
+  if (loadError) return <LoadFailure message={loadError} retry={fetchData} />;
 
   if (loading) return <Loader2 className="animate-spin text-blue-600 mx-auto mt-20" />;
 
@@ -125,10 +131,10 @@ export default function ProductosPage() {
     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500 pb-20">
       <header className="flex justify-between items-end">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter">GESTIÓN DE CATÁLOGO</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Catálogo</h2>
           <div className="flex gap-4 mt-4">
-            <button onClick={() => { setActiveTab('items'); setFormData(initialFormState); setEditingId(null); setShowForm(false); }} className={`pb-2 px-1 text-sm font-bold border-b-2 transition-all ${activeTab === 'items' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400'}`}>1.1 Productos</button>
-            <button onClick={() => { setActiveTab('extras'); setFormData(initialFormState); setEditingId(null); setShowForm(false); }} className={`pb-2 px-1 text-sm font-bold border-b-2 transition-all ${activeTab === 'extras' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400'}`}>1.2 Extras</button>
+            <button onClick={() => { setActiveTab('items'); setFormData(initialFormState); setEditingId(null); setShowForm(false); }} className={`pb-2 px-1 text-sm font-bold border-b-2 transition-all ${activeTab === 'items' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400'}`}>Productos</button>
+            <button onClick={() => { setActiveTab('extras'); setFormData(initialFormState); setEditingId(null); setShowForm(false); }} className={`pb-2 px-1 text-sm font-bold border-b-2 transition-all ${activeTab === 'extras' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400'}`}>Extras</button>
           </div>
         </div>
         <button onClick={handleToggleForm} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:scale-105 transition-all shadow-lg">
@@ -143,9 +149,10 @@ export default function ProductosPage() {
           
           {activeTab === 'items' ? (
             <>
-              <input type="url" placeholder="URL de la imagen (Opcional)" value={formData.image_url} className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" onChange={e => setFormData({...formData, image_url: e.target.value})} />
+              <input type="url" placeholder="Enlace de la foto (opcional)" value={formData.image_url} className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" onChange={e => setFormData({...formData, image_url: e.target.value})} />
+              <p className="text-sm text-slate-500">Pega el enlace de la foto del producto. Si lo dejas vacío o la foto no carga, se muestra una imagen provisional.</p>
               
-              {/* 🟢 SELECTOR DE CATEGORÍAS (PRODUCTOS) */}
+              {/* Categoría del producto */}
               <div className="relative w-full">
                 {showNewCat ? (
                   <div className="flex gap-2">
@@ -163,13 +170,13 @@ export default function ProductosPage() {
               <div className="lg:col-span-4 flex flex-col gap-4 mt-2">
                 <label className="flex items-center gap-2 text-sm font-bold text-slate-600 bg-slate-50 p-4 rounded-2xl cursor-pointer hover:bg-slate-100 transition-colors w-fit">
                   <input type="checkbox" checked={formData.customizable} onChange={e => setFormData({...formData, customizable: e.target.checked})} className="w-5 h-5 rounded text-blue-600" />
-                  Habilitar preparación guiada (Wizard) para este producto
+                  Permitir elegir opciones de preparación
                 </label>
 
                 {formData.customizable && (
                   <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100 animate-in fade-in zoom-in-95">
                     <p className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-                      <Layers size={16} className="text-blue-600"/> ¿Qué opciones aplican para este producto?
+                      <Layers size={16} className="text-blue-600"/> Opciones de este producto
                     </p>
                     <div className="flex flex-wrap gap-4">
                       {uniquePhases.map(phase => (
@@ -193,45 +200,41 @@ export default function ProductosPage() {
               </div>
             </>
           ) : (
-            /* 🟢 SELECTOR DE FASES (EXTRAS) */
+            /* Grupo del extra */
             <div className="relative w-full">
                 {showNewPhase ? (
                   <div className="flex gap-2">
-                    <input type="text" placeholder="Nueva Fase (Ej: Jarabes)" required className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" value={formData.phase} onChange={e => setFormData({...formData, phase: e.target.value})} />
+                    <input type="text" placeholder="Nuevo grupo (ej. Jarabes)" required className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" value={formData.phase} onChange={e => setFormData({...formData, phase: e.target.value})} />
                     <button type="button" onClick={() => { setShowNewPhase(false); setFormData({...formData, phase: uniquePhases[0] as string}); }} className="bg-slate-200 text-slate-600 px-4 rounded-xl font-bold hover:bg-slate-300">X</button>
                   </div>
                 ) : (
                   <select className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full cursor-pointer" value={formData.phase} onChange={e => { if(e.target.value === '___NEW___') { setShowNewPhase(true); setFormData({...formData, phase: ''}); } else { setFormData({...formData, phase: e.target.value}); } }}>
                     {uniquePhases.map(phase => <option key={phase as string} value={phase as string}>{phase}</option>)}
-                    <option value="___NEW___">+ Crear nueva fase / categoría</option>
+                    <option value="___NEW___">+ Crear grupo de extras</option>
                   </select>
                 )}
             </div>
           )}
 
           <button type="submit" className={`bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30 py-3 ${activeTab === 'items' ? 'lg:col-span-4' : 'lg:col-span-1'}`}>
-            {editingId ? 'Actualizar Cambios' : 'Guardar Nuevo'}
+            {editingId ? 'Guardar cambios' : 'Guardar nuevo'}
           </button>
         </form>
       )}
 
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
         {activeTab === 'items' ? (
-          products.map(p => (
+          products.filter(p=>p.is_active!==false).map(p => (
             <div key={p.id} className="p-6 flex items-center justify-between border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors group">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-blue-50/50 rounded-2xl flex items-center justify-center text-blue-500 overflow-hidden flex-shrink-0 border border-blue-100 shadow-sm">
-                  {p.image_url ? (
-                    <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <Package size={24} className="opacity-50" />
-                  )}
+                  <ProductPhoto product={p} width={56} height={56} className="w-full h-full object-cover" />
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
                     {p.name}
                     {p.category === 'Bebidas' && p.customizable === false && (
-                       <span className="text-[9px] bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full uppercase font-black tracking-wider">Sin Wizard</span>
+                       <span className="text-[9px] bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full uppercase font-black tracking-wider">Sin opciones</span>
                     )}
                   </h4>
                   <p className="text-[11px] font-black text-blue-600 uppercase tracking-widest">{p.category} — <span className="text-slate-400">${Number(p.price).toFixed(2)}</span></p>
@@ -249,7 +252,7 @@ export default function ProductosPage() {
                 <button onClick={() => handleEdit(p, 'items')} className="bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors p-2.5 rounded-xl">
                   <Edit2 size={18}/>
                 </button>
-                <button onClick={async () => { if(confirm('¿Seguro que deseas eliminar este producto?')) { await supabase.from('products').delete().eq('id', p.id); fetchData(); } }} className="bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors p-2.5 rounded-xl">
+                <button aria-label={`Desactivar ${p.name}`} onClick={async () => { if(confirm('¿Desactivar este producto? Su historial se conservará.')) { const r=await supabase.from('products').update({is_active:false}).eq('id', p.id); if(r.error){alert(errorMessage(r.error));return;} fetchData(); } }} className="bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors p-2.5 rounded-xl">
                   <Trash2 size={18}/>
                 </button>
               </div>
@@ -261,7 +264,7 @@ export default function ProductosPage() {
               <div className="bg-slate-50 px-6 py-3 border-y border-slate-100">
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{phaseName}</h3>
               </div>
-              {groupedExtras[phaseName].map((e: any) => (
+              {groupedExtras[phaseName].map((e) => (
                 <div key={e.id} className="p-6 flex items-center justify-between border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors group">
                   <div>
                     <h4 className="font-bold text-slate-800 text-lg">{e.name}</h4>

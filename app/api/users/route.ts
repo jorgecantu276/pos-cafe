@@ -1,46 +1,36 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { serverSupabase } from '@/lib/supabase-server';
+import { AccessError, createStaff, requireAdministrator, staffProviderFetch, updateStaff, userInput } from '@/lib/user-management';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { full_name, username, password, role, avatar_url } = body;
+    const caller = await serverSupabase();
+    await requireAdministrator(caller);
+    const input = userInput(await request.json(), true);
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) throw new AccessError('Falta configurar la administración de usuarios en el servidor.', 503);
+    const privileged = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false }, global: { fetch: staffProviderFetch } });
+    const user = await createStaff(privileged, input);
+    return NextResponse.json({ success: true, user });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo crear el usuario.', uncertain: error instanceof AccessError ? error.uncertain : true }, { status: error instanceof AccessError ? error.status : 502 });
+  }
+}
 
-    // Usamos la llave maestra para saltarnos las reglas y NO cerrar tu sesión activa
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
-
-    // Supabase exige un correo obligatorio. Como quieres iniciar sesión con "Usuario",
-    // le inventamos un correo interno automático para engañar al sistema.
-    const fakeEmail = `${username.replace(/\s+/g, '').toLowerCase()}@carinitomio.local`;
-
-    // 1. Crear usuario en la bóveda de Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: fakeEmail,
-      password: password,
-      email_confirm: true, // Auto-confirmado para que puedan entrar de inmediato
-    });
-
-    if (authError) throw authError;
-
-    // 2. Crear su perfil visible en tu tabla de "profiles"
-    // Usamos 'upsert' por si tienes algún trigger que ya haya creado la fila
-    const { error: profileError } = await supabaseAdmin.from('profiles').upsert([{
-      id: authData.user.id,
-      full_name,
-      username,
-      role,
-      avatar_url
-    }]);
-
-    if (profileError) throw profileError;
-
-    return NextResponse.json({ success: true, user: authData.user });
-
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+export async function PATCH(request: Request) {
+  try {
+    const caller = await serverSupabase();
+    await requireAdministrator(caller);
+    const raw = await request.json();
+    const input = userInput(raw, false);
+    if (typeof raw.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(raw.id) || typeof raw.is_active !== 'boolean') throw new AccessError('Perfil inválido.', 400);
+    if (input.password && !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new AccessError('Falta configurar la administración de usuarios en el servidor. No se guardó ningún cambio.', 503);
+    const privileged = input.password ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false }, global: { fetch: staffProviderFetch },
+    }) : null;
+    const result = await updateStaff(caller, privileged, raw.id, raw.is_active, input);
+    return NextResponse.json({ success: true, ...result });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo guardar el usuario.', uncertain: error instanceof AccessError ? error.uncertain : true }, { status: error instanceof AccessError ? error.status : 502 });
   }
 }

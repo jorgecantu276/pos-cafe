@@ -1,0 +1,691 @@
+{
+  "status": "Local review reference only. Not imported into any database.",
+  "date": "2026-10-28",
+  "currency": "MXN",
+  "source": "Client menu supplied by user, followed by user confirmation of all unpriced iced flavors at 95 and screenshot of client milk-surcharge reply.",
+  "rules": {
+    "iced_flavors_mxn": 95,
+    "iced_flan_mxn": 130,
+    "iced_nevado_mxn": 140,
+    "alternate_milks": [
+      "avena",
+      "coco",
+      "almendra",
+      "Lala 100"
+    ],
+    "alternate_milk_surcharge_mxn": 15,
+    "surcharge_applies_to": [
+      "iced coffee",
+      "te chai",
+      "cappuccino",
+      "frappe"
+    ],
+    "standard_iced_milks": [
+      "entera",
+      "deslactosada",
+      "deslactosada light"
+    ],
+    "dirty_chai": "Client named té chai, not Dirty chai explicitly. Do not silently broaden the rule during import.",
+    "inventory": "Unknown opening quantities remain null. Never seed ten or another invented balance.",
+    "pricing": "Menu prices are the supplied amounts; no additional taxes, discounts, sizes or fees have been invented.",
+    "naming": "Client spellings retained; references are review identifiers, not production UUIDs."
+  },
+  "products": [
+    {
+      "reference": "MENU-001",
+      "name": "Brownie tradicional",
+      "price_mxn": 30,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-002",
+      "name": "Brownie oreo",
+      "price_mxn": 35,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-003",
+      "name": "Brownie almendra",
+      "price_mxn": 35,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-004",
+      "name": "Brownie nuez",
+      "price_mxn": 35,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-005",
+      "name": "Brownie cheesecake",
+      "price_mxn": 55,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-006",
+      "name": "Plancha de brownie",
+      "price_mxn": 650,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-007",
+      "name": "Galleta de avena con nuez, coco y chispas de chocolate",
+      "price_mxn": 35,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-008",
+      "name": "Galleta de pistache y chocolate blanco",
+      "price_mxn": 50,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-009",
+      "name": "Crookie nutella",
+      "price_mxn": 75,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-010",
+      "name": "Crookie lotus",
+      "price_mxn": 75,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-011",
+      "name": "Crookie pistache",
+      "price_mxn": 75,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-012",
+      "name": "Muffins platano con nuez y chocolate amargo",
+      "price_mxn": 35,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-013",
+      "name": "Muffin cajeta con queso",
+      "price_mxn": 35,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-014",
+      "name": "Muffin blueberries",
+      "price_mxn": 35,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-015",
+      "name": "Trenza hojaldre con nutella",
+      "price_mxn": 75,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-016",
+      "name": "Tortuguitas",
+      "price_mxn": 15,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-017",
+      "name": "Tortuguitas 5pz",
+      "price_mxn": 65,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-018",
+      "name": "Cheese danish",
+      "price_mxn": 75,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-019",
+      "name": "Cheese danish fresa",
+      "price_mxn": 75,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-020",
+      "name": "Cheese danish Blueberry",
+      "price_mxn": 75,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-021",
+      "name": "Nuebesitas",
+      "price_mxn": 20,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-022",
+      "name": "Nubesitas 6pz",
+      "price_mxn": 100,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-023",
+      "name": "Donas",
+      "price_mxn": 35,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-024",
+      "name": "Rebanada cheesecake",
+      "price_mxn": 90,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-025",
+      "name": "Rebanada cheesecake platano",
+      "price_mxn": 130,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-026",
+      "name": "Rebanada cheesecake lotus",
+      "price_mxn": 130,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-027",
+      "name": "Rebanada cheesecake frutos rojos",
+      "price_mxn": 130,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-028",
+      "name": "Rebanada cheesecake tortuga",
+      "price_mxn": 130,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-029",
+      "name": "Rebanada cheesecake resses",
+      "price_mxn": 130,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-030",
+      "name": "Cheesecake original grande",
+      "price_mxn": 650,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-031",
+      "name": "Cheesecake grande frutos rojos",
+      "price_mxn": 850,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-032",
+      "name": "Cheesecake grande lotus",
+      "price_mxn": 850,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-033",
+      "name": "Cheesecake grande tortuga",
+      "price_mxn": 860,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-034",
+      "name": "Cheesecake grande platano",
+      "price_mxn": 850,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-035",
+      "name": "Cheesecake resses grande",
+      "price_mxn": 950,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-036",
+      "name": "Cheesecake grande combinado",
+      "price_mxn": 850,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-037",
+      "name": "Cheesecake grande dúo (fresa con crema/tortuga brownie)",
+      "price_mxn": 950,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-038",
+      "name": "Cheesecake grande pistache",
+      "price_mxn": 950,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-039",
+      "name": "Cheesecake tortuga mediano",
+      "price_mxn": 500,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-040",
+      "name": "Cheesecake original mediano",
+      "price_mxn": 500,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-041",
+      "name": "Cheesecake lotus mediano",
+      "price_mxn": 500,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-042",
+      "name": "Oreo cake individual",
+      "price_mxn": 130,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-043",
+      "name": "Oreo cake grande",
+      "price_mxn": 700,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-044",
+      "name": "Cheesecake manzana",
+      "price_mxn": 75,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-045",
+      "name": "Cheesecake manzana mediano",
+      "price_mxn": 650,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-046",
+      "name": "Cheesecake manzana grande",
+      "price_mxn": 850,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-047",
+      "name": "Brownie cheesecake mediano",
+      "price_mxn": 400,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-048",
+      "name": "Brownie cheesecake grande",
+      "price_mxn": 600,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-049",
+      "name": "Arroz con leche 9oz",
+      "price_mxn": 75,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-050",
+      "name": "Iced coffee",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-051",
+      "name": "Iced coffee caramelo",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-052",
+      "name": "Iced coffee chocolate blanco",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-053",
+      "name": "Iced coffee vainilla",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-054",
+      "name": "Iced coffee avellana",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-055",
+      "name": "Iced coffee nuez",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-056",
+      "name": "Iced coffee lotus",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-057",
+      "name": "Iced coffee caramelo sugar free",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-058",
+      "name": "Iced coffee avellana sugar free",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-059",
+      "name": "Iced coffe vainilla sugar free",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-060",
+      "name": "Iced coffe flan",
+      "price_mxn": 130,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-061",
+      "name": "Iced coffee nevado",
+      "price_mxn": 140,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-062",
+      "name": "Frappe original",
+      "price_mxn": 80,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-063",
+      "name": "Frappe Oreo",
+      "price_mxn": 85,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-064",
+      "name": "Te chai frio",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-065",
+      "name": "Te chai caliente",
+      "price_mxn": 95,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-066",
+      "name": "Dirty chai",
+      "price_mxn": 105,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_explicitly_named_in_client_reply",
+      "stock": null
+    },
+    {
+      "reference": "MENU-067",
+      "name": "Matcha cariño",
+      "price_mxn": 105,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-068",
+      "name": "Matcha fresa",
+      "price_mxn": 115,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-069",
+      "name": "Matcha mango",
+      "price_mxn": 115,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-070",
+      "name": "Cappuccino",
+      "price_mxn": 80,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "confirmed_15_mxn",
+      "stock": null
+    },
+    {
+      "reference": "MENU-071",
+      "name": "Cafe americano",
+      "price_mxn": 60,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-072",
+      "name": "Arizona",
+      "price_mxn": 35,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-073",
+      "name": "Coca cola",
+      "price_mxn": 25,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-074",
+      "name": "Agua natural",
+      "price_mxn": 20,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-075",
+      "name": "Topochico",
+      "price_mxn": 45,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-076",
+      "name": "Proteina nurri",
+      "price_mxn": 70,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-077",
+      "name": "Kool aid",
+      "price_mxn": 15,
+      "category": "Bebidas",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-078",
+      "name": "Rosca lotus individual",
+      "price_mxn": 85,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-079",
+      "name": "Rosca pistache individual",
+      "price_mxn": 90,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-080",
+      "name": "Rosca grande Lotus",
+      "price_mxn": 600,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-081",
+      "name": "Rosca grande pistache",
+      "price_mxn": 650,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    },
+    {
+      "reference": "MENU-082",
+      "name": "Brownie Gourmet",
+      "price_mxn": 75,
+      "category": "Postres",
+      "milk_surcharge_scope": "not_authorized_by_supplied_rule",
+      "stock": null
+    }
+  ]
+}

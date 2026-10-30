@@ -1,0 +1,131 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+
+export async function drawerDatabaseCases(db, connection, ids) {
+  let checks=0; const equal=(a,b)=>{assert.deepEqual(a,b);checks++;};
+  const a=await connection('authenticated',ids.cashier),b=await connection('authenticated',ids.barista),admin=await connection('authenticated',ids.admin),anon=await connection('anon');
+  const rpc=async(client,fn,key,payload)=>(await client.query(`select ${fn}($1,$2) r`,[key,payload])).rows[0].r;
+  const deny=async(client,sql,args=[])=>{await assert.rejects(client.query(sql,args));checks++;};
+  const status=async client=>(await client.query('select pos_drawer_status() r')).rows[0].r;
+  const open=async(client,cash=100,rate=20)=>(await client.query('select pos_open_shift($1,$2,$3) r',[randomUUID(),cash,rate])).rows[0].r;
+  const summary=async(client,id)=>(await client.query('select pos_shift_summary($1) r',[id])).rows[0].r;
+  const close=async(client,id,cash)=>{const s=await summary(client,id);return (await client.query('select pos_close_shift($1,$2,$3,$4) r',[id,cash,JSON.stringify(s.expenses),s])).rows[0].r;};
+  await deny(anon,'select pos_drawer_status()');
+  await deny(a,'select pos_drawer_history()');
+  await deny(a,'select * from cafe_private.drawer_settings');
+  equal((await status(a)).active,null); equal((await status(a)).rate,null);
+  await deny(a,'select pos_open_shift($1,100,20)',[randomUUID()]);
+  await deny(a,'select pos_set_drawer_rate($1,$2)',[randomUUID(),{rate:20}]);
+  await db.query('delete from cafe_private.drawer_settings where singleton=true');
+  await deny(admin,'select pos_set_drawer_rate($1,$2)',[randomUUID(),{rate:20}]);
+  await db.query('insert into cafe_private.drawer_settings(singleton) values(true)');
+  const rateKey=randomUUID();const saved=await rpc(admin,'pos_set_drawer_rate',rateKey,{rate:20});
+  equal(await rpc(admin,'pos_set_drawer_rate',rateKey,{rate:20}),saved);
+  await deny(admin,'select pos_set_drawer_rate($1,$2)',[rateKey,{rate:21}]);
+  for(const rate of [null,0,-1,1001,20.12345])await deny(admin,'select pos_set_drawer_rate($1,$2)',[randomUUID(),{rate}]);
+  const race=await Promise.allSettled([open(a),open(b)]);
+  equal(race.filter(x=>x.status==='fulfilled').length,1);
+  const winner=race[0].status==='fulfilled'?a:b,loser=winner===a?b:a;
+  const owner=winner===a?ids.cashier:ids.barista,target=winner===a?ids.barista:ids.cashier;
+  const register=race.find(x=>x.status==='fulfilled').value;
+  equal(Number(register.exchange_rate),20);
+  await deny(loser,'select pos_open_shift($1,0,20)',[randomUUID()]);
+  await deny(admin,'select pos_set_drawer_rate($1,$2)',[randomUUID(),{rate:21}]);
+  await deny(db,'update profiles set is_active=false where id=$1',[owner]);
+  await deny(db,'update profiles set role=null where id=$1',[owner]);
+  const product=randomUUID();await db.query("insert into products(id,name,price,is_active,customizable) values($1,'Prueba caja única',50,true,false)",[product]);
+  const sale={register_id:register.id,items:[{product_id:product,quantity:1,extra_ids:[],note:''}],expected_total:50,payment_method:'efectivo',tender_mxn:100,tender_usd:0,customer_id:null,order_type:'En Local',order_note:''};
+  await rpc(winner,'pos_checkout',randomUUID(),sale);
+  const s=await summary(winner,register.id);equal(s.expected_cash,150);
+  const handoffKey=randomUUID(),handoff={register:register.id,to:target,counted:145,expenses:s.expenses,preview:s};
+  const beforeBad=await status(winner);
+  await deny(loser,'select pos_begin_drawer_handoff($1,$2)',[randomUUID(),handoff]);
+  await deny(winner,'select pos_begin_drawer_handoff($1,$2)',[randomUUID(),{...handoff,to:owner}]);
+  equal((await status(winner)).active,beforeBad.active);
+  const handed=await rpc(winner,'pos_begin_drawer_handoff',handoffKey,handoff);
+  equal(Number(handed.report.difference),-5);
+  equal(await rpc(winner,'pos_begin_drawer_handoff',handoffKey,handoff),handed);
+  equal((await status(loser)).active,null);equal((await status(loser)).handoff.delivered,145);
+  await deny(winner,'select pos_open_shift($1,145,20)',[randomUUID()]);
+  await deny(loser,'select pos_open_shift($1,145,20)',[randomUUID()]);
+  await deny(winner,'select pos_checkout($1,$2)',[randomUUID(),sale]);
+  await deny(db,'update profiles set is_active=false where id=$1',[target]);
+  await deny(admin,'select pos_set_drawer_rate($1,$2)',[randomUUID(),{rate:21}]);
+  await deny(winner,'select pos_accept_drawer_handoff($1,$2)',[randomUUID(),{handoff:handoffKey,counted:145,note:''}]);
+  await deny(loser,'select pos_accept_drawer_handoff($1,$2)',[randomUUID(),{handoff:handoffKey,counted:140,note:''}]);
+  const acceptKey=randomUUID(),accept={handoff:handoffKey,counted:140,note:'Cinco pesos faltantes confirmados al recibir'};
+  const parallel=await connection('authenticated',target);
+  const accepted=await Promise.all([rpc(loser,'pos_accept_drawer_handoff',acceptKey,accept),rpc(parallel,'pos_accept_drawer_handoff',acceptKey,accept)]);
+  equal(accepted[0],accepted[1]);equal(Number(accepted[0].register.initial_balance),140);equal(Number(accepted[0].register.exchange_rate),20);
+  equal((await status(loser)).handoff,null);equal((await status(loser)).active.cashier_id,target);
+  equal((await db.query("select count(*)::int n from cash_registers where status='open'")).rows[0].n,1);
+  const history=(await admin.query('select pos_drawer_history() r')).rows[0].r;
+  equal(history[0].difference,-5);equal(history[0].delivered,145);equal(history[0].received,140);
+  await deny(loser,'select pos_accept_drawer_handoff($1,$2)',[randomUUID(),accept]);
+  await close(loser,accepted[0].register.id,140);
+  await rpc(admin,'pos_set_drawer_rate',randomUUID(),{rate:19.75});
+  await deny(winner,'select pos_open_shift($1,100,20)',[randomUUID()]);
+  const fresh=await open(winner,100,19.75);
+  const freshSummary=await summary(winner,fresh.id);
+  // A sale after the displayed count makes the transfer fail atomically.
+  await rpc(winner,'pos_checkout',randomUUID(),{...sale,register_id:fresh.id});
+  await deny(winner,'select pos_begin_drawer_handoff($1,$2)',[randomUUID(),{...handoff,register:fresh.id,preview:freshSummary}]);
+  equal((await status(winner)).active.id,fresh.id); equal((await status(winner)).handoff,null);
+  const ready=await summary(winner,fresh.id),secondKey=randomUUID();
+  await rpc(winner,'pos_begin_drawer_handoff',secondKey,{...handoff,register:fresh.id,counted:150,preview:ready});
+  const reassigned=await rpc(admin,'pos_reassign_drawer_handoff',randomUUID(),{handoff:secondKey,to:ids.admin,reason:'Responsable recibe por ausencia del compañero'});
+  equal(reassigned.to,ids.admin);
+  await deny(loser,'select pos_accept_drawer_handoff($1,$2)',[randomUUID(),{handoff:secondKey,counted:150,note:''}]);
+  const adminAccepted=await rpc(admin,'pos_accept_drawer_handoff',randomUUID(),{handoff:secondKey,counted:150,note:''});
+  await close(admin,adminAccepted.register.id,150);
+  // Required-phone enrollment, welcome points, optional birthday, exact retry and first-sale points.
+  const enrollKey=randomUUID(),person={name:'Cliente rápido sintético',phone:'8682345678',birthday:null,promos:false};
+  const member=await rpc(a,'pos_enroll_customer',enrollKey,person);
+  equal(member.customer.phone,'528682345678');
+  for(const phone of [null,'','555','1234567890123456','call 8682345678']) {
+    await deny(a,'select pos_enroll_customer($1,$2)',[randomUUID(),{...person,phone}]);
+    await deny(a,'select pos_register_customer($1,$2,null,false)',[person.name,phone]);
+  }
+  await deny(a,'select pos_register_customer($1,$2,null,false)',[person.name,'+52 (868) 234-5678']);
+  await deny(b,'select pos_enroll_customer($1,$2)',[randomUUID(),{...person,phone:'+52 (868) 234-5678'}]);
+  const search=async(client,text)=>(await client.query('select pos_search_customers($1) r',[text])).rows[0].r;
+  for(const text of ['8682345678','+52 (868) 234-5678','234-5678']) equal((await search(a,text))[0].id,member.customer.id);
+  equal((await search(a,'rápido sintético'))[0].id,member.customer.id);
+  equal(await search(a,'a'),[]);equal(await search(a,'%,phone.eq.anything'),[]);
+  await deny(anon,'select pos_search_customers($1)',['8682345678']);
+  const duplicateRace=await Promise.allSettled([
+    rpc(a,'pos_enroll_customer',randomUUID(),{...person,phone:'8689876543'}),
+    b.query('select pos_register_customer($1,$2,null,false)',[person.name,'+52 868 987 6543']),
+  ]);
+  equal(duplicateRace.filter(result=>result.status==='fulfilled').length,1);
+  equal(member.customer.points,50);equal(member.customer.birth_date,null);equal(await rpc(a,'pos_enroll_customer',enrollKey,person),member);
+  await deny(b,'select pos_enroll_customer($1,$2)',[enrollKey,person]);
+  await deny(a,'select pos_enroll_customer($1,$2)',[enrollKey,{...person,name:'Otro nombre'}]);
+  await rpc(a,'pos_enroll_customer',randomUUID(),{...person,phone:'+52 868 123 4567'});
+  await deny(b,'select pos_enroll_customer($1,$2)',[randomUUID(),{...person,phone:'528681234567'}]);
+  await deny(a,'select pos_enroll_customer($1,$2)',[randomUUID(),{...person,birthday:'2099-01-01'}]);
+  const memberShift=await open(a,0,19.75);
+  const orderKey=randomUUID(),memberSale={...sale,register_id:memberShift.id,customer_id:member.customer.id};
+  const order=await rpc(a,'pos_checkout',orderKey,memberSale);await rpc(a,'pos_checkout',orderKey,memberSale);
+  equal((await db.query('select points from customers where id=$1',[member.customer.id])).rows[0].points,55);
+  await admin.query('select pos_cancel_sale($1)',[order.id]);
+  equal((await db.query('select points from customers where id=$1',[member.customer.id])).rows[0].points,50);
+  await close(a,memberShift.id,0);
+  const concurrent=await open(a,0,19.75),before=await summary(a,concurrent.id),transferKey=randomUUID();
+  const partner=await connection('authenticated',ids.cashier);
+  const finalRace=await Promise.allSettled([
+    rpc(a,'pos_begin_drawer_handoff',transferKey,{register:concurrent.id,to:ids.barista,counted:0,expenses:before.expenses,preview:before}),
+    rpc(partner,'pos_checkout',randomUUID(),{...sale,register_id:concurrent.id}),
+  ]);
+  equal(finalRace.filter(result=>result.status==='fulfilled').length,1);
+  if(finalRace[0].status==='rejected') {
+    const changed=await summary(a,concurrent.id);
+    await rpc(a,'pos_begin_drawer_handoff',transferKey,{register:concurrent.id,to:ids.barista,counted:50,expenses:changed.expenses,preview:changed});
+  }
+  const pending=(await status(b)).handoff;
+  const finalAccepted=await rpc(b,'pos_accept_drawer_handoff',randomUUID(),{handoff:pending.id,counted:pending.delivered,note:''});
+  equal(Number(finalAccepted.register.initial_balance),finalRace[0].status==='fulfilled'?0:50);
+  await close(b,finalAccepted.register.id,pending.delivered);
+  console.log(`PASS ${checks} single-drawer/rate/handoff/enrollment assertions; no hosted data`);
+  return checks;
+}

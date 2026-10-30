@@ -1,43 +1,82 @@
 import { create } from 'zustand';
 
+export interface CartExtra {
+  id?: string;
+  phase?: string;
+  name: string;
+  price: number;
+}
+
 export interface Product {
   id: string;
   name: string;
   price: number;
   category: string;
   image_url?: string;
-  stock: number;
-  displayExtras?: { name: string; price: number }[]; // Para guardar los extras seleccionados
+  basePrice?: number;
+  displayExtras?: CartExtra[];
+  note?: string;
+  customizable?: boolean;
+  wizard_steps?: string[];
 }
 
 export interface CartItem {
-  id: string; // Este ID será único para cada combinación (ej: Americano + Vainilla)
+  id: string;
   product: Product;
   quantity: number;
 }
 
 interface CartStore {
   items: CartItem[];
+  orderType: string;
+  orderNote: string;
+  customerId: string | null;
+  setOrderType: (value: string) => void;
+  setOrderNote: (value: string) => void;
+  setCustomerId: (value: string | null) => void;
   addItem: (product: Product) => void;
   removeItem: (itemId: string) => void;
+  replaceItem: (itemId: string, product: Product) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   clearCart: () => void;
   getTotal: () => number;
 }
 
-export const useCartStore = create<CartStore>((set, get) => ({
+const cents = (amount: number) => Math.round(amount * 100);
+
+function samePreparation(left: Product, right: Product) {
+  const extrasKey = (product: Product) => JSON.stringify(
+    (product.displayExtras ?? []).map(extra =>
+      JSON.stringify([extra.id ?? null, extra.phase ?? null, extra.name, cents(extra.price)])
+    ).sort()
+  );
+  return left.id === right.id && cents(left.price) === cents(right.price)
+    && (left.note ?? '').trim() === (right.note ?? '').trim()
+    && extrasKey(left) === extrasKey(right);
+}
+
+export function customizeProduct(product: Product, extras: CartExtra[], note: string): Product {
+  const basePrice = product.basePrice ?? Number(product.price)
+    - (product.displayExtras ?? []).reduce((sum, extra) => sum + Number(extra.price), 0);
+  return {
+    ...product,
+    basePrice,
+    price: (cents(basePrice) + extras.reduce((sum, extra) => sum + cents(extra.price), 0)) / 100,
+    displayExtras: extras.map(extra => ({ ...extra })),
+    note,
+  };
+}
+
+export const createCartStore = () => create<CartStore>((set, get) => ({
   items: [],
+  orderType: 'En Local', orderNote: '', customerId: null,
+  setOrderType: orderType => set({ orderType }),
+  setOrderNote: orderNote => set({ orderNote }),
+  setCustomerId: customerId => set({ customerId }),
   
   addItem: (product) => {
     set((state) => {
-      // 1. Creamos una "firma" única basada en los extras para saber si es el mismo pedido exacto
-      const extrasKey = product.displayExtras?.map(e => e.name).sort().join(',') || '';
-      
-      // 2. Buscamos si ya existe ese producto CON ESOS MISMOS EXTRAS
-      const existing = state.items.find(i => 
-        i.product.id === product.id && 
-        (i.product.displayExtras?.map(e => e.name).sort().join(',') || '') === extrasKey
-      );
+      const existing = state.items.find(item => samePreparation(item.product, product));
 
       if (existing) {
         return { 
@@ -48,7 +87,6 @@ export const useCartStore = create<CartStore>((set, get) => ({
         };
       }
 
-      // 3. Si es una combinación nueva, lo agregamos como un ítem único
       return { 
         items: [
           ...state.items, 
@@ -62,16 +100,23 @@ export const useCartStore = create<CartStore>((set, get) => ({
     items: state.items.filter(i => i.id !== itemId) 
   })),
 
+  // Editing replaces only the chosen line and preserves its quantity.
+  replaceItem: (itemId, product) => set(state => ({
+    items: state.items.map(item => item.id === itemId ? { ...item, product } : item),
+  })),
+
   updateQuantity: (itemId, qty) => set((state) => ({
-    items: state.items.map(i => i.id === itemId 
-      ? { ...i, quantity: Math.max(1, qty) } 
+    items: state.items.map(i => i.id === itemId && Number.isFinite(qty)
+      ? { ...i, quantity: Math.max(1, Math.floor(qty)) }
       : i
     )
   })),
 
-  clearCart: () => set({ items: [] }),
+  clearCart: () => set({ items: [], orderType: 'En Local', orderNote: '', customerId: null }),
 
   getTotal: () => get().items.reduce((acc, item) => 
-    acc + (item.product.price * item.quantity), 0
-  ),
+    acc + cents(item.product.price) * item.quantity, 0
+  ) / 100,
 }));
+
+export const useCartStore = createCartStore();

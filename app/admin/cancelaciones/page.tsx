@@ -1,48 +1,38 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { type Sale, errorMessage } from '@/lib/pos-types';
+
+import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { 
-  XCircle, Search, AlertTriangle, RefreshCw, 
-  Trash2, ShieldAlert, Loader2, CheckCircle2 
-} from 'lucide-react';
+import { useResource } from '@/lib/use-resource';
+import LoadFailure from '@/app/LoadFailure';
+import { reportDate } from '@/lib/reports';
+import { cancelLegacySale, cancellationNotice } from '@/lib/cancellation';
+import { XCircle, Search, RefreshCw, ShieldAlert, Loader2 } from 'lucide-react';
 
 export default function CancelacionesPage() {
-  const [orders, setOrders] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    // Traemos órdenes completadas para poder cancelarlas, y las ya canceladas para registro
-    const { data } = await supabase
-      .from('orders')
-      .select('*, order_items(*, products(name))')
-      .order('created_at', { ascending: false })
-      .limit(20);
-    setOrders(data || []);
-    setLoading(false);
-  };
+  const loadOrders = useCallback(async (signal: AbortSignal) => {
+    const { data, error } = await supabase.from('orders').select('*, order_items(*, products(name))')
+      .order('created_at', { ascending: false }).limit(20).abortSignal(signal);
+    if (error) throw error;
+    return (data || []) as Sale[];
+  }, []);
+  const { data: orders, loading, error: loadError, reload: fetchOrders } = useResource(loadOrders, []);
 
-  useEffect(() => { fetchOrders(); }, []);
 
   const handleCancelOrder = async (orderId: string) => {
-    if (!confirm('¿Estás seguro de cancelar esta orden? El dinero se restará de tus totales.')) return;
+    if (!confirm(cancellationNotice)) return;
     
     setActionLoading(orderId);
     try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: 'cancelled' })
-        .eq('id', orderId);
-
-      if (error) throw error;
-      
-      alert('Orden cancelada correctamente 🛡️');
+      await cancelLegacySale(supabase, orderId);
+      alert('Venta marcada como cancelada. No se ejecutó devolución de dinero.');
       fetchOrders();
-    } catch (err: any) {
-      alert('Error: ' + err.message);
+    } catch (err: unknown) {
+      alert('Error: ' + errorMessage(err));
     } finally {
       setActionLoading(null);
     }
@@ -53,20 +43,21 @@ export default function CancelacionesPage() {
     o.total.toString().includes(searchTerm)
   );
 
+  if (loadError) return <LoadFailure message={loadError} retry={fetchOrders} />;
   if (loading) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="animate-spin text-red-500 w-12 h-12" /></div>;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Auditoría y Cancelaciones</h2>
-          <p className="text-red-500 text-xs font-black uppercase tracking-[0.2em] mt-1 italic">Módulo de Seguridad</p>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Cancelaciones</h2>
+          <p className="text-red-500 text-xs font-black uppercase tracking-[0.2em] mt-1 italic">Últimas 20 ventas · Matamoros · Consulta Ventas para el historial completo</p>
         </div>
         <div className="relative w-full md:w-80">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input 
             type="text" 
-            placeholder="Buscar ID de ticket..." 
+            placeholder="Buscar identificador o importe"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 outline-none text-sm font-bold focus:ring-2 focus:ring-red-100 transition-all"
@@ -89,10 +80,10 @@ export default function CancelacionesPage() {
                     {isCancelled && <span className="bg-red-600 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase">Anulado</span>}
                   </div>
                   <h4 className="font-bold text-slate-800">
-                    {order.order_items?.map((i: any) => `${i.quantity}x ${i.products?.name}`).join(', ')}
+                    {order.order_items?.map((i) => `${i.quantity}x ${i.product_snapshot?.name || (Array.isArray(i.products) ? i.products[0]?.name : i.products?.name) || 'Producto'}`).join(', ')}
                   </h4>
                   <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">
-                    Realizado: {new Date(order.created_at).toLocaleString()}
+                    Realizado: {reportDate(order.created_at)}
                   </p>
                 </div>
               </div>
@@ -103,7 +94,7 @@ export default function CancelacionesPage() {
                   <p className="text-[10px] font-bold text-slate-400 uppercase">{order.payment_method}</p>
                 </div>
                 
-                {!isCancelled && (
+                {order.status === 'completed' && (
                   <button 
                     onClick={() => handleCancelOrder(order.id)}
                     disabled={actionLoading === order.id}
@@ -113,7 +104,7 @@ export default function CancelacionesPage() {
                   </button>
                 )}
                 {isCancelled && (
-                  <div className="px-6 py-3 text-red-300 font-black text-xs uppercase tracking-widest">Sin Acción</div>
+                  <div className="px-6 py-3 text-red-300 font-black text-xs uppercase tracking-widest">Ya cancelado</div>
                 )}
               </div>
             </div>
@@ -123,7 +114,7 @@ export default function CancelacionesPage() {
 
       {filteredOrders.length === 0 && (
         <div className="text-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
-          <p className="text-slate-400 font-bold uppercase tracking-[0.2em]">No se encontraron tickets para auditar</p>
+          <p className="text-slate-400 font-bold uppercase tracking-[0.2em]">No hay ventas que coincidan.</p>
         </div>
       )}
     </div>

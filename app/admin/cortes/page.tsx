@@ -1,29 +1,38 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import { 
-  Receipt, Calculator, Wallet, TrendingUp, TrendingDown, 
-  CreditCard, ShoppingBag, User, AlertCircle, Loader2, History,
-  FileText, ChevronRight
-} from 'lucide-react';
+import { type ShiftDraft } from '@/lib/pos-types';
+
+import { useCallback, useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useResource } from '@/lib/use-resource';
+import LoadFailure from '@/app/LoadFailure';
+import {loadSavedShift,printSavedShift} from '@/lib/shift-printing';
+import {openPrintWindow} from '@/lib/printing';
+import { loadReport, reportParams, reportQuery, reportDate, reportMoney, reportPeriod, type ShiftReport } from '@/lib/reports';
+import { ReportFilters, ReportPagination } from '../ReportControls';
+import { loadShiftSummary, type ShiftSummary } from '@/lib/shift-state';
+import { Receipt, CreditCard, User, AlertCircle, Loader2, History, FileText } from 'lucide-react';
 
 export default function CortesPage() {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<ShiftSummary | null>(null);
   
   // Estados del Turno Activo
   const [shiftActive, setShiftActive] = useState(false);
-  const [shiftDetails, setShiftDetails] = useState<any>(null);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [currentUser, setCurrentUser] = useState('Barista');
+  const [shiftDetails, setShiftDetails] = useState<ShiftDraft | null>(null);
 
   // Estado del Historial de Cortes
-  const [pastShifts, setPastShifts] = useState<any[]>([]);
+  const [query, setQuery] = useState(reportQuery('all'));
+  const loadHistory = useCallback((signal: AbortSignal) => loadReport<ShiftReport>(supabase, 'pos_shift_history', reportParams(query), signal), [query]);
+  const { data: history, loading: historyLoading, error: historyError, reload: reloadHistory } = useResource<ShiftReport | null>(loadHistory, null);
+  const pastShifts = history?.shifts ?? [];
+  const reprint = async(id:string) => {
+    const target=openPrintWindow();if(!target)return;
+    try{const report=await loadSavedShift(supabase,id);printSavedShift(target,report,true);}
+    catch(error){target.close();alert(error instanceof Error?error.message:'No se pudo recuperar el corte guardado.');}
+  };
 
   useEffect(() => {
     const fetchAllData = async () => {
@@ -32,37 +41,21 @@ export default function CortesPage() {
         
         // 1. Obtener usuario actual
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) setCurrentUser(user.email?.split('@')[0] || 'Barista');
 
-        // 2. Cargar historial de turnos pasados desde Supabase
-        const { data: shiftsData, error: shiftsError } = await supabase
-          .from('shifts')
-          .select('*')
-          .order('created_at', { ascending: false });
-        
-        if (!shiftsError && shiftsData) {
-          setPastShifts(shiftsData);
-        }
-
-        // 3. Cargar turno activo (en vivo) desde memoria
-        const savedShift = localStorage.getItem('mi_cafe_shift');
-        if (savedShift) {
-          const parsedShift = JSON.parse(savedShift);
-          setShiftDetails(parsedShift);
+        if (!user) throw new Error('Sesión no disponible');
+        const { data: activeRegister, error: registerError } = await supabase.from('cash_registers')
+          .select('id,opened_at,initial_balance,exchange_rate').eq('opened_by',user.id).eq('status','open').maybeSingle();
+        if (registerError) throw registerError;
+        if (activeRegister) {
+          const verified = await loadShiftSummary(supabase, activeRegister.id);
+          setSummary(verified);
+          setShiftDetails({ startingCash:Number(activeRegister.initial_balance), shiftStartTime:activeRegister.opened_at,
+            expenses: verified.expenses });
           setShiftActive(true);
-
-          const { data: ordersData } = await supabase
-            .from('orders')
-            .select(`id, created_at, total, payment_method, status, order_items (quantity, products(name))`)
-            .gte('created_at', parsedShift.shiftStartTime)
-            .neq('status', 'canceled') // Excluir canceladas del conteo
-            .order('created_at', { ascending: false });
-
-          setOrders(ordersData || []);
         }
 
       } catch (error) {
-        console.error("Error cargando página de cortes:", error);
+        setLoadError(error instanceof Error ? error.message : 'No se pudieron consultar los cortes.');
       } finally {
         setLoading(false);
       }
@@ -79,22 +72,15 @@ export default function CortesPage() {
     );
   }
 
+  if (loadError) return <div role="alert" className="p-8 text-red-600">{loadError} <button className="underline" onClick={() => window.location.reload()}>Reintentar conexión</button></div>;
+
   // MATEMÁTICAS DEL TURNO ACTIVO
   const startingCash = shiftDetails?.startingCash || 0;
   const expensesList = shiftDetails?.expenses || [];
-  const totalExpenses = expensesList.reduce((sum: number, exp: any) => sum + Number(exp.amount), 0);
-  const totalSales = orders.reduce((sum, o) => sum + Number(o.total), 0);
-  const totalOperations = orders.length;
-  const totalItemsSold = orders.reduce((sum, o) => sum + (o.order_items?.reduce((itemSum: number, i: any) => itemSum + i.quantity, 0) || 0), 0);
-
-  const salesByMethod = orders.reduce((acc: any, o) => {
-    const method = o.payment_method || 'desconocido';
-    acc[method] = (acc[method] || 0) + Number(o.total);
-    return acc;
-  }, {});
-
-  const cashSales = (salesByMethod['efectivo'] || 0); 
-  const expectedCash = startingCash + cashSales - totalExpenses;
+  const totalExpenses = expensesList.reduce((sum, exp) => sum + Number(exp.amount), 0);
+  const totalSales = summary?.total_sales ?? 0;
+  const salesByMethod = summary?.payments ?? {};
+  const expectedCash = summary?.expected_cash ?? 0;
 
   return (
     <div className="max-w-[1100px] mx-auto space-y-12 animate-in fade-in duration-500 pb-32 pt-6">
@@ -103,15 +89,16 @@ export default function CortesPage() {
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div className="space-y-1">
           <h2 className="text-4xl font-semibold text-[#1d1d1f] tracking-tight">Cortes de Caja</h2>
-          <p className="text-[#86868b] text-sm font-bold uppercase tracking-widest mt-1">Arqueo y registros históricos</p>
+          <p className="text-[#86868b] text-sm font-bold uppercase tracking-widest mt-1">Turno actual e historial de cierres</p>
         </div>
+        <button className="rounded-xl border bg-white p-3" onClick={() => window.location.reload()}>Actualizar página</button>
       </header>
 
       {/* 🟢 SECCIÓN 1: TURNO EN VIVO */}
       <section className="space-y-6">
         <div className="flex items-center gap-3 px-2">
           <div className={`w-2.5 h-2.5 rounded-full ${shiftActive ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></div>
-          <h3 className="text-lg font-bold text-[#1d1d1f]">Turno en Curso</h3>
+          <h3 className="text-lg font-bold text-[#1d1d1f]">Turno de esta cuenta</h3>
         </div>
 
         {!shiftActive ? (
@@ -119,9 +106,9 @@ export default function CortesPage() {
             <div className="bg-slate-50 p-5 rounded-full mb-4">
               <AlertCircle size={32} className="text-slate-400" />
             </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Caja Cerrada</h3>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Sin turno propio abierto</h3>
             <p className="max-w-sm text-slate-500 text-sm font-medium">
-              Abre un turno desde el Punto de Venta para monitorear el desempeño y los ingresos en tiempo real.
+              Esta cuenta no tiene una caja abierta. El historial muestra los cortes de todos los cajeros.
             </p>
           </div>
         ) : (
@@ -133,7 +120,7 @@ export default function CortesPage() {
                   <h3 className="text-2xl font-black text-[#1d1d1f] tracking-tighter">${startingCash.toFixed(2)}</h3>
               </div>
               <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-slate-100/50 flex flex-col justify-between">
-                  <p className="text-[11px] font-bold text-[#0071e3] uppercase tracking-widest mb-1">Ventas Reales</p>
+                  <p className="text-[11px] font-bold text-[#0071e3] uppercase tracking-widest mb-1">Ventas completadas</p>
                   <h3 className="text-2xl font-black text-[#0071e3] tracking-tighter">${totalSales.toFixed(2)}</h3>
               </div>
               <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-slate-100/50 flex flex-col justify-between">
@@ -155,7 +142,7 @@ export default function CortesPage() {
                   </div>
                   <div className="space-y-3">
                      {Object.entries(salesByMethod).length > 0 ? (
-                        Object.entries(salesByMethod).map(([method, amount]: [string, any]) => (
+                        Object.entries(salesByMethod).map(([method, amount]) => (
                           <div key={method} className="flex justify-between items-center p-3 bg-[#f5f5f7] rounded-xl">
                              <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">{method}</span>
                              <span className="font-black text-slate-800">${amount.toFixed(2)}</span>
@@ -174,7 +161,7 @@ export default function CortesPage() {
                   </div>
                   <div className="space-y-2">
                      {expensesList.length > 0 ? (
-                        expensesList.map((exp: any, idx: number) => (
+                        expensesList.map((exp, idx) => (
                           <div key={idx} className="flex justify-between items-center p-3 border border-slate-100 rounded-xl">
                              <span className="text-sm font-semibold text-slate-600">{exp.desc}</span>
                              <span className="text-sm font-black text-red-500">-${Number(exp.amount).toFixed(2)}</span>
@@ -192,6 +179,10 @@ export default function CortesPage() {
 
       {/* 🟢 SECCIÓN 2: HISTORIAL DE CORTES (CORTES Z) */}
       <section className="space-y-6 pt-6">
+        <ReportFilters query={query} onChange={setQuery} />
+        {historyError ? <LoadFailure message={historyError} retry={reloadHistory} /> : historyLoading ? <p role="status">Verificando cortes…</p> : history && <>
+        <p className="text-sm text-slate-500">{reportPeriod(query, history.day)} · Fecha de cierre en Matamoros. Actualizado {reportDate(history.captured_at)}.</p>
+        <p className="text-sm">{history.summary.rows} cortes · Ventas de turnos cerrados {reportMoney(history.summary.sales)} · Retiros {reportMoney(history.summary.expenses)} · Diferencia neta {reportMoney(history.summary.difference)}</p>
         <div className="flex items-center gap-3 px-2">
           <History size={22} className="text-[#1d1d1f]" />
           <h3 className="text-xl font-bold text-[#1d1d1f]">Historial de Cortes (Z)</h3>
@@ -205,16 +196,16 @@ export default function CortesPage() {
                   
                   <div className="flex items-center gap-5 w-full md:w-auto">
                     <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 border border-slate-100 group-hover:bg-white group-hover:shadow-md transition-all">
-                      <FileText size={20} strokeWidth={1.5} />
+                      <button type="button" aria-label={`Reimprimir corte de ${shift.user_name}`} onClick={()=>void reprint(shift.id)}><FileText size={20} strokeWidth={1.5} /> Reimprimir Z</button>
                     </div>
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[11px] font-black text-slate-800 uppercase tracking-widest">
-                          {new Date(shift.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          {reportDate(shift.created_at, { day: '2-digit', month: 'short', year: 'numeric' })}
                         </span>
                         <span className="w-1 h-1 rounded-full bg-slate-300"></span>
                         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                          Cierre: {new Date(shift.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          Cierre: {reportDate(shift.created_at, { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-600">
@@ -238,9 +229,7 @@ export default function CortesPage() {
                       </span>
                     </div>
 
-                    <button className="p-2 text-slate-300 group-hover:text-[#0071e3] transition-colors bg-white border border-transparent group-hover:border-blue-100 rounded-full shadow-sm opacity-0 group-hover:opacity-100">
-                      <ChevronRight size={18} />
-                    </button>
+
                   </div>
 
                 </div>
@@ -254,6 +243,8 @@ export default function CortesPage() {
             </div>
           )}
         </div>
+        <ReportPagination page={history.page} pageSize={history.page_size} rows={history.summary.rows} onPage={page => setQuery({ ...query, page, asOf: history.as_of })} />
+        </>}
       </section>
 
     </div>
