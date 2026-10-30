@@ -98,15 +98,13 @@ export async function stagingTests(config) {
     denied(await cash.rpc('decrement_stock', { row_id: randomUUID(), amount: -5 }), 'Legacy stock RPC denied');
     denied(await anon.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 0, p_rate: 20 }), 'Anonymous shift RPC denied');
 
-    const product = randomUUID(), supply = randomUUID(), extra = randomUUID();
-    ok(await admin.from('products').insert({ id: product, name: `Café ${prefix}`, price: 50, stock: 10, is_active: true, customizable: true, wizard_steps: ['Tamaño'] }), 'Admin product insert');
-    ok(await admin.from('supplies').insert({ id: supply, name: `Leche ${prefix}`, unit: 'ml', current_stock: 1000 }), 'Admin supply insert');
-    ok(await admin.from('product_recipes').insert({ product_id: product, supply_id: supply, quantity_required: 125 }), 'Admin recipe insert');
+    const product = randomUUID(), extra = randomUUID();
+    ok(await admin.from('products').insert({ id: product, name: `Café ${prefix}`, price: 50, is_active: true, customizable: true, wizard_steps: ['Tamaño'] }), 'Admin product insert');
     ok(await admin.from('extras').insert({ id: extra, name: `Grande ${prefix}`, price: 10, phase: 'Tamaño' }), 'Admin extra insert');
     const catalog = ok(await cash.from('products').select('id,name,price').eq('id', product), 'Staff catalog read'); assert.equal(catalog.length, 1);
     const attemptedStock = await cash.from('products').update({ stock: 999 }).eq('id', product).select('id');
     assert.ok(attemptedStock.error || attemptedStock.data.length === 0);
-    assert.equal(ok(await admin.from('products').select('stock').eq('id', product).single(), 'Stock remains authoritative').stock, 10);
+    assert.equal(ok(await admin.from('products').select('stock').eq('id', product).single(), 'Legacy balance unchanged').stock, 10);
     pass('Real RLS catalog reads, admin writes and staff stock-write denial');
 
     const customer = ok(await cash.rpc('pos_register_customer', { p_name: `Cliente ${prefix}`, p_phone: null, p_birth_date: null, p_promos: false }), 'Customer RPC JSON');
@@ -126,10 +124,9 @@ export async function stagingTests(config) {
     assert.ok(receipt.id && !Array.isArray(receipt)); assert.equal(receipt.id, repeat.id); assert.equal(receipt.total, 120);
     assert.equal(receipt.items[0].product.price, 60); assert.equal(receipt.change_mxn, 0);
     denied(await cash.rpc('pos_checkout', { p_request: request, p_payload: { ...payload, order_note: 'Changed' } }), 'Changed replay payload rejected');
-    assert.equal(ok(await admin.from('products').select('stock').eq('id', product).single(), 'Read remaining stock').stock, 8);
-    assert.equal(Number(ok(await admin.from('supplies').select('current_stock').eq('id', supply).single(), 'Read ingredient stock').current_stock), 750);
+    assert.equal(ok(await admin.from('products').select('stock').eq('id', product).single(), 'Legacy balance still unchanged').stock, 10);
     assert.equal(ok(await cash.from('customers').select('points').eq('id', customer.id).single(), 'Read loyalty').points, 62);
-    pass('Scalar JSON RPCs, server prices, tender, atomic stock/loyalty and concurrent replay');
+    pass('Scalar JSON RPCs, server prices, tender, atomic sale/loyalty and concurrent replay');
 
     const own = ok(await cash.from('orders').select('id,order_items(quantity,product_snapshot,products(name))').eq('id', receipt.id), 'Own receipt join');
     assert.equal(own.length, 1); assert.equal(own[0].order_items[0].products.name, `Café ${prefix}`);

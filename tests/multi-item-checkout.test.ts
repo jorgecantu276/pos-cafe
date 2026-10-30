@@ -1,5 +1,6 @@
 import * as deadline from '../lib/request-deadline';
 import * as reprint from '../lib/receipt-reprint';
+import ProductPhoto from '../components/ProductPhoto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -72,7 +73,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
   const source=readFileSync(new URL('../app/register/Register.tsx',import.meta.url),'utf8');
   const compiled=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   const exports:{default?:ComponentType<{appearance:'workspace'}>}={},nodeRequire=createRequire(import.meta.url);
-  new Function('require','exports',compiled)((name:string)=>imports[name]??nodeRequire(name),exports);
+  new Function('require','exports',compiled)((name:string)=>name === '@/components/ProductPhoto' ? {default:ProductPhoto,__esModule:true} : imports[name]??nodeRequire(name),exports);
   const root=createRoot(dom.window.document.getElementById('root')!);
   const click=async(element:Element)=>{await act(async()=>{element.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));});};
   const button=(label:string,scope:ParentNode=dom.window.document)=>{

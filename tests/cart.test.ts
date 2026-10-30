@@ -2,7 +2,7 @@ import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { customizeProduct, useCartStore, type Product } from '../store/useCartStore';
 
-const coffee: Product = { id: 'coffee', name: 'Café', price: 50, category: 'Bebidas', stock: 10 };
+const coffee: Product = { id: 'coffee', name: 'Café', price: 50, category: 'Bebidas'};
 beforeEach(() => useCartStore.getState().clearCart());
 
 test('same modifiers with conflicting preparation notes remain separate', () => {

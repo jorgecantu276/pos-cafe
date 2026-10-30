@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
-// All writes target the owned synthetic restore supplied by inventoryClone.
-export async function reportHttpCases({db,admin,cashier,anonymous,menu,ids,register,pass,call}) {
+// All writes target the owned synthetic restore supplied by reportClone.
+export async function reportHttpCases({db,admin,cashier,anonymous,menu,ids,register,pass}) {
   const ok=r=>{assert.ifError(r.error&&Error(r.error.message));return r.data;};
-  for(const client of [cashier,anonymous])for(const fn of ['pos_sales_report','pos_shift_history','pos_cost_report','pos_customer_report'])assert.ok((await client.rpc(fn)).error);
-  pass('All four report RPCs deny anonymous and cashier access over real local Auth/PostgREST');
-  await call('pos_adjust_inventory',{kind:'product',id:ids.Tortuguitas,operation:'entrada',quantity:40,reason:'Existencias sintéticas para venta de menú completo'});
+  for(const client of [cashier,anonymous])for(const fn of ['pos_sales_report','pos_shift_history','pos_customer_report'])assert.ok((await client.rpc(fn)).error);
+  pass('All three report RPCs deny anonymous and cashier access over real local Auth/PostgREST');
   const total=menu.products.reduce((sum,p)=>sum+Math.round(p.price_mxn*100),0)/100;
   const payload={register_id:register.id,items:menu.products.map(p=>({product_id:ids[p.name],quantity:1,extra_ids:[],note:''})),
     expected_total:total,payment_method:'tarjeta',tender_mxn:0,tender_usd:0,customer_id:null,order_type:'Para Llevar',order_note:'Prueba local de reportes: menú real completo'};
@@ -49,12 +48,6 @@ export async function reportHttpCases({db,admin,cashier,anonymous,menu,ids,regis
   await db.query("insert into shifts(created_at,opened_at,total_sales,total_expenses,difference,user_name) select '2025-02-12T18:00:00Z','2025-02-11T18:00:00Z',35,1.25,-0.10,'Prueba sintética de reportes' from generate_series(1,1103)");
   const shifts=ok(await admin.rpc('pos_shift_history',params));assert.deepEqual(shifts.summary,{rows:1103,sales:38605,expenses:1378.75,difference:-110.3});assert.equal(shifts.shifts.length,50);
   pass('Shift history reports 1,103 closings with complete sales/expense/difference totals by closing date');
-  const costs=ok(await admin.rpc('pos_cost_report'));
-  // This fixture has one base recipe with an unknown supply cost; it must never
-  // claim a zero ingredient cost or 100% margin.
-  assert.equal(costs.summary.rows,82);assert.equal(costs.summary.configured,0);assert.equal(costs.summary.incomplete,82);assert.equal(costs.summary.average,null);
-  assert.ok(costs.products.every(p=>p.margin===null&&p.total_cost===null));
-  pass('Real-menu cost report marks all 82 incomplete base costs as unknown and shows no invented profitability');
   const members=Array.from({length:1103},()=>randomUUID());
   await db.query("insert into customers(id,name,points,total_spent) select unnest($1::uuid[]),'Cliente sintético de reportes',42,9999",[members]);
   for(const [status,total] of [['completed',35.10],['completed',0.20],['cancelled',9999],['pending',9999]])await db.query("insert into orders(customer_id,subtotal,total,status,created_at) values($1,$2,$2,$3,'2025-02-14T18:00:00Z')",[members[0],total,status]);
@@ -63,5 +56,5 @@ export async function reportHttpCases({db,admin,cashier,anonymous,menu,ids,regis
   assert.equal(ok(await admin.rpc('pos_customer_report',{p_search:'Cliente sintético de reportes',p_page:22})).customers.length,3);
   pass('Customer ranking covers 1,103 members and sums completed orders, excluding canceled/pending spend without rewriting loyalty balances');
   return {range:'2025-02-12',completed:report.summary.completed,records:report.summary.rows,sales:report.summary.sales,
-    customers:customers.summary,allMenuReceipt:{id:receipt.id,total:receipt.total,presentations:82},shifts:shifts.summary,costs:costs.summary,searchFixture:{ticket:991100,product:search}};
+    customers:customers.summary,allMenuReceipt:{id:receipt.id,total:receipt.total,presentations:82},shifts:shifts.summary,searchFixture:{ticket:991100,product:search}};
 }

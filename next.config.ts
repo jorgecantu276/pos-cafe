@@ -3,6 +3,7 @@ import type { NextConfig } from 'next';
 const nextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: __dirname,
+  ...(process.env.POS_RELEASE_BUILD === '1' ? { output: 'standalone' as const } : {}),
   async headers() {
     return [{ source: '/sw.js', headers: [
       { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },

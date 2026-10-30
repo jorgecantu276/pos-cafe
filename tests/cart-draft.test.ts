@@ -4,7 +4,7 @@ import { bindCartDraft, cartDraftKey, readCartDraft } from '../lib/cart-draft';
 import { createCartStore, customizeProduct, useCartStore } from '../store/useCartStore';
 import type { CatalogProduct, ExtraRow } from '../lib/pos-types';
 
-const coffee: CatalogProduct = { id:'coffee',name:'Café',price:50,category:'Bebidas',stock:8,is_active:true,customizable:true,wizard_steps:['Leche'] };
+const coffee: CatalogProduct = { id:'coffee',name:'Café',price:50,category:'Bebidas',is_active:true,customizable:true,wizard_steps:['Leche'] };
 const milk: ExtraRow = { id:'milk',name:'Avena',price:10,phase:'Leche',active:true };
 function fixture() {
   const values = new Map<string,string>(), errors: string[] = [];

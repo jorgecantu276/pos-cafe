@@ -1,3 +1,5 @@
+> Updated scope: inventory, recipes, supplies, costing and CSV were removed by the user on October 30. Older inventory verification below is historical and does not describe this candidate. Use retained migrations 001, 002 and 004 and the current Windows checks.
+
 # October 30 review fixes
 
 The reviewed baseline was `feea91f`. These changes address reproduced software

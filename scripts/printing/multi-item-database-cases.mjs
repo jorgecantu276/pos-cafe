@@ -14,7 +14,7 @@ export async function multiItemDatabaseCases(db,connection,ids) {
   const open=(await db.query("select id from cash_registers where opened_by=$1 and status='open'",[ids.cashier])).rows[0]
     ??(await staff.query('select pos_open_shift($1,0,20) result',[randomUUID()])).rows[0].result;
   for(const product of fixture.products)await db.query(
-    'insert into products(id,name,price,stock,category,is_active,customizable,wizard_steps,inventory_mode) values($1,$2,$3,$4,$5,true,true,$6,\'product\')',
+    'insert into products(id,name,price,stock,category,is_active,customizable,wizard_steps) values($1,$2,$3,$4,$5,true,true,$6)',
     [product.id,product.name,product.price,product.stock,product.category,product.wizard_steps]);
   for(const extra of fixture.extras)await db.query('insert into extras(id,name,price,phase,active) values($1,$2,$3,$4,true)',[extra.id,extra.name,extra.price,extra.phase]);
   const captured=process.env.POS_MULTI_ITEM_EVIDENCE?JSON.parse(await readFile(process.env.POS_MULTI_ITEM_EVIDENCE,'utf8')):null;
@@ -29,7 +29,7 @@ export async function multiItemDatabaseCases(db,connection,ids) {
   equal(receipt.items.map(item=>item.product.note),fixture.expectedLines.map(line=>line.note));
   equal(receipt.items.map(item=>item.product.displayExtras.map(extra=>extra.id)),fixture.expectedLines.map(line=>line.extra_ids));
   equal(receipt.order_note,payload.order_note);equal(receipt.order_type,payload.order_type);
-  equal((await db.query('select stock from products where id=any($1::uuid[]) order by id',[fixture.products.map(p=>p.id)])).rows.map(row=>row.stock),[17,19]);
+  equal((await db.query('select stock from products where id=any($1::uuid[]) order by id',[fixture.products.map(p=>p.id)])).rows.map(row=>row.stock),[20,20]);
   equal((await db.query('select quantity,unit_price::float8 price from order_items where order_id=$1 order by product_snapshot->>\'note\'',[receipt.id])).rows,
     [{quantity:1,price:95},{quantity:2,price:110},{quantity:1,price:110}]);
   const stock=async()=>JSON.stringify((await db.query('select id,stock from products where id=any($1::uuid[]) order by id',[fixture.products.map(p=>p.id)])).rows);

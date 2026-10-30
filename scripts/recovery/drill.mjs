@@ -68,7 +68,7 @@ try {
   pass('A sale saved before backup remains recoverable under its original actor/request');
   // New writes occur ONLY on the restored disposable clone, not source staging.
   const product = randomUUID();
-  ok(await client.from('products').insert({ id: product, name: `Recuperación ${runId.slice(0, 8)}`, price: 35, stock: 3, is_active: true, customizable: false }), 'Recovery product');
+  ok(await client.from('products').insert({ id: product, name: `Recuperación ${runId.slice(0, 8)}`, price: 35, is_active: true, customizable: false }), 'Recovery product');
   const current = ok(await client.from('cash_registers').select('id').eq('opened_by', admin.id).eq('status', 'open').maybeSingle(), 'Restored opening');
   const register = current || ok(await client.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 0, p_rate: 20 }), 'Recovery opening');
   const request = randomUUID(), payload = { register_id: register.id, items: [{ product_id: product, quantity: 1, extra_ids: [], note: '' }], expected_total: 35,
@@ -84,9 +84,9 @@ try {
   });
   pass('Bad readiness and incompatible legacy releases rejected without changing active app');
   pass('Actual production process failure rolls back to retained compatible build');
-  assert.equal(ok(await client.from('products').select('stock').eq('id', product).single(), 'Post-rollback stock').stock, 2);
+  assert.equal(ok(await client.from('products').select('stock').eq('id', product).single(), 'Post-rollback stock').stock, 10);
   await assert.rejects(async () => allowDatabaseRewind(backup.payload.baseline, await databaseFingerprint(db)), /rewind refused/);
-  pass('Post-backup database rewind refused; sale, stock and idempotency preserved');
+  pass('Post-backup database rewind refused; sale and idempotency preserved; legacy balance unchanged');
   pass('Restored ticket sequence advances beyond pre-backup sales');
   const sourceDb = new Client({ connectionString: config.database }); await sourceDb.connect();
   try {

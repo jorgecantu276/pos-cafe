@@ -6,6 +6,7 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "build:verify": "node scripts/verify-build.mjs",
+    "release:windows": "node scripts/windows/package-release.mjs",
     "start": "next start",
     "lint": "eslint --max-warnings 0",
     "typecheck": "tsc --noEmit --incremental false",
@@ -20,7 +21,6 @@
     "test:lifecycle": "node scripts/lifecycle/drill.mjs",
     "test:cashiers": "node scripts/cashiers/drill.mjs",
     "test:shift-http": "node scripts/shift/http-drill.mjs",
-    "test:inventory-http": "node scripts/inventory/http-drill.mjs",
     "test:reports-http": "node scripts/reports/http-drill.mjs"
   },
   "dependencies": {

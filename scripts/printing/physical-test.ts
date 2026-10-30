@@ -36,12 +36,12 @@ else {
   const faultTickets: Record<string,string> = { 'bluetooth-offline':'PRUEBA-BT', 'usb-offline':'PRUEBA-USB', 'paper-out':'PRUEBA-PAPEL', 'long-notes':'PRUEBA-NOTAS' };
   const ticket = testCase === 'baseline' ? 'PRUEBA-001' : testCase.startsWith('repeat-') ? `PRUEBA-0${testCase.slice(-2)}` : faultTickets[testCase];
   order = { id: randomUUID(), ticket_number: ticket, status: 'completed', total: 220,
-    items: [{ id: 'iced-test', quantity: 2, product: { id: 'synthetic-iced', name: 'Iced coffee caramelo', price: 110, category: 'Bebidas', stock: 0,
+    items: [{ id: 'iced-test', quantity: 2, product: { id: 'synthetic-iced', name: 'Iced coffee caramelo', price: 110, category: 'Bebidas',
       displayExtras: [{ name: 'Leche de avena', price: 15 }], note: 'NO PREPARAR. PRUEBA FÍSICA; SIN HIELO.' } }],
     customer_name: 'PRUEBA LOCAL — NO CLIENTE', order_type: 'Para Llevar', order_note: 'PRUEBA DE IMPRESORAS — NO ES UNA VENTA NI UN COBRO',
     created_at: new Date().toISOString(), payment_method: 'efectivo', tender_mxn: 250, tender_usd: 0, exchange_rate: 20, change_mxn: 30 };
   if (testCase === 'long-notes') order.items = ['Iced coffee caramelo', 'Iced coffee vainilla'].map((name,index) => ({
-    id: `long-${index}`,quantity:1,product:{id:`synthetic-${index}`,name,price:110,category:'Bebidas',stock:0,
+    id: `long-${index}`,quantity:1,product:{id:`synthetic-${index}`,name,price:110,category:'Bebidas',
       displayExtras:[{name:'Leche de avena',price:15}],
       note:`PRUEBA; NO PREPARAR. ${index ? 'SEGUNDA BEBIDA' : 'PRIMERA BEBIDA'}. ` + 'Sin hielo y sin azúcar. '.repeat(12) + `FIN-NOTA-${index+1}` }
   }));

@@ -28,7 +28,7 @@ function checkoutHarness(storage=new Map<string,string>(), online=true, retire=(
   const alerts:string[]=[];
   let settle!: (value: unknown)=>void;
   const response=new Promise(resolve=>settle=resolve);
-  const item:CartItem={id:'line',quantity:1,product:{id:'coffee',name:'Coffee',price:60,category:'Bebidas',stock:10}};
+  const item:CartItem={id:'line',quantity:1,product:{id:'coffee',name:'Coffee',price:60,category:'Bebidas'}};
   const checkoutKey={current:'test-user'}, binding={current:{requestId:()=>crypto.randomUUID(),complete:retire}};
   const fn=handler('processCheckout',{
     checkoutInFlight:{current:false},checkoutReviewKey:checkoutKey,
@@ -136,7 +136,7 @@ test('discard never clears a request until the database confirms abandonment',as
 });
 test('opening a customization edit leaves the original line intact until confirmation',()=>{
   useCartStore.getState().clearCart();
-  useCartStore.getState().addItem(customizeProduct({id:'coffee',name:'Coffee',price:50,category:'Bebidas',stock:10},[{name:'Vainilla',price:10}],''));
+  useCartStore.getState().addItem(customizeProduct({id:'coffee',name:'Coffee',price:50,category:'Bebidas'},[{name:'Vainilla',price:10}],''));
   const original=useCartStore.getState().items[0];
   handler('handleEditItem',{
     buildWizardSteps:()=>[{}],setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},setEditingItemId:()=>{},setDynamicSteps:()=>{},setCustomizationStep:()=>{},
@@ -147,7 +147,7 @@ test('opening a customization edit leaves the original line intact until confirm
 test('catalog name/price editing cannot reset stock consumed since the editor loaded',async()=>{
   let payload:Record<string,unknown>={};
   await handler('handleSave',{
-    activeTab:'items',editingId:'product',formData:{name:'Café',price:'55',category:'Bebidas',stock:10,customizable:true,image_url:'',wizard_steps:[]},
+    activeTab:'items',editingId:'product',formData:{name:'Café',price:'55',category:'Bebidas',customizable:true,image_url:'',wizard_steps:[]},
     supabase:{from:()=>({update:(v:Record<string,unknown>)=>{payload=v;return {eq:async()=>({error:null})};}})},
     setShowForm:()=>{},setEditingId:()=>{},setFormData:()=>{},initialFormState:{},fetchData:()=>{},alert:(message:string)=>assert.fail(message),
   },'../app/admin/productos/page.tsx')({preventDefault:()=>{}});

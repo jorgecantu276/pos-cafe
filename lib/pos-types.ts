@@ -6,7 +6,6 @@ export interface ProductRow {
   id: string;
   name: string;
   price: number;
-  stock: number | null;
   category: string | null;
   image_url: string | null;
   is_active: boolean | null;
@@ -39,15 +38,6 @@ export interface LoginProfile {
 export interface StaffProfile extends LoginProfile {
   role: string | null;
   is_active: boolean;
-}
-export interface Supply {
-  id: string;
-  name: string;
-  unit: string;
-  current_stock: number | null;
-  min_stock: number | null;
-  cost_per_unit: number | null;
-  is_active?: boolean;
 }
 export interface SaleItem {
   product_id?: string | null;
@@ -88,14 +78,6 @@ export interface Coupon {
   expiry_date: string | null;
   active: boolean | null;
 }
-export interface CostProduct {
-  id: string;
-  name: string;
-  price: number;
-  category: string | null;
-  totalCost: number;
-  margin: number;
-}
 export interface WizardStep {
   id: string;
   title: string;
@@ -105,7 +87,7 @@ export interface WizardStep {
 export type CatalogProduct = Product & { is_active: boolean };
 
 export function catalogProduct(row: ProductRow): CatalogProduct {
-  return { ...row, stock: row.stock ?? 0, category: row.category ?? '',
+  return { ...row, category: row.category ?? '',
     image_url: row.image_url ?? undefined, is_active: row.is_active === true,
     customizable: row.customizable === true, wizard_steps: row.wizard_steps ?? [] };
 }

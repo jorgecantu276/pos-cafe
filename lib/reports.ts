@@ -14,12 +14,6 @@ export interface SalesReport extends ReportPage {
 export interface ShiftReport extends ReportPage {
   summary: { rows: number; sales: number; expenses: number; difference: number }; shifts: PastShift[];
 }
-export interface CostReport {
-  captured_at: string; page: number; page_size: number;
-  summary: { rows: number; configured: number; incomplete: number; average: number | null; low_margin: number };
-  top: string | null;
-  products: { id: string; name: string; price: number; category: string | null; total_cost: number | null; margin: number | null }[];
-}
 export interface CustomerReport {
   captured_at: string; page: number; page_size: number;
   summary: { rows: number; sales: number };

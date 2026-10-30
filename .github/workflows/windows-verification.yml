@@ -38,3 +38,12 @@ jobs:
       - run: npm audit --omit=dev
       - run: npm run build:verify
       - run: node scripts/printing/http-drill.mjs
+      - name: Build and exercise a portable Windows release with loopback-only config
+        shell: pwsh
+        run: |
+          $targetFile = Join-Path $env:RUNNER_TEMP 'pos-release-target.json'
+          $releaseFolder = Join-Path $env:RUNNER_TEMP 'pos-release-fixture'
+          @{ supabaseUrl = 'http://127.0.0.1:59999'; supabaseAnonKey = 'local-fixture-anon' } | ConvertTo-Json | Set-Content -LiteralPath $targetFile -Encoding utf8
+          npm run release:windows -- $targetFile $releaseFolder
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/windows/smoke-release.mjs $releaseFolder

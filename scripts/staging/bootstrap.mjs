@@ -9,7 +9,7 @@ import { root, work } from './runtime.mjs';
 
 export async function sourceFiles() {
   const snapshot = await readFile(path.join(root, 'supabase/schema.snapshot.json'), 'utf8');
-  const migration = (await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280003_inventory.sql','202610280004_reports.sql']
+  const migration = (await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql']
     .map(file => readFile(path.join(root, 'supabase/migrations', file), 'utf8')))).join('\n');
   return { snapshot, migration, hash: fingerprint(snapshot, migration) };
 }

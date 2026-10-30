@@ -13,10 +13,6 @@ export interface Product {
   price: number;
   category: string;
   image_url?: string;
-  stock: number;
-  inventory_mode?: 'product'|'recipe'|'both'|'untracked';
-  stock_product_id?: string|null;
-  stock_units?: number;
   basePrice?: number;
   displayExtras?: CartExtra[];
   note?: string;

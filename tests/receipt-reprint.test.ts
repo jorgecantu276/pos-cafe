@@ -17,7 +17,7 @@ const issuer = { legalName: 'EMISOR FICTICIO', rfc: 'AAA010101AAA', taxRegime: '
 const order: SavedOrder = { id: randomUUID(), ticket_number: 1234, status: 'completed', total: 80, customer_name: 'Ana & José',
   order_type: 'Para Llevar', order_note: 'Entregar juntos <script>unsafe</script>', created_at: '2026-10-30T17:00:00Z',
   payment_method: 'efectivo', tender_mxn: 100, tender_usd: 0, exchange_rate: 20, change_mxn: 20,
-  items: [{ id: 'line', quantity: 1, product: { id: 'coffee', name: 'Café', price: 80, stock: 0, category: '',
+  items: [{ id: 'line', quantity: 1, product: { id: 'coffee', name: 'Café', price: 80, category: '',
     displayExtras: [{ name: 'Avena', price: 15 }], note: 'Sin hielo' } }] };
 
 function fixture() {

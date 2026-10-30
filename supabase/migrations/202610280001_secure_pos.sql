@@ -23,10 +23,6 @@ do $$ begin
   if not exists (select 1 from public.profiles where role = 'admin' and is_active) then
     raise exception 'Preflight: an existing administrator profile is required';
   end if;
-  if exists(select 1 from public.products where stock is null or stock<0)
-    or exists(select 1 from public.supplies where current_stock is null or current_stock<0 or current_stock::text='NaN') then
-    raise exception 'Preflight: reconcile invalid inventory balances using actual counts before migration';
-  end if;
 end $$;
 
 alter table public.cash_registers add column request_id uuid unique;
@@ -37,7 +33,6 @@ alter table public.shifts add column cashier_id uuid references public.profiles(
 alter table public.orders add column request_id uuid;
 alter table public.orders add column request_payload jsonb;
 alter table public.orders add column receipt_snapshot jsonb;
-alter table public.orders add column stock_snapshot jsonb;
 alter table public.orders add column points_awarded integer;
 alter table public.orders add column tender_mxn numeric(10,2);
 alter table public.orders add column tender_usd numeric(10,2);
@@ -48,7 +43,6 @@ alter table public.orders add column cancelled_at timestamptz;
 create unique index orders_actor_request on public.orders(cashier_id,request_id) where request_id is not null;
 create index orders_register_status on public.orders(register_id,status);
 alter table public.order_items add column product_snapshot jsonb;
-alter table public.products alter column stock set default 0;
 
 -- No client receives direct writes to sales, stock RPCs, profiles or balances.
 do $$ declare t record; p record; begin
@@ -86,16 +80,23 @@ create policy profiles_read on public.profiles for select to authenticated
   using (cafe_private.is_admin() or (id=auth.uid() and is_active));
 
 do $$ declare n text; begin
-  foreach n in array array['categories','products','extras','modifier_groups','modifier_options','product_modifier_groups'] loop
+  foreach n in array array['categories','extras','modifier_groups','modifier_options','product_modifier_groups'] loop
     execute format('grant select,insert,update,delete on public.%I to authenticated',n);
     execute format('create policy staff_read on public.%I for select to authenticated using (cafe_private.is_staff())',n);
     execute format('create policy admin_write on public.%I for all to authenticated using (cafe_private.is_admin()) with check (cafe_private.is_admin())',n);
   end loop;
-  foreach n in array array['supplies','product_recipes','inventory_items','recipes','coupons'] loop
+  foreach n in array array['coupons'] loop
     execute format('grant select,insert,update,delete on public.%I to authenticated',n);
     execute format('create policy admin_only on public.%I for all to authenticated using (cafe_private.is_admin()) with check (cafe_private.is_admin())',n);
   end loop;
 end $$;
+grant select on public.products to authenticated;
+grant insert(name,price,category,category_id,description,image_url,is_active,customizable,wizard_steps),
+  update(name,price,category,category_id,description,image_url,is_active,customizable,wizard_steps) on public.products to authenticated;
+create policy products_read on public.products for select to authenticated using(cafe_private.is_staff());
+create policy products_create on public.products for insert to authenticated with check(cafe_private.is_admin());
+create policy products_edit on public.products for update to authenticated using(cafe_private.is_admin()) with check(cafe_private.is_admin());
+
 grant select on public.customers,public.orders,public.order_items,public.order_item_modifiers,public.cash_registers,public.shifts to authenticated;
 create policy customers_read on public.customers for select to authenticated using(cafe_private.is_staff());
 create policy orders_read on public.orders for select to authenticated using(cafe_private.is_admin() or (cafe_private.is_staff() and cashier_id=auth.uid()));
@@ -145,15 +146,15 @@ declare r public.cash_registers; begin
   return to_jsonb(r);
 end $$;
 
--- One statement/transaction: locks serialize register close, replay, stock and points.
+-- One statement/transaction: locks serialize register close, replay and points.
 create function public.pos_checkout(p_request uuid,p_payload jsonb) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare
   r public.cash_registers; o public.orders; product public.products; extra public.extras; customer public.customers;
   line jsonb; xid text; qty integer; unit numeric; total numeric:=0; preview numeric;
   mxn numeric; usd numeric; received numeric; method text; cid uuid; earned integer:=0;
-  lines jsonb:='[]'; stocks jsonb:='[]'; extra_list jsonb; line_product jsonb;
-  need record; note text; phases text[]; customer_name text:='Invitado';
+  lines jsonb:='[]'; extra_list jsonb; line_product jsonb;
+  note text; phases text[]; customer_name text:='Invitado';
 begin
   if not cafe_private.is_staff() then raise exception 'Staff required' using errcode='42501'; end if;
   if p_request is null or p_payload is null or jsonb_typeof(p_payload)<>'object' then raise exception 'Solicitud inválida'; end if;
@@ -170,7 +171,6 @@ begin
   method:=p_payload->>'payment_method';
   if method is null or method not in ('efectivo','mixto','tarjeta','otro') then raise exception 'Método inválido'; end if;
   -- Stable locks also protect duplicate product lines within one sale.
-  lock table public.product_recipes in share mode;
   perform 1 from public.products where id in(select (v->>'product_id')::uuid from jsonb_array_elements(p_payload->'items') v) order by id for update;
   for line in select value from jsonb_array_elements(p_payload->'items') loop
     if jsonb_typeof(line->'quantity') is distinct from 'number' or (line->>'quantity')::numeric<>trunc((line->>'quantity')::numeric)
@@ -203,19 +203,6 @@ begin
   received:=round(mxn+usd*r.exchange_rate,2);
   if method in ('efectivo','mixto') and received<total then raise exception 'Efectivo insuficiente'; end if;
   if method in ('tarjeta','otro') and (mxn<>0 or usd<>0) then raise exception 'No registres efectivo con este método'; end if;
-  for need in select p.id,sum((v->>'quantity')::integer) qty from jsonb_array_elements(p_payload->'items') v join public.products p on p.id=(v->>'product_id')::uuid group by p.id order by p.id loop
-    if (select coalesce(stock,0)<need.qty from public.products where id=need.id) then raise exception 'Stock insuficiente de producto'; end if;
-    update public.products set stock=stock-need.qty where id=need.id;
-    stocks:=stocks||jsonb_build_array(jsonb_build_object('kind','product','id',need.id,'quantity',need.qty));
-  end loop;
-  perform 1 from public.supplies where id in(select pr.supply_id from public.product_recipes pr where pr.product_id in(select (v->>'product_id')::uuid from jsonb_array_elements(p_payload->'items') v)) order by id for update;
-  for need in select pr.supply_id id,sum(pr.quantity_required*(v->>'quantity')::integer) qty,
-    bool_and(pr.quantity_required>0 and pr.quantity_required::text<>'NaN') valid
-    from jsonb_array_elements(p_payload->'items') v join public.product_recipes pr on pr.product_id=(v->>'product_id')::uuid group by pr.supply_id order by pr.supply_id loop
-    if need.id is null or need.valid is not true or not exists(select 1 from public.supplies where id=need.id and current_stock::text<>'NaN' and current_stock>=need.qty) then raise exception 'Stock o receta de ingrediente inválido'; end if;
-    update public.supplies set current_stock=current_stock-need.qty where id=need.id;
-    stocks:=stocks||jsonb_build_array(jsonb_build_object('kind','supply','id',need.id,'quantity',need.qty));
-  end loop;
   cid:=nullif(p_payload->>'customer_id','')::uuid;
   if cid is not null then
     select * into customer from public.customers where id=cid for update;
@@ -223,8 +210,8 @@ begin
     earned:=floor(total/10); customer_name:=customer.name;
     update public.customers set points=coalesce(customers.points,0)+earned,total_spent=coalesce(total_spent,0)+total,last_visit=now() where id=cid;
   end if;
-  insert into public.orders(register_id,customer_id,cashier_id,subtotal,discount,total,payment_method,status,request_id,request_payload,stock_snapshot,points_awarded,tender_mxn,tender_usd,exchange_rate,change_mxn)
-    values(r.id,cid,auth.uid(),total,0,total,method,'completed',p_request,p_payload,stocks,earned,mxn,usd,r.exchange_rate,case when method in ('efectivo','mixto') then received-total else 0 end) returning * into o;
+  insert into public.orders(register_id,customer_id,cashier_id,subtotal,discount,total,payment_method,status,request_id,request_payload,points_awarded,tender_mxn,tender_usd,exchange_rate,change_mxn)
+    values(r.id,cid,auth.uid(),total,0,total,method,'completed',p_request,p_payload,earned,mxn,usd,r.exchange_rate,case when method in ('efectivo','mixto') then received-total else 0 end) returning * into o;
   for line in select value from jsonb_array_elements(lines) loop
     insert into public.order_items(order_id,product_id,quantity,unit_price,total_price,notes,product_snapshot)
       values(o.id,(line->'product'->>'id')::uuid,(line->>'quantity')::integer,(line->'product'->>'price')::numeric,
@@ -272,8 +259,7 @@ declare r public.cash_registers; s public.shifts; sales numeric; cash numeric; e
   return to_jsonb(s);
 end $$;
 
--- Cancellation preserves the owner's existing status-only stock policy. It
--- never claims a physical refund or returns ingredients already prepared.
+-- Cancellation records status and loyalty reversal; physical refunds remain manual.
 create function public.pos_cancel_sale(p_order uuid) returns void language plpgsql security definer set search_path='' as $$
 declare o public.orders; begin
   if not cafe_private.is_admin() then raise exception 'Administrator required' using errcode='42501'; end if;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { shiftSales, saveShiftBeforeExit } from '../lib/shift';
 import { openPrintWindow, printStyles, renderStickers, writePrintDocument } from '../lib/printing';
 import type { CartItem } from '../store/useCartStore';
-const items: CartItem[] = [{ id:'line', quantity:3, product:{id:'coffee',name:'Café',price:60,category:'Bebidas',stock:10} }];
+const items: CartItem[] = [{ id:'line', quantity:3, product:{id:'coffee',name:'Café',price:60,category:'Bebidas'} }];
 test('cash reconciliation excludes card and both cancellation spellings, includes mixed cash', () => {
   assert.deepEqual(shiftSales([
     {total:100,payment_method:'tarjeta',status:'completed'},

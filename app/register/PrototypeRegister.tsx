@@ -1,7 +1,7 @@
 'use client';
 
 import {useState,type ReactNode} from 'react';
-import Image from 'next/image';
+import ProductPhoto from '@/components/ProductPhoto';
 import type {CartItem,Product,CartExtra} from '../../store/useCartStore';
 import type {CatalogProduct,Customer,ExtraRow,WizardStep} from '../../lib/pos-types';
 
@@ -40,11 +40,9 @@ export default function PrototypeRegister(p:RegisterProps){
       <section className="prototype-menu"><div className="prototype-heading"><h1>Menú</h1><button onClick={()=>setSheet('search')}>{p.search?`Buscar: ${p.search}`:'Buscar'}</button></div>
         <div className="prototype-categories" aria-label="Categorías">{categories.map(c=><button key={c} aria-pressed={category===c} onClick={()=>{setCategory(c);setPage(0);}}>{c}</button>)}</div>
         <div className="prototype-products">{visible.map(product=>{
-          const counted=['product','both'].includes(product.inventory_mode??'both'),source=product.stock_product_id?p.products.find(v=>v.id===product.stock_product_id):product;
-          const available=source?Math.floor(source.stock/(product.stock_units??1)):null;
-          return <button className="prototype-product" key={product.id} onClick={()=>p.onProduct(product)} disabled={p.disabled||(counted&&available!==null&&available<=0)}>
-          {product.image_url&&<div className="prototype-photo"><Image unoptimized width={320} height={180} src={product.image_url} alt="" loading="lazy" onError={e=>{e.currentTarget.style.display='none';}}/></div>}
-          <div><h3>{product.name}</h3><span>{money(Number(product.price))}</span>{counted&&available!==null&&<small>{available>0?`${available} disponibles`:'Agotado'}</small>}</div></button>;})}
+          return <button className="prototype-product" key={product.id} onClick={()=>p.onProduct(product)} disabled={p.disabled}>
+          <div className="prototype-photo"><ProductPhoto product={product} width={320} height={180}/></div>
+          <div><h3>{product.name}</h3><span>{money(Number(product.price))}</span></div></button>;})}
           {!visible.length&&<p>No hay productos para esta búsqueda.</p>}</div>
         <footer className="prototype-pager"><button disabled={!currentPage} onClick={()=>setPage(currentPage-1)}>Anterior</button><span>Página {currentPage+1} de {pages} · {filtered.length} productos</span><button disabled={currentPage>=pages-1} onClick={()=>setPage(currentPage+1)}>Siguiente</button></footer>
       </section>

@@ -99,7 +99,7 @@ test('simultaneous tabs cannot replace an in-flight expense request',async()=>{
 
 test('real-menu quantities, special prices, milk surcharge and packs total 1145 without editing double-charge',()=>{
   const menu=JSON.parse(readFileSync(new URL('fixtures/real-menu.json',import.meta.url),'utf8'));
-  const product=(name:string)=>{const row=menu.products.find((p:{name:string})=>p.name===name);assert.ok(row);return {id:row.reference,name:row.name,price:row.price_mxn,category:row.category,stock:100};};
+  const product=(name:string)=>{const row=menu.products.find((p:{name:string})=>p.name===name);assert.ok(row);return {id:row.reference,name:row.name,price:row.price_mxn,category:row.category};};
   const milk={id:'synthetic-milk',phase:'Tipo de Leche',name:'Almendra',price:15};
   for(const [name,expected] of [['Iced coffee caramelo',110],['Iced coffe flan',145],['Iced coffee nevado',155],['Frappe Oreo',100],['Cappuccino',95],['Te chai caliente',110]] as const){
     const prepared=customizeProduct(product(name),[milk],'');assert.equal(prepared.price,expected);assert.equal(customizeProduct(prepared,[milk],'').price,expected);

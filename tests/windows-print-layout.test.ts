@@ -7,8 +7,7 @@ import { saleDocuments } from '../lib/sale-printing';
 test('every overflow label identifies its own cup, including two different drinks with long instructions', { skip: process.platform !== 'win32' }, () => {
   const docs=saleDocuments({id:'overflow-cups',ticket_number:9876,status:'completed',total:220,
     items:['Iced coffee caramelo','Iced coffee vainilla'].map((name,index)=>({id:String(index),quantity:1,
-      product:{id:String(index),name,price:110,category:'Bebidas',stock:0,
-        note:('Sin azúcar. Leche de avena. '+(index?'SEGUNDA BEBIDA. ':'PRIMERA BEBIDA. ')).repeat(12)+'FIN-'+(index+1)}})),
+      product:{id:String(index),name,price:110,category:'Bebidas',note:('Sin azúcar. Leche de avena. '+(index?'SEGUNDA BEBIDA. ':'PRIMERA BEBIDA. ')).repeat(12)+'FIN-'+(index+1)}})),
     customer_name:'Ana y José',order_type:'Para Llevar',order_note:'Entregar juntos',created_at:'2026-10-30T17:00:00Z',
     payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:20,change_mxn:0});
   const result=spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
@@ -46,8 +45,7 @@ test('actual Windows helper compiles and paginates long label notes without a sp
 
 test('normal real-menu cup context fits the selected Hybsk 57.15 x 31.75 mm stock in one label', { skip: process.platform !== 'win32' }, () => {
   const docs = saleDocuments({ id:'test',ticket_number:1234,status:'completed',total:110,
-    items:[{id:'cup',quantity:1,product:{id:'iced',name:'Iced coffee caramelo',price:110,category:'Bebidas',stock:0,
-      displayExtras:[{name:'Leche de avena',price:15}],note:'Sin hielo'}}],
+    items:[{id:'cup',quantity:1,product:{id:'iced',name:'Iced coffee caramelo',price:110,category:'Bebidas',displayExtras:[{name:'Leche de avena',price:15}],note:'Sin hielo'}}],
     customer_name:'Ana y José',order_type:'Para Llevar',order_note:'Entregar juntos',created_at:'2026-10-30T17:00:00Z',
     payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:20,change_mxn:0 });
   const result = spawnSync(path.join(process.env.SystemRoot!, 'System32/WindowsPowerShell/v1.0/powershell.exe'),

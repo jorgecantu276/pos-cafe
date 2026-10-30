@@ -21,7 +21,7 @@ function legacyReceipt(sale: { id: string; ticket_number: number; total: number;
     exchange_rate: Number(sale.exchange_rate ?? 0), change_mxn: Number(sale.change_mxn ?? 0),
     items: sale.order_items.map((item, index) => ({ id: String(index), quantity: item.quantity, product: {
       id: item.product_id || String(index), name: item.product_snapshot?.name || 'Producto histórico no identificado', price: Number(item.unit_price),
-      category: '', stock: 0, note: item.notes || '',
+      category: '', note: item.notes || '',
     } })) };
   const document = saleDocuments(order, options).customer;
   document.sections[0] = document.sections[0].map(line => {

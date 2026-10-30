@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import ProductPhoto from '@/components/ProductPhoto';
 import PrototypeRegister, {PrototypeCheckout, PrototypeCustomization} from './PrototypeRegister';
 import './prototype.css';
 import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
@@ -1121,7 +1122,7 @@ const handleSaveAndClose = async () => {
                 {groupedProducts[cat].map((p) => (
                   <div key={p.id} onClick={() => handleProductClick(p)} className="bg-white rounded-[2.5rem] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:shadow-xl transition-all cursor-pointer group border border-transparent hover:border-blue-50">
                     <div className="h-32 bg-slate-50 rounded-[20px] mb-4 overflow-hidden relative">
-                      {p.image_url && <Image unoptimized width={512} height={512} src={p.image_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} />}
+                      <ProductPhoto product={p} width={512} height={512} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                     </div>
                     <h3 className="font-bold text-sm text-slate-800">{p.name}</h3>
                     <p className="text-[#0071e3] font-black text-sm mt-1">${Number(p.price).toFixed(2)}</p>

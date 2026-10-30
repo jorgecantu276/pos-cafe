@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
-import Image from 'next/image';
+import ProductPhoto from '@/components/ProductPhoto';
 import { Keyboard, Minus, Plus, Search, X, Pencil, Trash2, Printer } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/pos-types';
 
@@ -47,15 +47,13 @@ export function WorkspaceKeyboard({ value, onChange, numeric = false, disabled =
   </fieldset>;
 }
 
-const ProductButton = memo(function ProductButton({ product, available, disabled, onProduct }: {
-  product: CatalogProduct; available: number | null; disabled: boolean; onProduct: RegisterProps['onProduct'];
+const ProductButton = memo(function ProductButton({ product, disabled, onProduct }: {
+  product: CatalogProduct; disabled: boolean; onProduct: RegisterProps['onProduct'];
 }) {
-  const [photoFailed, setPhotoFailed] = useState(false);
-  return <button className={`workspace-product ${product.image_url && !photoFailed ? 'has-photo' : ''}`} disabled={disabled || available === 0}
-    onClick={() => onProduct(product)} aria-label={`${product.name}, ${money(Number(product.price))}${available === 0 ? ', agotado' : ''}`}>
-    {product.image_url && !photoFailed && <Image unoptimized width={72} height={72} src={product.image_url} alt="" loading="lazy" onError={() => setPhotoFailed(true)} />}
+  return <button className="workspace-product has-photo" disabled={disabled}
+    onClick={() => onProduct(product)} aria-label={`${product.name}, ${money(Number(product.price))}`}>
+    <ProductPhoto product={product} width={72} height={72} />
     <span className="workspace-product-copy"><strong>{product.name}</strong><span>{money(Number(product.price))}</span></span>
-    {available === 0 && <small>Agotado</small>}
   </button>;
 });
 
@@ -64,22 +62,17 @@ export default function WorkspaceRegister(p: RegisterProps) {
   const [keyboard, setKeyboard] = useState(false);
   const [ticket, setTicket] = useState('');
   const catalogRef = useRef<HTMLDivElement>(null);
-  const { groups, quantities } = useMemo(() => {
+  const groups = useMemo(() => {
     const active = p.products.filter(product => product.is_active);
-    const byId = new Map(p.products.map(product => [product.id, product]));
-    const quantities = new Map<string, number | null>();
     const groups = new Map<string, CatalogProduct[]>();
     const term = normalize(p.search.trim());
     for (const product of active) {
-      const tracked = ['product', 'both'].includes(product.inventory_mode ?? 'both');
-      const source = product.stock_product_id ? byId.get(product.stock_product_id) : product;
-      quantities.set(product.id, tracked && source ? Math.max(0, Math.floor(source.stock / (product.stock_units ?? 1))) : null);
       const group = product.category || 'Otros';
       if (!normalize(product.name).includes(term)) continue;
       const rows = groups.get(group) ?? []; rows.push(product); groups.set(group, rows);
     }
     for (const rows of groups.values()) rows.sort((a, b) => a.name.localeCompare(b.name, 'es'));
-    return { groups: [...groups].sort(([a], [b]) => a.localeCompare(b, 'es')), quantities };
+    return [...groups].sort(([a], [b]) => a.localeCompare(b, 'es'));
   }, [p.products, p.search]);
   const count = groups.reduce((sum, [, products]) => sum + products.length, 0);
   const filter = (value: string) => { p.onSearch(value); catalogRef.current?.scrollTo?.({ top: 0 }); };
@@ -98,7 +91,7 @@ export default function WorkspaceRegister(p: RegisterProps) {
         </header>
         <div className="workspace-catalog-scroll" ref={catalogRef}>
           {groups.map(([name, products]) => <section key={name} className="workspace-product-group" aria-label={name}>
-            <h2>{name}</h2><div className="workspace-product-grid">{products.map(product => <ProductButton key={product.id} product={product} available={quantities.get(product.id) ?? null} disabled={p.disabled} onProduct={p.onProduct} />)}</div>
+            <h2>{name}</h2><div className="workspace-product-grid">{products.map(product => <ProductButton key={product.id} product={product} disabled={p.disabled} onProduct={p.onProduct} />)}</div>
           </section>)}
           {!count && <p className="workspace-empty">{p.search ? 'No se encontraron productos.' : 'Cargando menú…'}</p>}
         </div>

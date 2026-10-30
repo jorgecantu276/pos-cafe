@@ -92,31 +92,6 @@ begin
   return result;
 end $$;
 
-create function public.pos_cost_report(p_page integer default 0)
-returns jsonb language plpgsql stable security definer set search_path='' as $$
-declare result jsonb;
-begin
-  if not cafe_private.is_admin() then raise exception 'Administrator required' using errcode='42501'; end if;
-  if p_page is null or p_page<0 or p_page>1000000 then raise exception 'Página inválida'; end if;
-  with costs as (
-    select p.id,p.name,p.price,p.category,
-      case when count(r.id)>0 and bool_and(s.id is not null and s.cost_per_unit is not null
-        and s.cost_per_unit>=0 and r.quantity_required>0)
-        then sum(r.quantity_required*s.cost_per_unit) end as total_cost
-    from public.products p left join public.product_recipes r on r.product_id=p.id
-      left join public.supplies s on s.id=r.supply_id where p.is_active group by p.id
-  ), margins as materialized (
-    select *,case when price>0 and total_cost is not null then (price-total_cost)/price*100 end as margin from costs
-  ), page as(select * from margins order by margin desc nulls last,name,id limit 50 offset p_page*50)
-  select jsonb_build_object('captured_at',statement_timestamp(),'page',p_page,'page_size',50,
-    'summary',(select jsonb_build_object('rows',count(*),'configured',count(margin),
-      'incomplete',count(*) filter(where margin is null),'average',avg(margin),
-      'low_margin',count(*) filter(where margin<30)) from margins),
-    'top',(select name from margins where margin is not null order by margin desc,name,id limit 1),
-    'products',coalesce((select jsonb_agg(p order by margin desc nulls last,name,id) from page p),'[]'::jsonb)) into result;
-  return result;
-end $$;
-
 create function public.pos_customer_report(p_search text default '',p_page integer default 0)
 returns jsonb language plpgsql stable security definer set search_path='' as $$
 declare result jsonb;
@@ -137,8 +112,8 @@ begin
 end $$;
 
 revoke all on function public.pos_sales_report(text,date,date,text,integer,timestamptz),
-  public.pos_shift_history(text,date,date,integer,timestamptz),public.pos_cost_report(integer),public.pos_customer_report(text,integer) from public,anon,authenticated;
+  public.pos_shift_history(text,date,date,integer,timestamptz),public.pos_customer_report(text,integer) from public,anon,authenticated;
 grant execute on function public.pos_sales_report(text,date,date,text,integer,timestamptz),
-  public.pos_shift_history(text,date,date,integer,timestamptz),public.pos_cost_report(integer),public.pos_customer_report(text,integer) to authenticated;
+  public.pos_shift_history(text,date,date,integer,timestamptz),public.pos_customer_report(text,integer) to authenticated;
 notify pgrst,'reload schema';
 commit;

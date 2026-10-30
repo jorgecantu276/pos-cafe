@@ -15,7 +15,7 @@ import { readReceiptIssuer } from '../lib/receipt-issuer-server';
 const queues = { customer: 'POS80 Printer', barista: 'Y813BT Sticker' };
 const sale = (): SavedOrder => ({ id: randomUUID(), ticket_number: 1234, status: 'completed', total: 220,
   items: [{ id: 'line', quantity: 2, product: { id: 'iced', name: 'Iced coffee vainilla', price: 110,
-    category: 'Bebidas', stock: 0, displayExtras: [{ name: 'Leche de avena', price: 15 }], note: 'Sin hielo <urgente>' } }],
+    category: 'Bebidas', displayExtras: [{ name: 'Leche de avena', price: 15 }], note: 'Sin hielo <urgente>' } }],
   customer_name: 'Ana & José', order_type: 'Para Llevar', order_note: 'Entregar juntos', created_at: '2026-10-30T16:20:00Z',
   payment_method: 'efectivo', tender_mxn: 250, tender_usd: 0, exchange_rate: 20, change_mxn: 30 });
 function scratch() { return mkdtempSync(path.join(tmpdir(), 'pos-print-test-')); }
@@ -88,7 +88,7 @@ test('all 82 real menu presentations preserve their names and prices without cat
   const menu = JSON.parse(readFileSync(new URL('./fixtures/real-menu.json', import.meta.url), 'utf8'));
   const order = sale();
   order.items = menu.products.map((p: { name: string; price_mxn: number }, index: number) => ({ id: String(index), quantity: 1,
-    product: { id: String(index), name: p.name, price: p.price_mxn, category: 'Prueba', stock: 0 } }));
+    product: { id: String(index), name: p.name, price: p.price_mxn, category: 'Prueba'} }));
   order.total = order.items.reduce((sum, item) => sum + item.product.price, 0);
   const docs = saleDocuments(order);
   assert.equal(order.items.length, 82); assert.equal(docs.barista.sections.length, 82);

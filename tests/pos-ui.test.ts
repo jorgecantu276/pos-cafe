@@ -1,5 +1,6 @@
 import * as deadline from '../lib/request-deadline';
 import * as reprint from '../lib/receipt-reprint';
+import ProductPhoto from '../components/ProductPhoto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -45,8 +46,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
   }
   cart.useCartStore.getState().clearCart();
   let root = createRoot(dom.window.document.getElementById('root')!);
-  const fixtureProduct = { id: 'local-coffee', name: 'Cappuccino', price: 80, stock: 20,
-    category: 'Bebidas', image_url: null, is_active: true, customizable: false, wizard_steps: [] };
+  const fixtureProduct = { id: 'local-coffee', name: 'Cappuccino', price: 80, category: 'Bebidas', image_url: null, is_active: true, customizable: false, wizard_steps: [] };
   const fixtures: Record<string, unknown> = {
     profiles: { full_name: 'Prueba local', role, is_active: true },
     products: [fixtureProduct], extras: [],
@@ -91,7 +91,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
   const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020,
     module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   const exports: { default?: ComponentType<{appearance:'owner'|'prototype'|'workspace'}> } = {};
-  new Function('require', 'exports', compiled)((name: string) => imports[name] ?? nodeRequire(name), exports);
+  new Function('require', 'exports', compiled)((name: string) => name === '@/components/ProductPhoto' ? { default: ProductPhoto, __esModule: true } : imports[name] ?? nodeRequire(name), exports);
   const button = (text: string) => {
     const element = [...dom.window.document.querySelectorAll('button')].find(b => (b.getAttribute('aria-label')??b.textContent?.trim()) === text);
     assert.ok(element, `Missing button: ${text}`); return element;

@@ -19,7 +19,7 @@ test('actual retry controls and refresh recover only the missing copy, including
   let offline = true, loseResponse = false;
   const sent: PrintAudience[] = [];
   const order: SavedOrder = { id: randomUUID(), ticket_number: 1, status: 'completed', total: 80,
-    items: [{ id: 'a', quantity: 1, product: { id: 'coffee', name: 'Cappuccino', price: 80, category: 'Bebidas', stock: 0 } }],
+    items: [{ id: 'a', quantity: 1, product: { id: 'coffee', name: 'Cappuccino', price: 80, category: 'Bebidas'} }],
     customer_name: 'Sintético', order_type: 'Para Llevar', order_note: '', created_at: '2026-10-30T17:00:00Z',
     payment_method: 'tarjeta', tender_mxn: 0, tender_usd: 0, exchange_rate: 20, change_mxn: 0 };
   const journal = new PrintJournal(path.join(directory, 'jobs.sqlite'), { async prepare(job) {

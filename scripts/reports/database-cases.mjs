@@ -6,7 +6,7 @@ export async function reportDatabaseCases(db, connection, ids) {
   let assertions=0;
   const eq=(a,b)=>{assert.deepEqual(a,b);assertions++;};
   const admin=await connection('authenticated',ids.admin),cashier=await connection('authenticated',ids.cashier),anon=await connection('anon');
-  for(const client of [cashier,anon])for(const sql of ['select pos_sales_report()','select pos_shift_history()','select pos_cost_report()','select pos_customer_report()']){
+  for(const client of [cashier,anon])for(const sql of ['select pos_sales_report()','select pos_shift_history()','select pos_customer_report()']){
     await assert.rejects(client.query(sql));assertions++;
   }
   const report=async(params={})=>(await admin.query('select pos_sales_report($1,$2,$3,$4,$5,$6) r',
@@ -75,21 +75,9 @@ export async function reportDatabaseCases(db, connection, ids) {
     select '2025-02-12T18:00:00Z','2025-02-11T18:00:00Z',35,1.25,-0.10,'Prueba sintética' from generate_series(1,1103)`);
   const sh=(await admin.query("select pos_shift_history('range','2025-02-12','2025-02-12') r")).rows[0].r;
   eq(sh.summary,{rows:1103,sales:38605,expenses:1378.75,difference:-110.3});eq(sh.shifts.length,50);
-  // Cost completeness: absent recipe/cost cannot become 100%; explicit zero can.
-  try{
-    await db.query('update products set is_active=false');
-    const p=Array.from({length:4},()=>randomUUID()),s=[randomUUID(),randomUUID()];
-    for(let i=0;i<4;i++)await db.query('insert into products(id,name,price,stock,is_active) values($1,$2,80,0,true)',[p[i],['Cappuccino','Galleta','Sin costo','Sin receta'][i]]);
-    await db.query("insert into supplies(id,name,unit,cost_per_unit) values($1,'Con costo','ml',0.05),($2,'Sin costo','ml',null)",s);
-    await db.query('insert into product_recipes(product_id,supply_id,quantity_required) values($1,$4,200),($2,$4,100),($3,$5,100)',[...p.slice(0,3),...s]);
-    const cost=(await admin.query('select pos_cost_report() r')).rows[0].r;
-    eq(cost.summary,{rows:4,configured:2,incomplete:2,average:90.625,low_margin:0});
-    eq(cost.products.find(x=>x.id===p[2]).margin,null);eq(cost.products.find(x=>x.id===p[3]).total_cost,null);
-    await db.query('update supplies set cost_per_unit=0 where id=$1',[s[1]]);
-    const zero=(await admin.query('select pos_cost_report() r')).rows[0].r;eq(zero.products.find(x=>x.id===p[2]).margin,100);
-    await db.query('update profiles set is_active=false where id=$1',[ids.admin]);
-    await assert.rejects(admin.query('select pos_sales_report()'));assertions++;
-  }finally{await db.query('update profiles set is_active=true where id=$1',[ids.admin]);}
+  await db.query('update profiles set is_active=false where id=$1',[ids.admin]);
+  await assert.rejects(admin.query('select pos_sales_report()'));assertions++;
+  await db.query('update profiles set is_active=true where id=$1',[ids.admin]);
   const members=Array.from({length:1103},()=>randomUUID());
   await db.query("insert into customers(id,name,points,total_spent) select unnest($1::uuid[]),'Reporte sintético',42,9999",[members]);
   for(const [status,total] of [['completed',35.10],['completed',0.20],['cancelled',9999],['pending',9999]]){
@@ -98,9 +86,6 @@ export async function reportDatabaseCases(db, connection, ids) {
   const customer=(await admin.query("select pos_customer_report('Reporte sintético') r")).rows[0].r;
   eq(customer.summary,{rows:1103,sales:35.3});eq(customer.customers.length,50);eq(customer.customers[0].completed_spent,35.3);eq(customer.customers[0].points,42);
   eq((await admin.query("select pos_customer_report('Reporte sintético',22) r")).rows[0].r.customers.length,3);
-  await db.query("insert into products(name,price,stock,is_active) select 'Costo incompleto sintético '||n,35,0,true from generate_series(1,1103) n");
-  const costLarge=(await admin.query('select pos_cost_report() r')).rows[0].r;
-  eq(costLarge.summary.rows,1107);eq(costLarge.summary.configured,3);eq(costLarge.summary.incomplete,1104);eq(costLarge.products.length,50);
-  console.log(`PASS ${assertions} report assertions: 1,207 real-menu sales, complete snapshots, cents/discounts/statuses, pagination, search, Matamoros midnight/DST, closed shifts, cost completeness, access denial.`);
+  console.log(`PASS ${assertions} report assertions: 1,207 real-menu sales, complete snapshots, cents/discounts/statuses, pagination, search, Matamoros midnight/DST, closed shifts, access denial.`);
   return assertions;
 }

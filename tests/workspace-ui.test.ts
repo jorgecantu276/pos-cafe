@@ -55,7 +55,7 @@ test('workspace options pass their own phase when groups are selected out of seq
     assert.deepEqual(selected, [['Grande', 1], ['Almendra', 0]]);
     assert.equal([...screen.querySelectorAll('button')].some(button => button.textContent === 'Siguiente'), false);
     assert.equal(screen.querySelectorAll('fieldset.workspace-modifier-group').length, 2);
-  }, createElement(WorkspaceCustomization, { product: { id: 'c', name: 'Cappuccino', price: 80, stock: 0, category: 'Bebidas' },
+  }, createElement(WorkspaceCustomization, { product: { id: 'c', name: 'Cappuccino', price: 80, category: 'Bebidas' },
     steps: [{ id: 'Leche alternativa', title: 'Leche', options: ['Almendra'], exclusive: true }, { id: 'Tamaño', title: 'Tamaño', options: ['Grande'], exclusive: true }],
     index: 0, extras: [], dbExtras: [{ id: 'almond', name: 'Almendra', phase: 'Leche alternativa', active: true, price: 15 }, { id: 'large', name: 'Grande', phase: 'Tamaño', active: true, price: 10 }],
     note: '', onNote: () => {}, onStep: () => {}, onOption: (name, index) => selected.push([name, index]), onConfirm: () => {}, onClose: () => {} }));

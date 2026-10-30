@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import ProductPhoto from '@/components/ProductPhoto';
 
 import { type ProductRow, type ExtraRow, errorMessage } from '@/lib/pos-types';
 
@@ -8,7 +8,7 @@ import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
 import LoadFailure from '@/app/LoadFailure';
-import { PlusCircle, Trash2, Edit2, Package, Loader2, Layers } from 'lucide-react';
+import { PlusCircle, Trash2, Edit2, Loader2, Layers } from 'lucide-react';
 
 export default function ProductosPage() {
   const [activeTab, setActiveTab] = useState<'items' | 'extras'>('items');
@@ -20,7 +20,7 @@ export default function ProductosPage() {
   const [showNewCat, setShowNewCat] = useState(false);
   const [showNewPhase, setShowNewPhase] = useState(false);
 
-  const initialFormState = { name: '', price: '', category: 'Bebidas', stock: 0, phase: 'Tamaño', customizable: true, image_url: '', wizard_steps: [] as string[] };
+  const initialFormState = { name: '', price: '', category: 'Bebidas', phase: 'Tamaño', customizable: true, image_url: '', wizard_steps: [] as string[] };
   const [formData, setFormData] = useState(initialFormState);
 
   const loadCatalog = useCallback(async (signal: AbortSignal) => {
@@ -42,7 +42,6 @@ export default function ProductosPage() {
       name: item.name || '',
       price: String(item.price ?? ''),
       category: 'category' in item ? item.category || 'Bebidas' : 'Bebidas',
-      stock: 'stock' in item ? item.stock ?? 0 : 0,
       phase: 'phase' in item ? item.phase : 'Tamaño',
       customizable: 'customizable' in item && item.customizable === true,
       image_url: 'image_url' in item ? item.image_url || '' : '',
@@ -73,7 +72,6 @@ export default function ProductosPage() {
           name: formData.name, 
           price: parseFloat(formData.price),
           category: formData.category,
-          // Editing a name/price must not overwrite stock sold since loading.
           customizable: formData.customizable,
           image_url: formData.image_url,
           wizard_steps: formData.customizable ? formData.wizard_steps : [] 
@@ -152,6 +150,7 @@ export default function ProductosPage() {
           {activeTab === 'items' ? (
             <>
               <input type="url" placeholder="URL de la imagen (Opcional)" value={formData.image_url} className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" onChange={e => setFormData({...formData, image_url: e.target.value})} />
+              <p className="text-sm text-slate-500">Pega el enlace de su foto propia cuando esté lista. Si está vacío o la foto no carga, se muestra una imagen provisional.</p>
               <p className="text-sm text-slate-500">Las existencias se registran en <a className="underline" href="/admin/inventario">Inventario</a>. Un producto nuevo comienza en cero.</p>
               
               {/* 🟢 SELECTOR DE CATEGORÍAS (PRODUCTOS) */}
@@ -230,11 +229,7 @@ export default function ProductosPage() {
             <div key={p.id} className="p-6 flex items-center justify-between border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors group">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-blue-50/50 rounded-2xl flex items-center justify-center text-blue-500 overflow-hidden flex-shrink-0 border border-blue-100 shadow-sm">
-                  {p.image_url ? (
-                    <Image unoptimized width={56} height={56} src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <Package size={24} className="opacity-50" />
-                  )}
+                  <ProductPhoto product={p} width={56} height={56} className="w-full h-full object-cover" />
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800 flex items-center gap-2 text-lg">

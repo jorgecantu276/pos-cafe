@@ -6,7 +6,6 @@ import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { shiftDatabaseCases } from './shift/database-cases.mjs';
-import { inventoryDatabaseCases } from './inventory/database-cases.mjs';
 import { reportDatabaseCases } from './reports/database-cases.mjs';
 import { multiItemDatabaseCases } from './printing/multi-item-database-cases.mjs';
 
@@ -64,12 +63,6 @@ try {
   console.log('PASS baseline: anonymous profile privilege escalation reproduced on isolated snapshot'); assertions++;
   await db.query("update profiles set role='cashier' where id=$1",[ids.cashier]);
   const migration=await readFile(resolve(root,'supabase/migrations/202610280001_secure_pos.sql'),'utf8');
-  const invalidFixture=randomUUID();
-  await db.query("insert into products(id,name,price,stock) values($1,'Invalid fixture',1,-1)",[invalidFixture]);
-  await assert.rejects(db.query(migration),/Preflight: reconcile invalid inventory/);assertions++;
-  await db.query('rollback');
-  assert.equal((await db.query("select count(*)::int n from information_schema.columns where table_schema='public' and table_name='profiles' and column_name='is_active'")).rows[0].n,0);assertions++;
-  await db.query('delete from products where id=$1',[invalidFixture]);
   await db.query(migration);
   await db.query(await readFile(resolve(root,'supabase/migrations/202610280002_shift_expenses.sql'),'utf8'));
   const cash=await connection('authenticated',ids.cashier),bar=await connection('authenticated',ids.barista),admin=await connection('authenticated',ids.admin),outsider=await connection('authenticated',ids.outsider);
@@ -97,9 +90,11 @@ try {
   await denied(admin,"select pos_manage_profile($1,'Admin','admin','barista',null,true)",[ids.admin]);
   await denied(cash,'insert into orders(subtotal,total) values(1,1)');
   await denied(cash,'update customers set points=99999');
-  await admin.query("insert into products(id,name,price,stock,is_active,customizable,wizard_steps) values($1,'Café',50,10,true,true,array['Tamaño']),($2,'Pan',20,1,true,false,null)",[ids.product,ids.product2]);
-  await admin.query("insert into supplies(id,name,unit,current_stock) values($1,'Leche','ml',1000)",[ids.supply]);
-  await admin.query('insert into product_recipes(product_id,supply_id,quantity_required) values($1,$2,100),($1,$2,25)',[ids.product,ids.supply]);
+  await db.query("insert into products(id,name,price,stock,is_active,customizable,wizard_steps) values($1,'Café',50,10,true,true,array['Tamaño']),($2,'Pan',20,0,true,false,null)",[ids.product,ids.product2]);
+  await denied(admin,'update products set stock=999 where id=$1',[ids.product]);
+  assert.equal((await db.query("select count(*)::int n from pg_proc where proname in ('pos_adjust_inventory','pos_configure_inventory','pos_save_inventory_recipe','pos_import_inventory_counts','pos_cost_report')")).rows[0].n,0);assertions++;
+  await db.query("insert into supplies(id,name,unit,current_stock) values($1,'Leche','ml',1000)",[ids.supply]);
+  await db.query('insert into product_recipes(product_id,supply_id,quantity_required) values($1,$2,100),($1,$2,25)',[ids.product,ids.supply]);
   const extra=randomUUID();
   await admin.query("insert into extras(id,name,price,phase) values($1,'Grande',10,'Tamaño')",[extra]);
   const registered=(await cash.query("select pos_register_customer('Ana','555',null,true) result")).rows[0].result;
@@ -121,15 +116,15 @@ try {
     {...payload,items:[{...payload.items[0],quantity:1.5}]}, {...payload,tender_usd:-1},
     {...payload,items:[{...payload.items[0],extra_ids:[extra,extra]}]},
     {...payload,register_id:barShift.id}, {...payload,tender_mxn:0,tender_usd:0},
-    {...payload,customer_id:randomUUID()}, // fails after stock writes: must fully roll back
+    {...payload,customer_id:randomUUID()}, // fails after financial validation: must fully roll back
   ]) {
     const before=await state();await denied(cash,'select pos_checkout($1,$2)',[randomUUID(),bad]);assert.equal(await state(),before);assertions++;
   }
   const request=randomUUID();const receipt=await rpc(cash,request,payload);
   await denied(cash,'select pos_abandon_checkout($1)',[request]);
   assert.equal(receipt.total,120); assert.equal(receipt.items[0].product.price,60);assert.equal(receipt.change_mxn,0);assertions+=3;
-  assert.equal((await db.query('select stock from products where id=$1',[ids.product])).rows[0].stock,8);assertions++;
-  assert.equal(Number((await db.query('select current_stock from supplies where id=$1',[ids.supply])).rows[0].current_stock),750);assertions++;
+  assert.equal((await db.query('select stock from products where id=$1',[ids.product])).rows[0].stock,10);assertions++;
+  assert.equal(Number((await db.query('select current_stock from supplies where id=$1',[ids.supply])).rows[0].current_stock),1000);assertions++;
   const customer=(await db.query('select * from customers where id=$1',[registered.id])).rows[0];assert.equal(customer.points,62);assert.equal(Number(customer.total_spent),120);assertions+=2;
   assert.deepEqual(await rpc(cash,request,payload),receipt);assertions++;
   await denied(cash,'select pos_checkout($1,$2)',[request,{...payload,order_note:'different'}]);
@@ -139,7 +134,7 @@ try {
   assert.equal(repeats[0].id,repeats[1].id);assertions++;
   const lastPayload={...payload,items:[{product_id:ids.product2,quantity:1,extra_ids:[],note:''}],expected_total:20,tender_mxn:20,tender_usd:0,customer_id:null};
   const race=await Promise.allSettled([rpc(cash,randomUUID(),lastPayload),rpc(bar,randomUUID(),{...lastPayload,register_id:barShift.id})]);
-  assert.equal(race.filter(x=>x.status==='fulfilled').length,1);assert.equal(race.filter(x=>x.status==='rejected').length,1);assertions+=2;
+  assert.equal(race.filter(x=>x.status==='fulfilled').length,2);assert.equal(race.filter(x=>x.status==='rejected').length,0);assertions+=2;
   assert.equal((await db.query('select stock from products where id=$1',[ids.product2])).rows[0].stock,0);assertions++;
   await denied(cash,'select pos_cancel_sale($1)',[receipt.id]);
   await admin.query('select pos_cancel_sale($1)',[receipt.id]);await admin.query('select pos_cancel_sale($1)',[receipt.id]);
@@ -182,13 +177,10 @@ try {
   const outcome=(await db.query('select (select count(*) from orders where cashier_id=$1 and request_id=$2)::int committed,(select count(*) from cafe_private.abandoned_checkouts where cashier_id=$1 and request_id=$2)::int abandoned',[ids.barista,abandonRaceKey])).rows[0];
   assert.equal(outcome.committed+outcome.abandoned,1);assertions++;
   assertions+=await shiftDatabaseCases(db,connection,ids);
-  await db.query(await readFile(resolve(root,'supabase/migrations/202610280003_inventory.sql'),'utf8'));
-  assert.equal((await rpc(cash,request,payload)).id,receipt.id);assertions++;
-  assertions+=await inventoryDatabaseCases(db,connection,ids);
   await db.query(await readFile(resolve(root,'supabase/migrations/202610280004_reports.sql'),'utf8'));
   assertions+=await reportDatabaseCases(db,connection,ids);
   assertions+=await multiItemDatabaseCases(db,connection,ids);
-  console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, aggregated recipe stock, duplicate/replayed requests, concurrent last-stock race, loyalty, shift close/recovery, cancellation.`);
+  console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {
   await Promise.allSettled(clients.map(c=>c.end()));
   await server.stop();
