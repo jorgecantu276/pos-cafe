@@ -50,7 +50,9 @@ test('actual favorites page retains ordered draft after lost save, blocks replac
     assert.deepEqual(calls[0],calls[1]);assert.deepEqual(calls[0].p_payload.product_ids,[second,first]);assert.equal(calls.length,2);assert.equal(reloads,1);
     assert.equal(dom.window.localStorage.getItem(shortcuts.registerShortcutsKey('owner')),null);assert.equal(button('Guardar favoritos').disabled,false);
     assert.deepEqual(order(),['1. Latte','2. Americano']);assert.equal(config.revision,5);
-    assert.match(dom.window.document.querySelector('[role="status"]')!.textContent!,/Favoritos guardados/);
+    const confirmation=dom.window.document.querySelector('[role="status"]')!;
+    assert.match(confirmation.textContent!,/Favoritos guardados/);
+    assert.equal(confirmation.closest('section'),button('Guardar favoritos').closest('section'),'Save confirmation stays beside the saved selection and its action controls');
   }finally{
     await act(async()=>root.unmount());dom.window.close();
     for(const[key,descriptor]of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}

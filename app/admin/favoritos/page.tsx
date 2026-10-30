@@ -11,7 +11,7 @@ import './favoritos.css';
 
 interface FavoritesData { actor: string; products: ProductRow[]; config: RegisterShortcuts; pending: boolean }
 
-function FavoritesEditor({ data, reload, onSaved }: { data: FavoritesData; reload: () => Promise<void>; onSaved: (message: string) => void }) {
+function FavoritesEditor({ data, reload, confirmed, onSaved }: { data: FavoritesData; reload: () => Promise<void>; confirmed: string; onSaved: (message: string) => void }) {
   const [chosen, setChosen] = useState(data.config.product_ids), [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false), [pending, setPending] = useState(data.pending), [message, setMessage] = useState('');
   const products = new Map(data.products.map(product => [product.id, product]));
@@ -43,6 +43,7 @@ function FavoritesEditor({ data, reload, onSaved }: { data: FavoritesData; reloa
           <button type="button" aria-label={`Bajar ${product?.name ?? 'producto'}`} disabled={disabled || index === chosen.length - 1} onClick={() => move(index, 1)}><ArrowDown size={19}/></button>
           <button type="button" aria-label={`Quitar ${product?.name ?? 'producto'}`} disabled={disabled} onClick={() => setChosen(chosen.filter(value => value !== id))}><X size={19}/></button></li>;
       })}</ol>
+      {confirmed && <p role="status" className="rounded-xl border border-blue-100 bg-blue-50 p-4 mb-4">{confirmed}</p>}
       <div className="workspace-favorites-actions"><button type="button" className="bg-blue-600 text-white px-5" disabled={disabled || chosen.some(id => !products.get(id)?.is_active)} onClick={() => void save()}>{busy ? 'Guardando…' : 'Guardar favoritos'}</button>
         <button type="button" className="border px-4" disabled={busy} onClick={() => void reload()}>Actualizar selección guardada</button></div>
       {pending && <div role="alert" className="p-4 mt-4"><p>El guardado no está confirmado. Conservamos la misma solicitud para recuperarla sin reemplazarla.</p><button type="button" className="border px-4" disabled={busy} onClick={() => void save(true)}>Recuperar guardado pendiente</button></div>}
@@ -64,8 +65,6 @@ export default function FavoritesPage() {
     return { actor: auth.data.user.id, config, products: (products.data ?? []) as ProductRow[], pending: Boolean(readRegisterShortcutsRequest(localStorage, auth.data.user.id)) };
   }, []);
   const { data, error, loading, reload } = useResource(load, null);
-  return <>{confirmed && <p role="status" className="rounded-xl border border-blue-100 bg-blue-50 p-4 mb-5 text-blue-800">{confirmed}</p>}
-    {error ? <LoadFailure message={error} retry={reload}/> : !data || loading ? <p>Cargando favoritos…</p>
-      : <FavoritesEditor key={`${data.actor}:${data.config.revision}`} data={data} reload={reload} onSaved={setConfirmed}/>}
-  </>;
+  return error ? <LoadFailure message={error} retry={reload}/> : !data || loading ? <p>Cargando favoritos…</p>
+    : <FavoritesEditor key={`${data.actor}:${data.config.revision}`} data={data} reload={reload} confirmed={confirmed} onSaved={setConfirmed}/>;
 }
