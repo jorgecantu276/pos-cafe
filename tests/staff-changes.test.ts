@@ -7,7 +7,7 @@ import * as management from '../lib/user-management';
 import { acknowledgeStaffPending, readStaffPending, saveStaffChange, StaffRequestUncertain, staffPendingKey } from '../lib/staff-requests';
 
 const id = '00000000-0000-4000-8000-000000000001';
-const person = { id, full_name: 'Ana', username: 'ana', role: 'cashier', avatar_url: '', is_active: true, password: 'new-test-password' };
+const person = { id, username: 'ana', role: 'cashier', avatar_url: '', is_active: true, password: 'new-test-password' };
 function routeHarness(options: { profileError?: { message: string; code: string }; authError?: boolean } = {}) {
   const calls: unknown[] = [];
   const caller = { auth: { getUser: async () => ({ data: { user: { id: 'responsible' } }, error: null }) },
@@ -37,7 +37,7 @@ test('actual staff PATCH changes Auth password only after the protected profile 
     const h = routeHarness(); const result = await h.patch(person);
     assert.equal(result.status, 200); assert.deepEqual(await result.json(), { success: true, password_changed: true });
     assert.deepEqual(h.calls, [['privileged'], ['profile', 'pos_manage_profile', {
-      p_id: id, p_name: 'Ana', p_username: 'ana', p_role: 'cashier', p_avatar: null, p_active: true,
+      p_id: id, p_name: 'ana', p_username: 'ana', p_role: 'cashier', p_avatar: null, p_active: true,
     }], ['password', id, { password: person.password }]]);
     const denied = routeHarness({ profileError: { code: 'P0001', message: 'Cuenta con caja abierta' } });
     assert.equal((await denied.patch(person)).status, 400); assert.equal(denied.calls.some(call => (call as unknown[])[0] === 'password'), false);

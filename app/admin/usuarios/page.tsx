@@ -11,7 +11,7 @@ import { useResource } from '@/lib/use-resource';
 import LoadFailure from '@/app/LoadFailure';
 import {
   ShieldCheck, Shield, Loader2, Trash2, UserPlus,
-  X, Image as ImageIcon, KeyRound, Save, Edit2, Coffee, Wallet
+  X, Image as ImageIcon, KeyRound, Save, Edit2, Wallet
 } from 'lucide-react';
 
 export default function UsuariosPage() {
@@ -29,10 +29,9 @@ export default function UsuariosPage() {
 
   const initialFormState = {
     id: '',
-    full_name: '',
     username: '',
     password: '',
-    role: 'barista',
+    role: 'cashier',
     avatar_url: ''
   };
 
@@ -40,7 +39,7 @@ export default function UsuariosPage() {
 
   const loadUsers = useCallback(async (signal: AbortSignal) => {
     const { data, error } = await supabase.from('profiles').select('id, full_name, username, role, avatar_url, is_active')
-      .eq('is_active', true).order('full_name', { ascending: true }).abortSignal(signal);
+      .eq('is_active', true).order('username', { ascending: true }).abortSignal(signal);
     if (error) throw error;
     return (data || []) as StaffProfile[];
   }, []);
@@ -54,10 +53,9 @@ export default function UsuariosPage() {
     if (mode === 'edit' && user) {
       setFormData({
         id: user.id,
-        full_name: user.full_name || '',
         username: user.username || '',
         password: '', // Se deja en blanco por seguridad
-        role: user.role || 'barista',
+        role: user.role === 'admin' ? 'admin' : 'cashier',
         avatar_url: user.avatar_url || ''
       });
     } else {
@@ -93,7 +91,7 @@ export default function UsuariosPage() {
     if (!confirm('¿Desactivar este usuario? Se conservará su historial.')) return;
     saving.current = true; setIsSaving(true); setSaveError(''); setSaveMessage('');
     try {
-      await saveStaffChange(localStorage, { operation: 'deactivate', username: user.username || '', id }, { ...user, is_active: false });
+      await saveStaffChange(localStorage, { operation: 'deactivate', username: user.username || '', id }, { ...user, role: user.role === 'admin' ? 'admin' : 'cashier', is_active: false });
       setUsers(users.filter(u => u.id !== id)); setSaveMessage('Usuario desactivado. Su historial se conserva.');
     } catch (error) { setSaveError(errorMessage(error)); }
     finally { refreshPending(); saving.current = false; setIsSaving(false); }
@@ -139,10 +137,10 @@ export default function UsuariosPage() {
               <div className="flex items-center gap-6">
                 <div className="relative">
                   {user.avatar_url ? (
-                    <Image unoptimized width={64} height={64} src={user.avatar_url} alt={user.full_name} className="w-16 h-16 rounded-full object-cover shadow-sm border border-slate-200" />
+                    <Image unoptimized width={64} height={64} src={user.avatar_url} alt={user.username || 'Usuario'} className="w-16 h-16 rounded-full object-cover shadow-sm border border-slate-200" />
                   ) : (
                     <div className="w-16 h-16 bg-gradient-to-b from-slate-50 to-slate-100 rounded-full flex items-center justify-center text-[#1d1d1f] font-semibold text-xl shadow-inner border border-slate-200/50 uppercase">
-                      {user.full_name?.charAt(0) || 'U'}
+                      {user.username?.charAt(0) || 'U'}
                     </div>
                   )}
                   {user.role === 'admin' && (
@@ -154,14 +152,13 @@ export default function UsuariosPage() {
 
                 <div className="space-y-1">
                   <div className="flex items-center gap-3">
-                    <h4 className="font-semibold text-lg text-[#1d1d1f]">{user.full_name}</h4>
+                    <h4 className="font-semibold text-lg text-[#1d1d1f]">{user.username || 'Usuario'}</h4>
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-tight uppercase ${
                       user.role === 'admin' ? 'bg-[#0071e3]/10 text-[#0071e3]' : 'bg-slate-100 text-slate-500'
                     }`}>
-                      {user.role === 'admin' ? 'ADMINISTRADOR' : user.role === 'cashier' ? 'CAJERO' : 'BARISTA'}
+                      {user.role === 'admin' ? 'ADMINISTRADOR' : 'CAJERO'}
                     </span>
                   </div>
-                  <p className="text-sm text-[#86868b] font-medium tracking-tight">@{user.username || 'usuario'}</p>
                 </div>
               </div>
 
@@ -173,7 +170,7 @@ export default function UsuariosPage() {
                   <Edit2 size={14} /> Editar
                 </button>
 
-                <button disabled={isSaving || !!pendingChange} aria-label={'Desactivar a ' + user.full_name} onClick={() => handleDelete(user.id)} className="p-2.5 text-slate-300 hover:bg-red-50 hover:text-[#ff3b30] rounded-full transition-all">
+                <button disabled={isSaving || !!pendingChange} aria-label={'Desactivar a ' + user.username} onClick={() => handleDelete(user.id)} className="p-2.5 text-slate-300 hover:bg-red-50 hover:text-[#ff3b30] rounded-full transition-all">
                    <Trash2 size={18} strokeWidth={1.5} />
                 </button>
               </div>
@@ -195,7 +192,7 @@ export default function UsuariosPage() {
            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm text-[#86868b]">
               <Shield size={20} />
            </div>
-           <h5 className="font-semibold text-[#1d1d1f]">Cajeros y baristas</h5>
+           <h5 className="font-semibold text-[#1d1d1f]">Cajeros</h5>
            <p className="text-sm text-[#86868b] leading-relaxed font-medium">Pueden abrir turno, cobrar, entregar la caja y guardar su corte de caja.</p>
         </div>
       </div>
@@ -203,7 +200,7 @@ export default function UsuariosPage() {
       {/* MODAL DE CREACIÓN / EDICIÓN */}
       {isModalOpen && (
         <div role="dialog" aria-modal="true" aria-labelledby="staff-modal-title" className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[32px] w-full max-w-2xl max-h-[calc(100dvh-32px)] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+          <div className="staff-modal bg-white rounded-[32px] w-full max-w-2xl shadow-2xl">
 
             <div className="shrink-0 flex justify-between items-center p-4 md:px-8 border-b border-slate-50">
               <h3 id="staff-modal-title" className="text-2xl font-black italic tracking-tight text-slate-900">
@@ -214,8 +211,9 @@ export default function UsuariosPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveUser} className="min-h-0 flex flex-col overflow-hidden">
-              <fieldset disabled={isSaving} className="min-h-0 overflow-y-auto overscroll-contain p-6 md:px-8 space-y-6">
+            <form onSubmit={handleSaveUser} className="staff-modal-form">
+              <div className="staff-modal-body" role="region" aria-label="Datos del usuario" tabIndex={0}>
+              <fieldset disabled={isSaving} className="min-w-0 p-6 md:px-8 space-y-6">
 
               {/* FILA 1: IMAGEN Y ROL */}
               <div className="flex gap-6 items-start">
@@ -243,7 +241,7 @@ export default function UsuariosPage() {
 
                   <div>
                     <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Nivel de Acceso</label>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
                         aria-pressed={formData.role === 'admin'}
@@ -254,38 +252,20 @@ export default function UsuariosPage() {
                       </button>
                       <button type="button" aria-pressed={formData.role === 'cashier'} onClick={() => setFormData({...formData, role: 'cashier'})}
                         className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 ${formData.role === 'cashier' ? 'border-[#1d1d1f] text-[#1d1d1f] bg-slate-50' : 'border-slate-100 text-slate-500 bg-white'}`}><Wallet size={16} /> Cajero</button>
-                      <button
-                        type="button"
-                        aria-pressed={formData.role === 'barista'}
-                        onClick={() => setFormData({...formData, role: 'barista'})}
-                        className={`p-3 rounded-xl border-2 font-bold text-sm transition-all flex items-center justify-center gap-2 ${formData.role === 'barista' ? 'border-[#1d1d1f] text-[#1d1d1f] bg-slate-50' : 'border-slate-100 text-slate-500 bg-white hover:border-slate-200'}`}
-                      >
-                        <Coffee size={16} /> Barista
-                      </button>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* FILA 2: DATOS PERSONALES */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-50 pt-6">
+              <div className="border-t border-slate-50 pt-6">
                 <div>
-                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Nombre Completo</label>
+                  <label htmlFor="staff-username" className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Usuario</label>
                   <input
+                    id="staff-username" autoComplete="username"
                     type="text"
                     required
-                    placeholder="Ej. Juan Pérez"
-                    className="w-full bg-white border border-slate-200 focus:border-[#0071e3]/40 rounded-xl px-4 py-3 text-sm font-semibold outline-none transition-all shadow-sm"
-                    value={formData.full_name}
-                    onChange={e => setFormData({...formData, full_name: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Nombre de usuario</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. juan.barista"
+                    placeholder="Ej. juan"
                     className="w-full bg-white border border-slate-200 focus:border-[#0071e3]/40 rounded-xl px-4 py-3 text-sm font-semibold outline-none transition-all shadow-sm"
                     value={formData.username}
                     disabled={modalMode === 'edit'}
@@ -317,6 +297,7 @@ export default function UsuariosPage() {
               </div>
 
               </fieldset>
+              </div>
               <footer className="shrink-0 border-t border-slate-100 bg-white p-4 md:px-8 space-y-3">
               {saveError && <p role="alert" className="text-sm text-red-700">{saveError}</p>}
               {pendingChange && <button type="button" className="rounded-xl border p-3" disabled={isSaving} onClick={() => { setIsModalOpen(false); void fetchUsers(); }}>Revisar resultado antes de repetir</button>}

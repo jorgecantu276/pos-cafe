@@ -23,13 +23,13 @@ export async function requireAdministrator(client: SupabaseClient) {
 export function userInput(value: unknown, create: boolean) {
   if (!value || typeof value !== 'object') throw new AccessError('Datos inválidos.', 400);
   const v = value as Record<string, unknown>;
-  if (typeof v.full_name !== 'string' || !v.full_name.trim() || v.full_name.length > 100
-    || typeof v.username !== 'string' || !/^[a-zA-Z0-9._-]{1,50}$/.test(v.username)
-    || typeof v.role !== 'string' || !['admin', 'barista', 'cashier'].includes(v.role)
+  if (typeof v.username !== 'string' || !/^[a-zA-Z0-9._-]{1,50}$/.test(v.username)
+    || typeof v.role !== 'string' || !['admin', 'cashier'].includes(v.role)
     || (v.avatar_url != null && (typeof v.avatar_url !== 'string' || v.avatar_url.length > 2000
-      || (v.avatar_url !== '' && !/^https:\/\//i.test(v.avatar_url))))) throw new AccessError('Revisa nombre, usuario, rol y foto HTTPS.', 400);
+      || (v.avatar_url !== '' && !/^https:\/\//i.test(v.avatar_url))))) throw new AccessError('Revisa usuario, rol y foto HTTPS.', 400);
   if ((create || (v.password != null && v.password !== '')) && (typeof v.password !== 'string' || v.password.length < 8 || v.password.length > 128)) throw new AccessError('Usa una contraseña de 8 a 128 caracteres.', 400);
-  return { full_name: v.full_name.trim(), username: v.username.toLowerCase(), role: v.role, avatar_url: (v.avatar_url as string) || null, password: (v.password as string) || '' };
+  const username = v.username.toLowerCase();
+  return { full_name: username, username, role: v.role, avatar_url: (v.avatar_url as string) || null, password: (v.password as string) || '' };
 }
 
 export async function createStaff(client: SupabaseClient, input: ReturnType<typeof userInput>) {
