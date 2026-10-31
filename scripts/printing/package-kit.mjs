@@ -20,11 +20,13 @@ await mkdir(destination); // Never overwrite a previously delivered kit/journal.
 await mkdir(path.join(destination, 'scripts/printing'), { recursive: true });
 const bundle = await build({ entryPoints: [path.join(root, 'scripts/printing/physical-test.ts')],
   outfile: path.join(destination, 'physical-test.mjs'), bundle: true, platform: 'node', format: 'esm', target: 'node24', metafile: true });
-const allowed = ['physical-test.ts', 'cafe-printers.json', 'print-journal-server.ts', 'windows-print-server.ts', 'sale-printing.ts', 'receipt-issuer-server.ts'];
+const allowed = ['physical-test.ts', 'cafe-printers.json', 'receipt-branding.json', 'print-journal-server.ts', 'windows-print-server.ts', 'sale-printing.ts', 'receipt-issuer-server.ts'];
 assert.ok(Object.keys(bundle.metafile.inputs).every(file => allowed.includes(path.basename(file))), 'Unexpected dependency in hardware kit');
 for (const file of ['windows-print.ps1', 'DesktopPrinter.cs']) await copyFile(path.join(root, 'scripts/printing', file), path.join(destination, 'scripts/printing', file));
 for (const file of ['Test-CafePrinters.ps1', 'Inspect-CafePrinters.ps1']) await copyFile(path.join(root, 'scripts/printing', file), path.join(destination, file));
 await copyFile(path.join(root, 'config/cafe-printers.json'), path.join(destination, 'machine-profile.json'));
+await mkdir(path.join(destination, 'public/receipt-branding'), { recursive: true });
+await copyFile(path.join(root, 'public/receipt-branding/carinito-logo-v1.jpg'), path.join(destination, 'public/receipt-branding/carinito-logo-v1.jpg'));
 if (issuerSource) {
   // Whitelist receipt fields; never package the entire fiscal document, CURP,
   // QR, idCIF, signature or unrelated personal information.
@@ -37,7 +39,7 @@ await copyFile(process.execPath, path.join(destination, 'node.exe'));
 const licenseUrl = 'https://raw.githubusercontent.com/nodejs/node/v24.22.2/LICENSE';
 const response = await fetch(licenseUrl); assert.ok(response.ok, 'Exact Node runtime license is required');
 await writeFile(path.join(destination, 'Node-LICENSE.txt'), await response.text());
-const instructions = `CARIÑITO MÍO: PRUEBA DE IMPRESORAS V7
+const instructions = `CARIÑITO MÍO: PRUEBA DE IMPRESORAS V8
 31 DE OCTUBRE DE 2026
 
 Este paquete usa el mismo servicio de impresión de la caja e incluye
@@ -46,11 +48,14 @@ No instala ni reemplaza el punto de venta. Guarda las pruebas en esta PC.
 No cobra, cambia inventario, instala controladores, empareja dispositivos,
 cambia ajustes predeterminados ni envía comandos de corte, cajón o RAW.
 
-V7 integra tipografía Arial Bold uniforme, columnas explícitas en el ticket y
+V8 integra el logotipo suministrado, QR local hacia Instagram, frase de cierre
+y el diseño de ticket solicitado el 31 de octubre. Conserva los datos del
+emisor debajo del pago y las protecciones del registro de impresión.
+Incluye tipografía Arial Bold uniforme, columnas explícitas en el ticket y
 etiquetas verticales con el diseño local de encabezado/pie. El formato físico
 sigue en 57 x 32 mm; el dibujo se gira 90 grados dentro de cada etiqueta.
 La prueba física del 31 de octubre aprobó el renderizador de prueba anterior
-tras esas correcciones; el diseño combinado de V7 requiere nueva revisión en papel.
+tras esas correcciones; el diseño combinado de V8 requiere nueva revisión en papel.
 Si ya usaste otro paquete, detén las pruebas antes de actualizarlo. Conserva
 completa su carpeta runtime, con las muestras guardadas, el registro de
 impresión y sus archivos asociados. Para reintentar una orden anterior,
@@ -166,7 +171,7 @@ al proceso de PowerShell que ejecuta cada comando.
 ${issuerSource ? 'Este paquete incluye los datos del emisor transcritos de la constancia\nsuministrada. No incluye el PDF original, CURP, idCIF, QR ni sello electrónico.\nNo consulta al contribuyente ni envía facturas. Después puede copiarse el mismo\narchivo fuera de la carpeta de versión y configurarse en el servidor mediante\nPOS_RECEIPT_ISSUER_FILE. Este paquete no cambia la configuración de la aplicación\nen uso.\n' : ''}
 `;
 await writeFile(path.join(destination, 'START-HERE.txt'), instructions);
-const files = ['physical-test.mjs', 'node.exe', 'Node-LICENSE.txt', 'machine-profile.json', 'Test-CafePrinters.ps1', 'Inspect-CafePrinters.ps1', 'scripts/printing/windows-print.ps1', 'scripts/printing/DesktopPrinter.cs', 'START-HERE.txt'];
+const files = ['physical-test.mjs', 'node.exe', 'Node-LICENSE.txt', 'machine-profile.json', 'Test-CafePrinters.ps1', 'Inspect-CafePrinters.ps1', 'scripts/printing/windows-print.ps1', 'scripts/printing/DesktopPrinter.cs', 'public/receipt-branding/carinito-logo-v1.jpg', 'START-HERE.txt'];
 if (issuerSource) files.push('receipt-issuer.json');
 const hashes = [];
 for (const file of files) {

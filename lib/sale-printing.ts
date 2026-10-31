@@ -1,8 +1,10 @@
 import type { SavedOrder } from './checkout';
+import receiptBranding from '../config/receipt-branding.json';
 
 export type PrintAudience = 'customer' | 'barista';
 export type PrintState = 'queued' | 'preparing' | 'blocked' | 'submitting' | 'submitted' | 'uncertain' | 'cancelled';
-export type PrintLineStyle = 'brand' | 'heading' | 'mono' | 'total' | 'meta' | 'name' | 'drink' | 'modifier' | 'note' | 'footer';
+export type PrintLineStyle = 'brand' | 'heading' | 'mono' | 'total' | 'meta' | 'name' | 'drink' | 'modifier' | 'note' | 'footer'
+  | 'logo' | 'qr' | 'separator' | 'receipt-heading' | 'receipt-total' | 'phone' | 'quote' | 'social' | 'issuer';
 export interface ReceiptIssuer {
   legalName: string; rfc: string; taxRegime: string; establishmentAddress: string; postalCode: string; city: string;
 }
@@ -14,6 +16,7 @@ export function validReceiptIssuer(issuer: ReceiptIssuer | undefined): issuer is
 export interface SalePrintDocument {
   title: string; sections: string[][]; styles?: PrintLineStyle[][];
   cupLabels?: { folio: string; service: string; date: string; time: string }[];
+  receiptBranding?: { version: number; qrUrl: string; qrRows: string[] };
   issuerComplete?: boolean; testOnly?: boolean;
 }
 export interface SalePrintJob {
@@ -36,26 +39,17 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
   if (issuer && !issuerComplete) throw new Error('Revisa nombre fiscal, RFC, régimen y domicilio del emisor.');
   const receipt: string[] = [], receiptStyles: PrintLineStyle[] = [];
   const add = (line: string, style: PrintLineStyle = 'mono') => { receipt.push(line); receiptStyles.push(style); };
-  add('CARIÑITO MÍO', 'brand');
+  add('CARIÑITO MÍO', 'logo');
+  add('', 'separator');
+  add('Teléfono: +52 868 305 4668', 'phone');
+  add('', 'separator');
+  add('TICKET DE VENTA', 'receipt-heading');
   if (options.testOnly || !issuerComplete) add('PRUEBA DE IMPRESIÓN · NO ES UNA VENTA', 'heading');
-  if (issuer) {
-    add(text(issuer.legalName), 'meta'); add(`RFC: ${text(issuer.rfc)}`, 'meta');
-    add(`Régimen: ${text(issuer.taxRegime)}`, 'meta'); add(text(issuer.establishmentAddress), 'meta');
-    add(`${text(issuer.city)} · C.P. ${text(issuer.postalCode)}`, 'meta');
-  } else {
-    add('[NOMBRE O RAZÓN SOCIAL]', 'meta');
-    add('RFC: [RFC DEL EMISOR]', 'meta');
-    add('Régimen: [RÉGIMEN FISCAL]', 'meta');
-    add('[DOMICILIO DEL ESTABLECIMIENTO]', 'meta');
-    add('[MUNICIPIO, ESTADO · C.P.]', 'meta');
-  }
-  add('WhatsApp: +52 868 305 4668', 'meta');
-  add('TICKET DE VENTA', 'heading');
   add(`Folio: ${ticket} · ${date}`);
-  add(`Expedido en: ${issuer ? `${text(issuer.city)} ${text(issuer.postalCode)}` : '[LUGAR / C.P.]'}`);
   add(`Cliente: ${text(order.customer_name) || 'Público en general'}`);
-  add(text(order.order_type)); add('-----------------------------------');
+  add(text(order.order_type)); add('', 'separator');
   add('CANT.      P.UNITARIO        IMPORTE');
+  add('', 'separator');
   let grossCents = 0;
   for (const item of order.items) {
     const lineCents = Math.round(item.product.price * 100) * item.quantity; grossCents += lineCents;
@@ -65,21 +59,34 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
     if (item.product.note) add(`  ${text(item.product.note)}`);
   }
   if (order.order_note) add(`Nota: ${text(order.order_note)}`);
-  add('-----------------------------------');
+  add('', 'separator');
   const adjustment = grossCents - Math.round(order.total * 100);
   if (adjustment) { add(`Importe artículos: ${money(grossCents / 100)}`); add(`Ajuste de la venta: ${money(-adjustment / 100)}`); }
-  add(`TOTAL: ${money(order.total)}`, 'total');
+  add(`TOTAL: ${money(order.total)}`, 'receipt-total');
+  add('', 'separator');
   const payment = ({ efectivo: 'EFECTIVO', tarjeta: 'TARJETA', mixto: 'MIXTO' } as Record<string, string>)[order.payment_method.toLowerCase()] || text(order.payment_method);
   add(`Pago: ${payment}`);
   if (['efectivo', 'mixto'].includes(order.payment_method.toLowerCase())) {
-    add(`Recibido MXN: ${money(order.tender_mxn)}`);
+    add(`Recibido MXN: $${order.tender_mxn.toFixed(2)}`);
     if (order.tender_usd) add(`Recibido USD: $${order.tender_usd.toFixed(2)} · TC ${order.exchange_rate.toFixed(4)}`);
-    add(`Cambio: ${money(order.change_mxn)}`);
+    add(`Cambio: $${order.change_mxn.toFixed(2)}`);
   }
-  add('Conserve su ticket para aclaraciones.', 'meta');
-  add('Para solicitar su CFDI, acérquese a caja.', 'meta');
-  add('Este ticket no sustituye al CFDI.', 'meta');
-  add('¡Gracias por tu visita!', 'heading'); add('@_carinitomio', 'meta');
+  add('', 'separator');
+  if (issuer) {
+    add(text(issuer.legalName), 'issuer'); add(`RFC: ${text(issuer.rfc)}`, 'issuer');
+    add(`Régimen: ${text(issuer.taxRegime)}`, 'issuer'); add(text(issuer.establishmentAddress), 'issuer');
+    add(`${text(issuer.city)} · C.P. ${text(issuer.postalCode)}`, 'issuer');
+  } else {
+    add('[NOMBRE O RAZÓN SOCIAL]', 'issuer'); add('RFC: [RFC DEL EMISOR]', 'issuer');
+    add('Régimen: [RÉGIMEN FISCAL]', 'issuer'); add('[DOMICILIO DEL ESTABLECIMIENTO]', 'issuer');
+    add('[MUNICIPIO, ESTADO · C.P.]', 'issuer');
+  }
+  add('Para solicitar su CFDI, acérquese a caja.', 'issuer');
+  add('Este ticket no sustituye al CFDI.', 'issuer');
+  add(receiptBranding.qrUrl, 'qr'); add('MENÚ E INSTAGRAM', 'meta');
+  add('', 'separator');
+  add('Para el postre y una sonrisa,', 'quote'); add('siempre hay espacio.', 'quote');
+  add('@_carinitomio', 'social');
   const units = order.items.reduce((sum, i) => sum + i.quantity, 0);
   if (units > 2000) throw new Error('La orden requiere revisión por su cantidad de etiquetas.');
   let unit = 0;
@@ -98,7 +105,7 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
     baristaStyles.push(styles);
     return lines;
   }));
-  return { customer: { title: `CM #${ticket} CLIENTE`, sections: [receipt], styles: [receiptStyles], issuerComplete, testOnly: options.testOnly === true },
+  return { customer: { title: `CM #${ticket} CLIENTE`, sections: [receipt], styles: [receiptStyles], receiptBranding, issuerComplete, testOnly: options.testOnly === true },
     barista: { title: `CM #${ticket} BARRA`, sections, styles: baristaStyles, cupLabels } };
 }
 

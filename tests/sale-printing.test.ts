@@ -73,7 +73,7 @@ test('local issuer configuration cannot be supplied by the browser and incomplet
 
 test('one confirmed snapshot yields financial customer context and complete per-cup barista context', () => {
   const docs = saleDocuments(sale()), customer = docs.customer.sections.flat().join('\n'), barista = docs.barista.sections.flat().join('\n');
-  assert.match(customer, /TOTAL: \$220.00 MXN/); assert.match(customer, /Cambio: \$30.00 MXN/);
+  assert.match(customer, /TOTAL: \$220.00 MXN/); assert.match(customer, /Cambio: \$30.00/);
   assert.equal(docs.barista.sections.length, 2);
   for (const section of docs.barista.sections) {
     const text = section.join('\n');

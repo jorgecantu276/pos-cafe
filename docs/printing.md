@@ -35,6 +35,35 @@ cashier retry still never resend an uncertain or accepted copy automatically.
 
 ## Exact machine profile
 
+### Owner's customer receipt reference — October 31
+
+New customer documents follow the two supplied WhatsApp references: the exact
+Cariñito Mío Taller Repostero logo, centered phone, divider rules, prominent
+TICKET DE VENTA and total, measured item columns, Instagram QR, closing phrase
+“Para el postre y una sonrisa, siempre hay espacio.” and `@_carinitomio`.
+Issuer identity/address and the existing CFDI request text remain below payment.
+The large title/total use Arial Bold 14/15 pt; body/issuer stay at the accepted
+8.5 pt. The closing phrase uses bold italic serif type. Test samples remain
+explicitly marked. Existing saved documents retain their original text/design.
+
+`public/receipt-branding/carinito-logo-v1.jpg` is an unchanged copy of the
+supplied 12.47.19 PM logo JPEG (SHA-256
+`216050c4bfb1869e803bcbd7fd947c1ce6c62323be2f519b94022ad45c4d85df`).
+Only rendering crops its white margins and thresholds it for thermal contrast.
+Keep this versioned asset available to Windows helpers and browser reprints.
+Release packaging copies public assets; the standalone kit explicitly includes
+the same logo in its manifest. Missing required assets block preparation before
+the submission fence rather than silently dropping the logo.
+
+The user explicitly chose `https://www.instagram.com/_carinitomio/` for the
+“MENÚ E INSTAGRAM” QR. `config/receipt-branding.json` contains its precomputed
+37 × 37 matrix, including four-module quiet zones, generated with qrcode 8.2
+at error-correction M. The renderer draws five 203-dpi dots per module; browser
+reprints use the same matrix as inline SVG. No external image/QR service or
+runtime Python dependency is involved. New journal documents snapshot the QR
+matrix and target. The 203-dpi preview was independently decoded to that URL;
+scan/readability and logo contrast still need a new physical paper check.
+
 The October 31 cup-label design uses black text and two divider rules on the
 colored Hybsk stock. Name and folio/cup count form the header, each modifier
 has its own line, and service type and Matamoros date/time form the footer.
@@ -154,8 +183,9 @@ Barista labels use a Starbucks-inspired reading order: customer name,
 full menu drink name, milk/options, item instruction, order
 instruction, then a small folio/cup count/order type/time footer. Each unit has
 its own section. No Starbucks logo, invented size/recipe code or payment data
-is added. Labels use uniform Arial Bold 8.5 pt. Receipts use Arial Bold 8.5 pt
-for body/issuer/meta, 10 pt headings, 11 pt total and 12 pt brand. Quantity,
+is added. Labels use uniform Arial Bold 8.5 pt. The accepted legacy receipts use
+Arial Bold 8.5 pt body/issuer/meta, 10 pt headings, 11 pt total and 12 pt brand;
+the newer logo receipt uses the title/total styles described above. Quantity,
 unit price and line amount use measured left/middle/right columns, rather
 than relying on spaces to align proportional type.
 No remote images or QR services are needed. Small labels continue onto further
@@ -220,8 +250,8 @@ Windows job after power-on; same-case repeats produced no extra paper. See
 evidence hashes and the boundary between that renderer and the newer reference
 design. This does not establish full-POS, cutter or drawer acceptance.
 
-The source builder now produces **V7**, incorporating the accepted rendering
-corrections and local reference design. Its runtime is Node 24.22.2 x64 with
+The source builder now produces **V8**, incorporating the accepted rendering
+corrections and the owner's receipt/sticker references. Its runtime is Node 24.22.2 x64 with
 SQLite 3.53.4. When upgrading an existing installation, preserve its persistent
 journal in place; never replace it with a fresh kit's empty journal to retry
 previous orders.

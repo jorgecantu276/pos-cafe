@@ -49,6 +49,10 @@ test('reprint preserves the original saved document after issuer changes and add
     const text = dom.window.document.body.textContent!;
     for (const value of [issuer.legalName, issuer.rfc, issuer.establishmentAddress, order.customer_name, order.order_note, 'Avena', 'Sin hielo', 'Recibido MXN: $100.00', 'Cambio: $20.00', 'REIMPRESIÓN', 'VENTA CANCELADA']) assert.ok(text.includes(value), value);
     assert.equal(dom.window.document.querySelector('script'), null);
+    assert.equal(dom.window.document.querySelector('svg[aria-label="QR de Instagram"]')?.getAttribute('viewBox'),'0 0 37 37');
+    assert.equal(dom.window.document.querySelector('image')?.getAttribute('href'),'/receipt-branding/carinito-logo-v1.jpg');
+    assert.match(text,/MENÚ E INSTAGRAM[\s\S]*Para el postre y una sonrisa,/);
+    assert.equal(result.document.receiptBranding?.qrUrl,'https://www.instagram.com/_carinitomio/');
     assert.equal(JSON.stringify(original), unchanged);
   } finally { dom.window.close(); }
 });

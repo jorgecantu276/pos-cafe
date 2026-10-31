@@ -13,8 +13,24 @@ public static class CafeDesktopPrinter {
     private static float pageWidth;
     private static float physicalPageWidth;
     private static bool rotateLabel;
+    private static Image receiptLogo;
+    private static string receiptLogoData;
+    private static string[] qrRows;
+    private static readonly Rectangle LogoCrop = new Rectangle(185, 280, 820, 640);
+    private const float LogoWidth = 43f * MmToPt;
+    private const float LogoHeight = LogoWidth * 640f / 820f;
+    // Five whole 203-dpi dots per module, including the four-module quiet zone.
+    private const float QrModule = 5f * 72f / 203f;
     private static int currentPage;
     private const float MmToPt = 72f / 25.4f;
+
+    public static void ConfigureBranding(string logoPath, string[] rows) {
+        if (rows == null || rows.Length < 21 || rows.Length > 177) throw new InvalidOperationException("Invalid receipt QR");
+        foreach (string row in rows) if (row.Length != rows.Length || !System.Text.RegularExpressions.Regex.IsMatch(row, "^[01]+$")) throw new InvalidOperationException("Invalid receipt QR row");
+        receiptLogo = Image.FromFile(logoPath);
+        receiptLogoData = Convert.ToBase64String(System.IO.File.ReadAllBytes(logoPath));
+        qrRows = rows;
+    }
 
     public static void Prepare(string queue, string title, string[][] sections, float points, float widthMm, float heightMm, string[][] styles, string layoutTitle, string[][] cupLabels, bool verticalLabel) {
         if (!Environment.UserInteractive) throw new InvalidOperationException("Desktop session required");
@@ -67,11 +83,22 @@ public static class CafeDesktopPrinter {
         fonts["mono"] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
         fonts["total"] = new Font("Arial", 11, FontStyle.Bold, GraphicsUnit.Point);
         fonts["meta"] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["issuer"] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["phone"] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["receipt-heading"] = new Font("Arial", 14, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["receipt-total"] = new Font("Arial", 15, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["quote"] = new Font("Times New Roman", 10, FontStyle.Bold | FontStyle.Italic, GraphicsUnit.Point);
+        fonts["social"] = new Font("Arial", 11, FontStyle.Bold, GraphicsUnit.Point);
         foreach (string style in new [] { "name", "drink", "modifier", "note", "footer", "cup-name", "cup-drink", "cup-modifier", "cup-note", "cup-meta", "cup-service" })
             fonts[style] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
     }
     private static Font FontFor(string style) { return style == "legacy-bold" ? bold : (fonts.ContainsKey(style) ? fonts[style] : regular); }
-    private static float LineHeight(string style) { return style.StartsWith("legacy") ? regular.SizeInPoints * 1.4f : FontFor(style).SizeInPoints * 1.22f + 0.5f; }
+    private static float LineHeight(string style) {
+        if (style == "logo") return LogoHeight + 4;
+        if (style == "qr") { if (qrRows == null) throw new InvalidOperationException("Missing receipt QR"); return qrRows.Length * QrModule + 4; }
+        if (style == "separator") return 7;
+        return style.StartsWith("legacy") ? regular.SizeInPoints * 1.4f : FontFor(style).SizeInPoints * 1.22f + 0.5f;
+    }
     private static List<List<Run>> Layout(Graphics g, string title, string[][] sections, float width, float height, string[][] styles, string[][] cupLabels) {
         float margin = 2 * MmToPt;
         float usable = width - 2 * margin;
@@ -102,6 +129,24 @@ public static class CafeDesktopPrinter {
             for (int index = 0; index < section.Length - (cupFooter ? 1 : 0); index++) {
                 string style = styles != null && sectionIndex < styles.Length && styles[sectionIndex] != null && index < styles[sectionIndex].Length ? styles[sectionIndex][index] : (index == 0 ? "legacy-bold" : "legacy");
                 float lineHeight = LineHeight(style);
+                if (style == "logo" || style == "qr" || style == "separator") {
+                    if ((style == "logo" || style == "qr") && receiptLogo == null) throw new InvalidOperationException("Missing receipt assets");
+                    if (lineHeight > contentBottom - margin) throw new InvalidOperationException("Receipt graphic does not fit stock");
+                    float keepHeight = lineHeight;
+                    // Keep the QR, its caption and closing message together.
+                    if (style == "qr") for (int tail = index + 1; tail < section.Length; tail++) {
+                        string tailStyle = styles[sectionIndex][tail];
+                        if (tailStyle == "separator") keepHeight += LineHeight(tailStyle);
+                        else foreach (string ignored in Wrap(g, section[tail], FontFor(tailStyle), usable)) keepHeight += LineHeight(tailStyle);
+                    }
+                    if (keepHeight > contentBottom - margin) throw new InvalidOperationException("Receipt closing block does not fit stock");
+                    if (y + keepHeight > contentBottom) {
+                        page = new List<Run>(); output.Add(page); y = margin;
+                        page.Add(new Run { Text = title + " CONT.", Style = "footer", Y = y }); y += LineHeight("footer");
+                    }
+                    page.Add(new Run { Text = section[index], Style = style, Y = y }); y += lineHeight;
+                    continue;
+                }
                 string[] cells = style == "mono" ? ReceiptCells(section[index]) : null;
                 if (cells != null) {
                     ValidateCells(g, cells, FontFor(style), usable);
@@ -234,7 +279,7 @@ public static class CafeDesktopPrinter {
     private static float TextX(Graphics g, Run run, Font font, float width) {
         float margin = 2 * MmToPt, x = run.X ?? margin;
         float measured = g.MeasureString(run.Text, font, Int32.MaxValue, StringFormat.GenericTypographic).Width;
-        if (run.Style == "brand" || run.Style == "meta") x = Math.Max(margin, (width - measured) / 2);
+        if (run.Style == "brand" || run.Style == "meta" || run.Style == "issuer" || run.Style == "phone" || run.Style == "receipt-heading" || run.Style == "receipt-total" || run.Style == "quote" || run.Style == "social") x = Math.Max(margin, (width - measured) / 2);
         if (run.Style == "total") x = Math.Max(margin, width - margin - measured);
         return x;
     }
@@ -246,6 +291,20 @@ public static class CafeDesktopPrinter {
     private static void DrawRuns(Graphics g, List<Run> page, float width) {
         float margin = 2 * MmToPt;
         foreach (Run run in page) {
+            if (run.Style == "logo") {
+                using (var attributes = new System.Drawing.Imaging.ImageAttributes()) {
+                    attributes.SetThreshold(0.85f);
+                    g.DrawImage(receiptLogo, Rectangle.Round(new RectangleF((width - LogoWidth) / 2, run.Y, LogoWidth, LogoHeight)), LogoCrop.X, LogoCrop.Y, LogoCrop.Width, LogoCrop.Height, GraphicsUnit.Pixel, attributes);
+                }
+                continue;
+            }
+            if (run.Style == "qr") {
+                float start = (width - qrRows.Length * QrModule) / 2;
+                for (int row = 0; row < qrRows.Length; row++) for (int col = 0; col < qrRows.Length; col++)
+                    if (qrRows[row][col] == '1') g.FillRectangle(Brushes.Black, start + col * QrModule, run.Y + row * QrModule, QrModule, QrModule);
+                continue;
+            }
+            if (run.Style == "separator") { g.DrawLine(Pens.Black, margin, run.Y + 3, width - margin, run.Y + 3); continue; }
             if (run.Style == "rule") { using (Pen pen = new Pen(Color.Black, 0.7f)) g.DrawLine(pen, run.X.Value, run.Y, run.X.Value + run.RuleWidth, run.Y); continue; }
             Font font = FontFor(run.Style);
             if (run.Style == "mono" && System.Text.RegularExpressions.Regex.IsMatch(run.Text, @"^-{3,}$")) {
@@ -293,6 +352,17 @@ public static class CafeDesktopPrinter {
         svg.Append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"" + Number(widthMm) + "mm\" height=\"" + Number(heightMm) + "mm\" viewBox=\"0 0 " + Number(widthMm * MmToPt) + " " + Number(heightMm * MmToPt) + "\"><title>Barista label</title>");
         if (verticalLabel) svg.Append("<g transform=\"translate(" + Number(widthMm * MmToPt) + " 0) rotate(90)\">");
         foreach (Run run in page) {
+            if (run.Style == "logo") {
+                svg.Append("<svg x=\"" + Number((logicalWidth - LogoWidth) / 2) + "\" y=\"" + Number(run.Y) + "\" width=\"" + Number(LogoWidth) + "\" height=\"" + Number(LogoHeight) + "\" viewBox=\"185 280 820 640\"><image width=\"1200\" height=\"1200\" href=\"data:image/jpeg;base64," + receiptLogoData + "\"/></svg>"); continue;
+            }
+            if (run.Style == "qr") {
+                float start = (logicalWidth - qrRows.Length * QrModule) / 2;
+                svg.Append("<g shape-rendering=\"crispEdges\">");
+                for (int row = 0; row < qrRows.Length; row++) for (int col = 0; col < qrRows.Length; col++)
+                    if (qrRows[row][col] == '1') svg.Append("<rect x=\"" + Number(start + col * QrModule) + "\" y=\"" + Number(run.Y + row * QrModule) + "\" width=\"" + Number(QrModule) + "\" height=\"" + Number(QrModule) + "\"/>");
+                svg.Append("</g>"); continue;
+            }
+            if (run.Style == "separator") { svg.Append("<path d=\"M" + Number(2 * MmToPt) + " " + Number(run.Y + 3) + "h" + Number(logicalWidth - 4 * MmToPt) + "\" stroke=\"black\"/>"); continue; }
             float x = run.X ?? 2 * MmToPt;
             if (run.Style == "rule") {
                 svg.Append("<path d=\"M" + Number(x) + " " + Number(run.Y) + "h" + Number(run.RuleWidth) + "\" stroke=\"black\" stroke-width=\"0.7\"/>"); continue;
@@ -309,6 +379,8 @@ public static class CafeDesktopPrinter {
         svg.Append("</svg>"); System.IO.File.WriteAllText(filename, svg.ToString(), new System.Text.UTF8Encoding(false));
     }
     public static void Dispose() {
+        if (receiptLogo != null) receiptLogo.Dispose();
+        receiptLogo = null; qrRows = null; receiptLogoData = null;
         if (document != null) document.Dispose();
         if (regular != null) regular.Dispose();
         if (bold != null) bold.Dispose();

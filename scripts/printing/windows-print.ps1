@@ -14,6 +14,11 @@ try {
     Add-Type -AssemblyName System.Drawing
     Add-Type -Path (Join-Path $PSScriptRoot 'DesktopPrinter.cs') -ReferencedAssemblies System.Drawing
     $printInput = [Console]::ReadLine() | ConvertFrom-Json
+    if ($printInput.receiptBranding) {
+        if ($printInput.receiptBranding.version -ne 1) { throw 'Unsupported receipt branding version' }
+        $logoPath = Join-Path $PSScriptRoot '..\..\public\receipt-branding\carinito-logo-v1.jpg'
+        [CafeDesktopPrinter]::ConfigureBranding($logoPath, [string[]]$printInput.receiptBranding.qrRows)
+    }
     [string[][]]$sections = @($printInput.sections | ForEach-Object { ,([string[]]$_) })
     [string[][]]$styles = $null
     if ($printInput.styles) { $styles = @($printInput.styles | ForEach-Object { ,([string[]]$_) }) }

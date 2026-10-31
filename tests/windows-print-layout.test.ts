@@ -39,10 +39,14 @@ test('accepted receipt weights and fixed columns survive rendering; label rotati
   try {
     const receipt = preview('customer');
     assert.equal(receipt.pages.length,1);
-    assert.match(receipt.svg, /font-size="12" font-weight="700">CARIÑITO MÍO/);
-    assert.match(receipt.svg, /font-size="11" font-weight="700">TOTAL:/);
+    assert.match(receipt.svg, /data:image\/jpeg;base64,/);
+    assert.match(receipt.svg, /font-size="14" font-weight="700">TICKET DE VENTA/);
+    assert.match(receipt.svg, /font-size="15" font-weight="700">TOTAL:/);
     assert.match(receipt.svg, /font-size="8.5" font-weight="700">Cambio:/);
     assert.doesNotMatch(receipt.svg, /font-weight="400"|Courier|rotate\(90\)/);
+    assert.match(receipt.svg, /shape-rendering="crispEdges"/);
+    assert.match(receipt.svg, /MENÚ E INSTAGRAM/);
+    assert.match(receipt.svg, /Para el postre y una sonrisa,/);
     const cells = [...receipt.svg.matchAll(/<text x="([\d.]+)" y="([\d.]+)"[^>]*>(CANT\.|P.UNITARIO|IMPORTE|1|\$110.00)<\/text>/g)];
     const header=cells.filter(m=>['CANT.','P.UNITARIO','IMPORTE'].includes(m[3]));
     const amounts=cells.filter(m=>['1','$110.00'].includes(m[3]));
