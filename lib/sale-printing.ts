@@ -77,11 +77,11 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
   }
   add('', 'separator');
   if (issuer) {
-    add(text(issuer.legalName), 'issuer'); add(`RFC: ${text(issuer.rfc)}`, 'issuer');
+    add(`RFC: ${text(issuer.rfc)}`, 'issuer');
     add(`Régimen: ${text(issuer.taxRegime)}`, 'issuer'); add(text(issuer.establishmentAddress), 'issuer');
     add(`${text(issuer.city)} · C.P. ${text(issuer.postalCode)}`, 'issuer');
   } else {
-    add('[NOMBRE O RAZÓN SOCIAL]', 'issuer'); add('RFC: [RFC DEL EMISOR]', 'issuer');
+    add('RFC: [RFC DEL EMISOR]', 'issuer');
     add('Régimen: [RÉGIMEN FISCAL]', 'issuer'); add('[DOMICILIO DEL ESTABLECIMIENTO]', 'issuer');
     add('[MUNICIPIO, ESTADO · C.P.]', 'issuer');
   }

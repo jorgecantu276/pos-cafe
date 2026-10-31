@@ -38,7 +38,11 @@ function fixture() {
 const request = (query = `orderId=${order.id}`) => new Request(`http://127.0.0.1:3000/api/receipts?${query}`);
 
 test('reprint preserves the original saved document after issuer changes and adds only escaped reprint/cancellation context', async () => {
-  const f = fixture(), original = saleDocuments(order, { issuer }).customer, unchanged = JSON.stringify(original);
+  const f = fixture(), original = saleDocuments(order, { issuer }).customer;
+  // An older stored receipt still has the issuer name that newer templates omit.
+  const issuerIndex=original.sections[0].findIndex(line=>line.startsWith('RFC:'));
+  original.sections[0].splice(issuerIndex,0,issuer.legalName);original.styles![0].splice(issuerIndex,0,'issuer');
+  const unchanged = JSON.stringify(original);
   f.state.status = 'cancelled';
   const result = await handleReceiptRequest(request(), f.client, { stored: (owner, id) => {
     assert.equal(owner, 'cashier'); assert.equal(id, order.id); return original;

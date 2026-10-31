@@ -31,13 +31,15 @@ test('a Windows UTF-8 BOM does not withhold an otherwise valid local issuer prof
   } finally { remove(directory); }
 });
 
-test('customer receipt preserves issuer and amounts without CFDI wording or invented tax/deadlines', () => {
+test('customer receipt omits issuer name and CFDI wording while preserving remaining issuer fields and amounts', () => {
   const docs = saleDocuments(sale(), { issuer:testIssuer,testOnly:true }), receipt=docs.customer.sections[0].join('\n');
-  for(const expected of [testIssuer.legalName,testIssuer.rfc,testIssuer.taxRegime,testIssuer.establishmentAddress,testIssuer.postalCode,'Folio: 1234','P.UNITARIO','$110.00','$220.00','TOTAL: $220.00 MXN'])assert.ok(receipt.includes(expected));
+  for(const expected of [testIssuer.rfc,testIssuer.taxRegime,testIssuer.establishmentAddress,testIssuer.postalCode,'Folio: 1234','P.UNITARIO','$110.00','$220.00','TOTAL: $220.00 MXN'])assert.ok(receipt.includes(expected));
+  assert.ok(!receipt.includes(testIssuer.legalName));
   assert.equal(docs.customer.issuerComplete,true);assert.equal(docs.customer.testOnly,true);
   assert.doesNotMatch(receipt,/CFDI|CDFI|IVA\s*(?:8|16)|mismo día|30 días|UUID|Sello Digital/i);
   const draft=saleDocuments(sale()).customer;
-  assert.equal(draft.issuerComplete,false);assert.match(draft.sections.flat().join(' '),/\[NOMBRE O RAZÓN SOCIAL\].*\[RFC DEL EMISOR\].*\[RÉGIMEN FISCAL\].*\[DOMICILIO DEL ESTABLECIMIENTO\]/);
+  assert.equal(draft.issuerComplete,false);assert.match(draft.sections.flat().join(' '),/\[RFC DEL EMISOR\].*\[RÉGIMEN FISCAL\].*\[DOMICILIO DEL ESTABLECIMIENTO\]/);
+  assert.doesNotMatch(draft.sections.flat().join(' '),/NOMBRE O RAZÓN SOCIAL/);
   const label=docs.barista;
   assert.equal(label.sections[0][0],'Ana & José');assert.equal(label.styles?.[0][0],'name');assert.equal(label.styles?.[0][1],'drink');assert.equal(label.styles?.[0].at(-1),'footer');
   assert.equal(label.cupLabels,undefined);assert.equal(label.labelLayout,'reference-v2');

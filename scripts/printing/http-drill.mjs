@@ -95,7 +95,8 @@ try {
   assert.equal(receiptResponse.status, 200);
   const savedReceipt = await receiptResponse.json();
   assert.equal(savedReceipt.source, 'stored');
-  assert.match(savedReceipt.document.sections.flat().join(' '), /EMISOR FICTICIO.*AAA010101AAA.*Domicilio ficticio/);
+  assert.match(savedReceipt.document.sections.flat().join(' '), /AAA010101AAA.*Domicilio ficticio/);
+  assert.doesNotMatch(savedReceipt.document.sections.flat().join(' '), /EMISOR FICTICIO/);
   assert.match(savedReceipt.document.sections.flat().join(' '), /Entregar juntos/);
   assert.match(savedReceipt.document.sections.flat().join(' '), /Recibido MXN:.*250\.00.*Cambio:.*30\.00/);
   assert.match(receiptResponse.headers.get('cache-control'), /private.*no-store/);

@@ -41,8 +41,10 @@ New customer documents follow the two supplied WhatsApp references: the exact
 Cariñito Mío Taller Repostero logo, centered phone, divider rules, prominent
 TICKET DE VENTA and total, measured item columns, Instagram QR, closing phrase
 “Para el postre y una sonrisa, siempre hay espacio.” and `@_carinitomio`.
-Issuer identity/address remain below payment. Per the owner's later instruction,
-new customer receipts omit both the CFDI request and the CFDI disclaimer.
+RFC, regime and establishment address remain below payment. Per the owner's
+later instructions, new customer receipts omit the issuer's legal/personal
+name and both CFDI lines. The complete issuer profile remains stored locally
+for validation; the printed brand is Cariñito Mío.
 The large title/total use Arial Bold 14/15 pt; body/issuer stay at the accepted
 8.5 pt. The closing phrase uses bold italic serif type. Test samples remain
 explicitly marked. Existing saved documents retain their original text/design.
