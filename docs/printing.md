@@ -61,8 +61,11 @@ The user explicitly chose `https://www.instagram.com/_carinitomio/` for the
 at error-correction M. The renderer draws five 203-dpi dots per module; browser
 reprints use the same matrix as inline SVG. No external image/QR service or
 runtime Python dependency is involved. New journal documents snapshot the QR
-matrix and target. The 203-dpi preview was independently decoded to that URL;
-scan/readability and logo contrast still need a new physical paper check.
+matrix and target. The 203-dpi preview was independently decoded to that URL.
+The later PRUEBA-R8 café test physically passed paper readability/contrast,
+alignment, complete output and a phone scan of the printed QR. Its same-command
+repeat produced no extra paper and preserved prior journal history. See the
+[follow-up acceptance record](printer-acceptance-2026-10-31.md#follow-up-v8-customer-receipt-and-concurrent-dual-output).
 
 For a customer-only café check, use `scripts/printing/package-receipt-test.mjs`
 with a new absolute output directory. This separate package requires the
@@ -262,7 +265,10 @@ orientation, paper loading and label learning. Bluetooth recovered the existing
 Windows job after power-on; same-case repeats produced no extra paper. See
 [the acceptance record](printer-acceptance-2026-10-31.md) for approved settings,
 evidence hashes and the boundary between that renderer and the newer reference
-design. This does not establish full-POS, cutter or drawer acceptance.
+design. Later PRUEBA-R8 physically accepted the branded receipt/QR, and PRUEBA-D1
+passed concurrent V8 receipt plus the previously approved flowing Bluetooth
+label. That dual test did not use the newer repo reference label. These tests
+do not establish full-POS, cutter or drawer acceptance.
 
 The source builder now produces **V8**, incorporating the accepted rendering
 corrections and the owner's receipt/sticker references. Its runtime is Node 24.22.2 x64 with

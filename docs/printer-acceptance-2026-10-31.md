@@ -64,12 +64,13 @@ content and incorporates the accepted typography and vertical orientation.
 Fields stack on narrow stock; continuations preserve all identifiers and notes.
 Saved pre-metadata documents retain their flowing layout and immutable text.
 No taxpayer-specific style matching from the diagnostic scripts is copied;
-the generic `meta` style covers every issuer.
+the generic `meta`/`issuer` styles cover every issuer.
 
 The accepted standalone renderer and this combined reference design are
 different layouts. Automated rendering, continuation, journal/retry and
-production HTTP checks validate the integration locally. Its exact paper
-output needs a new café check. The original acceptance did not install the
+production HTTP checks validate the integration locally. The newer reference
+sticker still needs a café check; the later V8 receipt was physically accepted
+as recorded below. The original acceptance did not install the
 replacement POS, validate its hosted backend, verify drawer/cutter commands
 or establish long-term hardware reliability.
 
@@ -91,3 +92,67 @@ These SHA-256 values identify the café artifacts, not the changed repo helper:
 | `diagnostics/long-notes-label-tone-01/DesktopPrinter.cs` | `e0028a0c0a74d6e1b809db47dc89ebc578538184d6228d0ac7e5df44fb13e21a` |
 | `diagnostics/long-notes-label-tone-01/windows-print.ps1` | `7fbceced79235e3d2ca12f54a87ec1df604a0c510246776406ef1c0c229d1acf` |
 | `node.exe` | `1c331340fa6cac5e4294725959070a143fa0507195a78ad77eed7943f719aac9` |
+
+## Follow-up: V8 customer receipt and concurrent dual output
+
+The later transfer at `D:\prepare-and-execute-the-cari-ito\outputs` and `work`
+adds physical acceptance of the branded receipt. The earlier 12:35 PM files
+remain the first-session evidence; the V8 and SIMULTANEOUS records at 1:09 PM
+and 1:14 PM describe the new tests. No additional print was performed while
+reviewing this transfer, and no runtime fix was indicated by its results.
+
+### Receipt-only PRUEBA-R8 — passed
+
+`V8-final-confirmation.json`, `V8-duplicate-protection.json`, `V8-RESULTS.txt`
+and `V8-ACCEPTANCE-RESULT.txt` record:
+
+- User personally confirmed the complete, clear one-page paper: supplied logo,
+  text, 110 total / 150 received / 40 change, issuer, phrase/handle and alignment.
+- User scanned the printed QR and confirmed the selected Instagram destination.
+- The identical-command repeat left the same customer job at one attempt and
+  timestamp `2026-10-31T18:05:37.014Z`; user confirmed no extra paper.
+- Exactly one customer row/source was added, no barista row. All 12 previous
+  jobs, prior sources and nine recovery-audit records stayed unchanged; the
+  journal reached 13 jobs. Original non-journal files, issuer and old reports
+  were preserved. The receipt queue was empty.
+
+The auxiliary independent audit initially compared SQLite null-prototype rows
+against ordinary JSON objects and failed on their prototypes. Its read-only
+normalization then confirmed equal field values. The bundled runner compares
+SQLite snapshots with each other; this was not a production journal error or
+a reason for replacement/recovery.
+
+### Concurrent PRUEBA-D1 — passed for V8 receipt + approved flowing label
+
+`SIMULTANEOUS-RESULTS.txt`, `SIMULTANEOUS-result.json` and the supplied
+`work/test-simultaneous.mjs` record a separately authorized synthetic order.
+The runner composed the V8 customer document/adapter with the earlier approved
+uniform vertical label document/adapter and dispatched both through the same
+PrintJournal API. It did not replay PRUEBA-R8 or modify the original helpers.
+
+Both audiences submitted once, sharing the same folio, with one receipt page
+and one label. User personally confirmed both samples complete, readable,
+aligned and finished. The prior 13 jobs, sources and recovery history remained
+unchanged; both queues were empty. No duplicate-check repeat was performed for
+this dual case. Concurrent handoff does not promise identical paper timing.
+
+This validates the V8 receipt alongside the previously approved flowing label.
+It does **not** physically validate the newer repo label with `cupLabels`
+header/footer metadata; its layout differs from the helper used in this test.
+No full POS installation, live sale, migration, driver/preference change,
+pairing, queue cancellation, journal reset or recovery replacement was part of
+either follow-up test.
+
+The original active journal remains in place at
+`D:\Cafe-Printer-Test-2026-10-31\runtime\windows\windows-jobs.sqlite`, with its
+companions. Keep the V8 stable sample/result there. The V8 code/evidence stays
+in the separate `D:\Cafe-Receipt-Only-V8-2026-10-31` folder.
+
+| Transferred follow-up record | SHA-256 |
+|---|---|
+| `outputs/V8-ACCEPTANCE-RESULT.txt` | `ff99d5fb3677e87aa31d68018694565faa796b39b3b564c57e7576f647c944dd` |
+| `outputs/V8-final-confirmation.json` | `fa947db50f0871b1611f438f6566c385838d06a682267aa16946d94479eee50f` |
+| `outputs/V8-duplicate-protection.json` | `1b83587552ef3c0fa804f9d56244ca1982aa5343451e63cd83d77d5ce47019bb` |
+| `outputs/SIMULTANEOUS-RESULTS.txt` | `8049434feb1bbbc292ded02762dfa1ecdac99dd3c3ce85dc6861563fced7fbc8` |
+| `outputs/SIMULTANEOUS-result.json` | `898d38565de81aef0f39984051fdb1e1e419f0cc80e40a720eac32c6f803f7b3` |
+| `work/test-simultaneous.mjs` | `25995a6e657ce55360aecaf218fed5fc1ff9807e395ed102c6520d8eb06b85b8` |
