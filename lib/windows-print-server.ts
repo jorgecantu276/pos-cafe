@@ -74,7 +74,7 @@ async function windowsPrepare(job: SalePrintJob, document: SalePrintDocument, co
   });
   child.on('exit', () => { clearTimeout(timer); if (!finished) fail(); });
   child.stdin.write(JSON.stringify({ queue: job.queue, title: `${document.title} ${job.orderId} ${job.audience}`,
-    sections: document.sections, styles: document.styles, cupLabels: document.cupLabels, receiptBranding: document.receiptBranding, verticalLabel: job.audience === 'barista', layoutTitle: document.title, fontPoints: job.audience === 'barista' ? 9 : 11,
+    sections: document.sections, styles: document.styles, receiptBranding: document.receiptBranding, verticalLabel: job.audience === 'barista', layoutTitle: document.title, fontPoints: job.audience === 'barista' ? 9 : 11,
     identity: { driver: machine[job.audience].driver, port: machine[job.audience].port },
     stock: job.audience === 'barista' ? config.baristaStock : { widthMm: machine.customer.paperWidthMm, heightMm: machine.customer.paperHeightMm } }) + '\n');
   try { await ready; }

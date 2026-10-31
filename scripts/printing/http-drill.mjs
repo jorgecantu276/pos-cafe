@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -115,6 +116,40 @@ try {
   const other = await (await http(null, cookies[1])).json(); assert.equal(other.jobs.length, 0);
   assert.equal((await http({ orderId: first }, cookies[1])).status, 404);
   pass('Cancelled preparation is withheld and another cashier cannot read or dispatch these sales');
+  const approved = newSale(4004), approvedSnapshot = orders.get(approved).receipt_snapshot;
+  approvedSnapshot.items[0].quantity = 1;
+  approvedSnapshot.items[0].product.note = 'SIN HIELO. NO PREPARAR.';
+  approvedSnapshot.customer_name = 'Ana (Prueba)'; approvedSnapshot.order_note = '';
+  approvedSnapshot.total = 110; approvedSnapshot.tender_mxn = 150; approvedSnapshot.change_mxn = 40;
+  const beforeApproved = (await spool()).length;
+  await writeFile(faults, '{}');
+  await Promise.all(Array.from({ length: 4 }, () => post({ orderId: approved })));
+  const approvedCopies = (await spool()).filter(job => job.orderId === approved);
+  assert.equal((await spool()).length, beforeApproved + 2); assert.equal(approvedCopies.length, 2);
+  const receiptDoc = approvedCopies.find(job => job.audience === 'customer').document;
+  const labelDoc = approvedCopies.find(job => job.audience === 'barista').document;
+  assert.equal(receiptDoc.receiptBranding.version, 1);
+  assert.equal(receiptDoc.receiptBranding.qrUrl, 'https://www.instagram.com/_carinitomio/');
+  assert.equal(receiptDoc.styles[0][0], 'logo'); assert.equal(receiptDoc.testOnly, false);
+  assert.match(receiptDoc.sections.flat().join(' '), /TOTAL: \$110\.00 MXN.*Recibido MXN: \$150\.00.*Cambio: \$40\.00/);
+  assert.equal(labelDoc.cupLabels, undefined);
+  assert.deepEqual(labelDoc.sections[0].slice(0, 4), ['ANA (PRUEBA)', 'Iced coffee caramelo', 'Leche de avena', 'SIN HIELO. NO PREPARAR.']);
+  assert.match(labelDoc.sections[0].at(-1), /^#4004 · 1\/1 · Para Llevar ·/);
+  if (process.platform === 'win32') {
+    for (const audience of ['customer', 'barista']) {
+      const label = audience === 'barista';
+      const rendered = spawnSync(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+        ['-NoProfile','-NonInteractive','-File',path.join(app.app,'scripts/printing/windows-print.ps1'),'-LayoutOnly'],
+        {input:JSON.stringify({...approvedCopies.find(job=>job.audience===audience).document,verticalLabel:label,fontPoints:9,
+          widthMm:label?56.9:71.88,heightMm:label?32:210.06,previewDirectory:path.join(directory,'approved-pos-output',audience)})+'\n',
+        encoding:'utf8',windowsHide:true,timeout:30000});
+      assert.equal(rendered.status,0,rendered.stderr||rendered.stdout);
+      assert.equal(JSON.parse(rendered.stdout).length,1,'The production document fits its accepted single-page sample');
+    }
+  }
+  await app.restart(); await post({ orderId: approved });
+  assert.equal((await spool()).length, beforeApproved + 2);
+  pass('Confirmed POS sale uses the physically accepted V8 receipt and flowing vertical label; production renderers fit both and restart cannot duplicate them');
   if(process.env.POS_MULTI_ITEM_DB_EVIDENCE){
     const evidence=JSON.parse(await readFile(process.env.POS_MULTI_ITEM_DB_EVIDENCE,'utf8'));
     assert.equal(evidence.exactUiPayloadUsed,true);assert.equal(evidence.liveDataAccess,false);
@@ -134,7 +169,7 @@ try {
   assert.equal(methods.some(method => method.includes('/rpc/') || /^(PATCH|DELETE) /.test(method) || (method.startsWith('POST ') && !method.includes('/auth/v1/token'))), false);
   pass('Print retries perform no checkout/stock/payment writes; responses are private and uncached');
   await mkdir(path.join(work, 'printing-acceptance'), { recursive: true });
-  const result = { date: '2026-10-30', passed: checks.length, checks,
+  const result = { date: '2026-10-31', passed: checks.length, checks,
     scope: 'Isolated production Next.js; own loopback Auth/PostgREST fixtures and simulated printers only. No live café or source-staging access.',
     simulatedSpoolJobs: (await spool()).length, buildId: (await readFile(path.join(app.app, '.next/BUILD_ID'), 'utf8')).trim(), directory };
   await writeFile(path.join(work, 'printing-acceptance/http-result.json'), JSON.stringify(result, null, 2));

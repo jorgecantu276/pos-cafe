@@ -81,17 +81,22 @@ The ZIP includes `CAFE-PC-PROMPT.txt`; no journal, issuer data or old-case runne
 is packaged. Do not overlay the old café kit or run its full two-printer suite
 when checking only this new receipt.
 
-The October 31 cup-label design uses black text and two divider rules on the
-colored Hybsk stock. Name and folio/cup count form the header, each modifier
-has its own line, and service type and Matamoros date/time form the footer.
-The physical form remains 57.15 × 31.75 mm; logical vertical artwork is rotated
-90 degrees inside that page. All label styles use Arial Bold 8.5 pt. Narrow
-header/footer fields stack instead of competing for columns. Continuations
-repeat all identifiers. Saved documents without cup-label metadata retain their
-flowing content and cup footers, with the accepted fonts/rotation. Upgrading
-does not replace saved documents or resend completed copies. This combined
-reference design needs a new paper check; the accepted standalone renderer
-used a simpler flowing layout.
+### Production label: the physically approved flowing layout
+
+The POS now generates the same flowing label used in the accepted PRUEBA-D1
+combined test: uppercase customer, full drink name, options joined with ` · `,
+preparation note, order note, then folio/cup count/service/time. Every style is
+Arial Bold 8.5 pt. Long text continues without clipping, with the cup/folio
+footer reserved on every label. The logical vertical artwork rotates 90 degrees
+inside the installed 57 × 32 mm form; neither driver defaults nor media change.
+
+Per the user's latest instruction to integrate the physically printed outputs,
+the experimental divided header/footer design is no longer generated or
+rendered. Old `cupLabels` metadata is ignored, while its saved text and journal
+identity remain intact. No queued/submitted document is rewritten and no job
+is reset or resent to apply the layout. Normal confirmed POS sales generate
+the accepted V8 receipt and this accepted label through the shared dispatcher;
+no diagnostic scripts or second application are needed.
 
 `config/cafe-printers.json` records the original supplied café discovery:
 
@@ -267,11 +272,12 @@ Windows job after power-on; same-case repeats produced no extra paper. See
 evidence hashes and the boundary between that renderer and the newer reference
 design. Later PRUEBA-R8 physically accepted the branded receipt/QR, and PRUEBA-D1
 passed concurrent V8 receipt plus the previously approved flowing Bluetooth
-label. That dual test did not use the newer repo reference label. These tests
+label. The POS now uses that approved flowing label, replacing the untested
+reference layout. These tests
 do not establish full-POS, cutter or drawer acceptance.
 
 The source builder now produces **V8**, incorporating the accepted rendering
-corrections and the owner's receipt/sticker references. Its runtime is Node 24.22.2 x64 with
+corrections, the accepted V8 receipt and the accepted flowing label. Its runtime is Node 24.22.2 x64 with
 SQLite 3.53.4. When upgrading an existing installation, preserve its persistent
 journal in place; never replace it with a fresh kit's empty journal to retry
 previous orders.

@@ -6,19 +6,21 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { saleDocuments } from '../lib/sale-printing';
 
-test('reference matcha with four preparation lines fits one physical label and retains date and cup identity', { skip: process.platform !== 'win32' }, () => {
-  const doc = saleDocuments({id:'reference',ticket_number:1287,status:'completed',total:110,
-    items:[{id:'cup',quantity:1,product:{id:'matcha',name:'Iced Matcha Latte',price:110,category:'Bebidas',
-      displayExtras:['Leche de avena','Vainilla','Hielo normal','1 Shot Espresso'].map(name=>({name,price:0}))}}],
-    customer_name:'María López',order_type:'Para llevar',order_note:'',created_at:'2025-05-12T16:45:00Z',
-    payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:20,change_mxn:0}).barista;
+test('POS generates the exact flowing barista content accepted in the simultaneous physical test', { skip: process.platform !== 'win32' }, () => {
+  const doc = saleDocuments({id:'approved-dual',ticket_number:'PRUEBA-D1',status:'completed',total:110,
+    items:[{id:'cup',quantity:1,product:{id:'caramelo',name:'Iced coffee caramelo',price:110,category:'Bebidas',
+      displayExtras:[{name:'Leche de avena',price:15}],note:'SIN HIELO. NO PREPARAR.'}}],
+    customer_name:'ANA (PRUEBA)',order_type:'Llevar',order_note:'',created_at:'2026-10-31T18:13:00Z',
+    payment_method:'efectivo',tender_mxn:150,tender_usd:0,exchange_rate:20,change_mxn:40}).barista;
+  assert.deepEqual(doc.sections,[['ANA (PRUEBA)','Iced coffee caramelo','Leche de avena','SIN HIELO. NO PREPARAR.','#PRUEBA-D1 · 1/1 · Llevar · 13:13']]);
+  assert.equal(doc.cupLabels,undefined);
   const result=spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
     ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
     {input:JSON.stringify({...doc,verticalLabel:true,fontPoints:9,widthMm:56.9,heightMm:31.75})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
   assert.equal(result.status,0,result.stderr||result.stdout);
   const pages:{lines:string[]}[]=JSON.parse(result.stdout);
   assert.equal(pages.length,1);
-  for(const value of ['María López','#1287 · 1/1','Iced Matcha Latte','- Leche de avena','- Vainilla','- Hielo normal','- 1 Shot Espresso','Para llevar','12/05/25','11:45']) assert.ok(pages[0].lines.join(' ').includes(value),value);
+  for(const value of doc.sections[0]) assert.ok(pages[0].lines.join(' ').includes(value),value);
 });
 
 test('accepted receipt weights and fixed columns survive rendering; label rotation keeps the physical stock size', { skip: process.platform !== 'win32' }, () => {
@@ -61,10 +63,11 @@ test('accepted receipt weights and fixed columns survive rendering; label rotati
   } finally { rmSync(directory,{recursive:true,force:true}); }
 });
 
-test('saved pre-metadata label snapshots retain all notes and cup footers with the vertical renderer', { skip: process.platform !== 'win32' }, () => {
+test('saved label snapshots retain all notes and cup footers even with obsolete reference metadata', { skip: process.platform !== 'win32' }, () => {
   const note='Sin hielo. '.repeat(20)+'FIN-NOTA';
   const document={title:'CM #PRUEBA BARRA',sections:[['ANA','Iced coffee caramelo',note,'#PRUEBA · 1/1 · Para Llevar · 12:13']],
-    styles:[['name','drink','note','footer']],verticalLabel:true,fontPoints:9,widthMm:56.9,heightMm:32};
+    styles:[['name','drink','note','footer']],cupLabels:[{folio:'#PRUEBA · 1/1',service:'Para Llevar',date:'31/10/26',time:'12:13'}],
+    verticalLabel:true,fontPoints:9,widthMm:56.9,heightMm:32};
   const result=spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
     ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
     {input:JSON.stringify(document)+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
@@ -126,5 +129,5 @@ test('normal real-menu cup context fits the selected Hybsk 57.15 x 31.75 mm stoc
   assert.equal(result.status,0,result.stderr||result.stdout);
   const pages: {lines:string[]}[] = JSON.parse(result.stdout);
   assert.equal(pages.length,1);
-  for (const value of ['Ana y José','#1234 · 1/1','Iced coffee caramelo','Leche de avena','Sin hielo','Entregar juntos','Para Llevar','30/10/26','12:00']) assert.ok(pages[0].lines.join(' ').includes(value), value);
+  for (const value of ['ANA Y JOSÉ','#1234 · 1/1','Iced coffee caramelo','Leche de avena','Sin hielo','Entregar juntos','Para Llevar','12:00']) assert.ok(pages[0].lines.join(' ').includes(value), value);
 });

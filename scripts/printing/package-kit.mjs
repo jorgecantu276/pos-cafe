@@ -52,10 +52,11 @@ V8 integra el logotipo suministrado, QR local hacia Instagram, frase de cierre
 y el diseño de ticket solicitado el 31 de octubre. Conserva los datos del
 emisor debajo del pago y las protecciones del registro de impresión.
 Incluye tipografía Arial Bold uniforme, columnas explícitas en el ticket y
-etiquetas verticales con el diseño local de encabezado/pie. El formato físico
+etiquetas verticales con el formato fluido aprobado físicamente. El formato físico
 sigue en 57 x 32 mm; el dibujo se gira 90 grados dentro de cada etiqueta.
-La prueba física del 31 de octubre aprobó el renderizador de prueba anterior
-tras esas correcciones; el diseño combinado de V8 requiere nueva revisión en papel.
+La prueba física del 31 de octubre aprobó el recibo V8 y la etiqueta vertical
+fluida juntos. El POS integra esos formatos; se retiró el diseño experimental
+de encabezado/pie. Esas pruebas no instalaron el POS completo en la cafetería.
 Si ya usaste otro paquete, detén las pruebas antes de actualizarlo. Conserva
 completa su carpeta runtime, con las muestras guardadas, el registro de
 impresión y sus archivos asociados. Para reintentar una orden anterior,
@@ -161,9 +162,9 @@ programa antes de copiar o respaldar los archivos SQLite. Las reimpresiones
 manuales o históricas desde Windows no tienen la protección contra duplicados
 de este servicio.
 
-El usuario confirmó la salida corregida y recuperación Bluetooth del paquete
-anterior el 31 de octubre. Esta versión combina esas correcciones con el nuevo
-diseño local y necesita nueva revisión de papel/alineación. La marca y modelo
+El usuario confirmó el recibo V8, la etiqueta vertical fluida y su salida
+conjunta el 31 de octubre, además de la recuperación Bluetooth anterior.
+Esta versión usa esos formatos aprobados. La marca y modelo
 exactos del equipo USB siguen pendientes. Una simulación local no comprueba
 la salida en papel. ExecutionPolicy Bypass se aplica únicamente
 al proceso de PowerShell que ejecuta cada comando.

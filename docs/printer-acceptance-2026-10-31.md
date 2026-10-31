@@ -58,19 +58,20 @@ Do not delete, replace or restore an older journal, or include one in a release.
 
 ## Integration boundary
 
-The repo already contained a local reference sticker design with name/folio,
-divider rules, modifiers and date/service footer. This change retains that
-content and incorporates the accepted typography and vertical orientation.
-Fields stack on narrow stock; continuations preserve all identifiers and notes.
-Saved pre-metadata documents retain their flowing layout and immutable text.
+The repo previously contained an untested reference sticker design with
+divider rules and date/service fields. The user's latest instruction is to
+integrate the outputs physically accepted at the café. New POS barista
+documents now use the approved uppercase, flowing template; the custom
+reference-layout renderer has been removed. Existing snapshots retain their
+immutable text and cup footers; unused reference metadata does not select a
+different renderer or reset submission state.
 No taxpayer-specific style matching from the diagnostic scripts is copied;
 the generic `meta`/`issuer` styles cover every issuer.
 
-The accepted standalone renderer and this combined reference design are
-different layouts. Automated rendering, continuation, journal/retry and
-production HTTP checks validate the integration locally. The newer reference
-sticker still needs a café check; the later V8 receipt was physically accepted
-as recorded below. The original acceptance did not install the
+The active POS pipeline now combines the accepted V8 receipt with the accepted
+flowing vertical label, matching the physical combined test below. Automated
+rendering, continuation, journal/retry and production HTTP checks validate the
+integration locally. The original acceptance did not install the
 replacement POS, validate its hosted backend, verify drawer/cutter commands
 or establish long-term hardware reliability.
 
@@ -137,8 +138,9 @@ unchanged; both queues were empty. No duplicate-check repeat was performed for
 this dual case. Concurrent handoff does not promise identical paper timing.
 
 This validates the V8 receipt alongside the previously approved flowing label.
-It does **not** physically validate the newer repo label with `cupLabels`
-header/footer metadata; its layout differs from the helper used in this test.
+At test time the repo also contained a different `cupLabels` reference design,
+which was not validated by that run. The subsequent POS integration selects
+the accepted flowing template and removes that untested renderer.
 No full POS installation, live sale, migration, driver/preference change,
 pairing, queue cancellation, journal reset or recovery replacement was part of
 either follow-up test.
@@ -156,3 +158,19 @@ in the separate `D:\Cafe-Receipt-Only-V8-2026-10-31` folder.
 | `outputs/SIMULTANEOUS-RESULTS.txt` | `8049434feb1bbbc292ded02762dfa1ecdac99dd3c3ce85dc6861563fced7fbc8` |
 | `outputs/SIMULTANEOUS-result.json` | `898d38565de81aef0f39984051fdb1e1e419f0cc80e40a720eac32c6f803f7b3` |
 | `work/test-simultaneous.mjs` | `25995a6e657ce55360aecaf218fed5fc1ff9807e395ed102c6520d8eb06b85b8` |
+
+## POS integration verification
+
+The integration uses one source generator and the normal authenticated print
+endpoint for both outputs. A new production HTTP check submits one completed
+sale concurrently from four requests, verifies the branded receipt and exact
+accepted label content in the mock spool, and renders both using the isolated
+production app's actual PowerShell/C# helper and bundled logo. The one-cup
+sample fits one customer page and one vertical label. Restart/retry submits
+neither again. Existing checkout/outbox, cashier access and journal protections
+remain covered. This is local integration verification, not a claim that the
+replacement POS has been installed on the café PC.
+
+Validation passed: 170 tests, TypeScript, lint, and an isolated production build
+with nine print HTTP checks. Those checks include actual production document
+rendering for both accepted layouts and duplicate protection after restart.
