@@ -85,8 +85,6 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
     add('Régimen: [RÉGIMEN FISCAL]', 'issuer'); add('[DOMICILIO DEL ESTABLECIMIENTO]', 'issuer');
     add('[MUNICIPIO, ESTADO · C.P.]', 'issuer');
   }
-  add('Para solicitar su CFDI, acérquese a caja.', 'issuer');
-  add('Este ticket no sustituye al CFDI.', 'issuer');
   add(receiptBranding.qrUrl, 'qr'); add('MENÚ E INSTAGRAM', 'meta');
   add('', 'separator');
   add('Para el postre y una sonrisa,', 'quote'); add('siempre hay espacio.', 'quote');

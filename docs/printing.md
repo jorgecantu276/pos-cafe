@@ -41,7 +41,8 @@ New customer documents follow the two supplied WhatsApp references: the exact
 Cariñito Mío Taller Repostero logo, centered phone, divider rules, prominent
 TICKET DE VENTA and total, measured item columns, Instagram QR, closing phrase
 “Para el postre y una sonrisa, siempre hay espacio.” and `@_carinitomio`.
-Issuer identity/address and the existing CFDI request text remain below payment.
+Issuer identity/address remain below payment. Per the owner's later instruction,
+new customer receipts omit both the CFDI request and the CFDI disclaimer.
 The large title/total use Arial Bold 14/15 pt; body/issuer stay at the accepted
 8.5 pt. The closing phrase uses bold italic serif type. Test samples remain
 explicitly marked. Existing saved documents retain their original text/design.
@@ -207,7 +208,8 @@ After configuration, retry the blocked customer copy. Only its unsubmitted
 placeholder document is replaced. Accepted/uncertain jobs never reset.
 
 No invented VAT rate, fiscal UUID, seal, invoicing portal or request deadline is
-printed. Customers are directed to the cashier to request a CFDI. Do not copy
+printed. The owner's later instruction removes CFDI wording from new receipts;
+previously stored snapshots are not rewritten. Do not copy
 dated or merchant-specific invoicing restrictions from the reference receipts.
 
 Barista labels use a Starbucks-inspired reading order: customer name,

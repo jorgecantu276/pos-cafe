@@ -31,11 +31,11 @@ test('a Windows UTF-8 BOM does not withhold an otherwise valid local issuer prof
   } finally { remove(directory); }
 });
 
-test('Mexican receipt separates issuer identity, unit/line amounts and CFDI request without invented tax or deadlines', () => {
+test('customer receipt preserves issuer and amounts without CFDI wording or invented tax/deadlines', () => {
   const docs = saleDocuments(sale(), { issuer:testIssuer,testOnly:true }), receipt=docs.customer.sections[0].join('\n');
-  for(const expected of [testIssuer.legalName,testIssuer.rfc,testIssuer.taxRegime,testIssuer.establishmentAddress,testIssuer.postalCode,'Folio: 1234','P.UNITARIO','$110.00','$220.00','TOTAL: $220.00 MXN','CFDI'])assert.ok(receipt.includes(expected));
+  for(const expected of [testIssuer.legalName,testIssuer.rfc,testIssuer.taxRegime,testIssuer.establishmentAddress,testIssuer.postalCode,'Folio: 1234','P.UNITARIO','$110.00','$220.00','TOTAL: $220.00 MXN'])assert.ok(receipt.includes(expected));
   assert.equal(docs.customer.issuerComplete,true);assert.equal(docs.customer.testOnly,true);
-  assert.doesNotMatch(receipt,/IVA\s*(?:8|16)|mismo día|30 días|UUID|Sello Digital|representación impresa de un CFDI/i);
+  assert.doesNotMatch(receipt,/CFDI|CDFI|IVA\s*(?:8|16)|mismo día|30 días|UUID|Sello Digital/i);
   const draft=saleDocuments(sale()).customer;
   assert.equal(draft.issuerComplete,false);assert.match(draft.sections.flat().join(' '),/\[NOMBRE O RAZÓN SOCIAL\].*\[RFC DEL EMISOR\].*\[RÉGIMEN FISCAL\].*\[DOMICILIO DEL ESTABLECIMIENTO\]/);
   const label=docs.barista;
