@@ -41,7 +41,7 @@ try {
   // Reopening the actual Next release must reuse its process, not launch another.
   execFileSync(powershell,['-NoLogo','-NoProfile','-File',path.join(relocated,'Start-POS.ps1'),'-ConfigPath',configPath,'-NoBrowser'],{windowsHide:true,stdio:'pipe',timeout:45000});
   assert.deepEqual(await (await fetch('http://127.0.0.1:3119/api/local-instance')).json(),identity);
-  for (const [url,status] of [['/login',200],['/product-photos/matcha.webp',200],['/product-photos/cheesecake.webp',200],['/sw.js',200],['/api/users',401]]) {
+  for (const [url,status] of [['/login',200],['/product-photos/matcha.webp',200],['/product-photos/cheesecake.webp',200],['/staff-avatars/avatar-1.svg',200],['/staff-avatars/avatar-2.svg',200],['/sw.js',200],['/api/users',401]]) {
     const response = await fetch('http://127.0.0.1:3119' + url, {signal:AbortSignal.timeout(15000)});
     assert.equal(response.status,status,url);
     if(url.endsWith('.webp')) assert.match(response.headers.get('content-type'),/image\/webp/);

@@ -12,6 +12,7 @@ import * as ts from 'typescript';
 import { NextRequest } from 'next/server';
 import * as loginReturn from '../lib/login-return';
 import * as userManagement from '../lib/user-management';
+import StaffAvatar from '../components/StaffAvatar';
 
 function compile(file: string, imports: Record<string, unknown>) {
   const nodeRequire = createRequire(import.meta.url);
@@ -58,9 +59,10 @@ test('actual login form preserves TV destination through failed authentication a
     }
     const destinations: string[] = [];
     let fail = true, refreshes = 0;
-    const client = { rpc: async () => ({ data: [{ id: 'test-admin', username: 'testowner', full_name: 'Prueba local', avatar_url: null }], error: null }),
+    const client = { rpc: async () => ({ data: [{ id: 'test-admin', username: 'testowner', full_name: 'Prueba local', avatar_url: '/staff-avatars/avatar-2.svg' }], error: null }),
       auth: { signInWithPassword: async () => ({ error: fail ? { message: 'Synthetic rejection' } : null }) } };
     const Page = compile('../app/login/page.tsx', {
+      '@/components/StaffAvatar': { default: StaffAvatar, __esModule: true },
       '@/lib/request-deadline':deadline, '@/lib/receipt-reprint':reprint, '@/lib/supabase': { supabase: client }, '@/lib/login-return': loginReturn,
       '../register/WorkspaceRegister': {WorkspaceKeyboard}, '../register/workspace.css':{}, './login.css':{},
       'next/navigation': { useRouter: () => ({ replace: (url: string) => destinations.push(url), refresh: () => refreshes++ }) },
@@ -68,6 +70,7 @@ test('actual login form preserves TV destination through failed authentication a
     const root = createRoot(dom.window.document.getElementById('root')!);
     try {
       await act(async () => root.render(createElement(Page)));
+      assert.equal(dom.window.document.querySelector('.workspace-login-avatar')?.getAttribute('src'),'/staff-avatars/avatar-2.svg');
       const profile = [...dom.window.document.querySelectorAll('span')].find(e => e.textContent === 'Prueba')!;
       assert.ok(profile);
       await act(async () => profile.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })));

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { withDeadline } from './request-deadline';
+import { isStaffAvatarPath } from './staff-avatars';
 
 export class AccessError extends Error {
   constructor(message: string, public status: number, public uncertain = false) { super(message); }
@@ -26,7 +27,7 @@ export function userInput(value: unknown, create: boolean) {
   if (typeof v.username !== 'string' || !/^[a-zA-Z0-9._-]{1,50}$/.test(v.username)
     || typeof v.role !== 'string' || !['admin', 'cashier'].includes(v.role)
     || (v.avatar_url != null && (typeof v.avatar_url !== 'string' || v.avatar_url.length > 2000
-      || (v.avatar_url !== '' && !/^https:\/\//i.test(v.avatar_url))))) throw new AccessError('Revisa usuario, rol y foto HTTPS.', 400);
+      || (v.avatar_url !== '' && !isStaffAvatarPath(v.avatar_url) && !/^https:\/\//i.test(v.avatar_url))))) throw new AccessError('Revisa usuario, rol y avatar.', 400);
   if ((create || (v.password != null && v.password !== '')) && (typeof v.password !== 'string' || v.password.length < 8 || v.password.length > 128)) throw new AccessError('Usa una contraseña de 8 a 128 caracteres.', 400);
   const username = v.username.toLowerCase();
   return { full_name: username, username, role: v.role, avatar_url: (v.avatar_url as string) || null, password: (v.password as string) || '' };

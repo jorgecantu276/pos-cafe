@@ -1,6 +1,7 @@
 'use client';
 
-import Image from 'next/image';
+import StaffAvatar from '@/components/StaffAvatar';
+import { staffAvatars, staffAvatarSource } from '@/lib/staff-avatars';
 
 import { type StaffProfile, errorMessage } from '@/lib/pos-types';
 
@@ -11,7 +12,7 @@ import { useResource } from '@/lib/use-resource';
 import LoadFailure from '@/app/LoadFailure';
 import {
   ShieldCheck, Shield, Loader2, Trash2, UserPlus,
-  X, Image as ImageIcon, KeyRound, Save, Edit2, Wallet
+  X, Check, KeyRound, Save, Edit2, Wallet
 } from 'lucide-react';
 
 export default function UsuariosPage() {
@@ -32,7 +33,7 @@ export default function UsuariosPage() {
     username: '',
     password: '',
     role: 'cashier',
-    avatar_url: ''
+    avatar_url: staffAvatars[0].src as string
   };
 
   const [formData, setFormData] = useState(initialFormState);
@@ -56,7 +57,7 @@ export default function UsuariosPage() {
         username: user.username || '',
         password: '', // Se deja en blanco por seguridad
         role: user.role === 'admin' ? 'admin' : 'cashier',
-        avatar_url: user.avatar_url || ''
+        avatar_url: staffAvatarSource(user.avatar_url, user.username || '')
       });
     } else {
       setFormData(initialFormState);
@@ -136,13 +137,7 @@ export default function UsuariosPage() {
 
               <div className="flex items-center gap-6">
                 <div className="relative">
-                  {user.avatar_url ? (
-                    <Image unoptimized width={64} height={64} src={user.avatar_url} alt={user.username || 'Usuario'} className="w-16 h-16 rounded-full object-cover shadow-sm border border-slate-200" />
-                  ) : (
-                    <div className="w-16 h-16 bg-gradient-to-b from-slate-50 to-slate-100 rounded-full flex items-center justify-center text-[#1d1d1f] font-semibold text-xl shadow-inner border border-slate-200/50 uppercase">
-                      {user.username?.charAt(0) || 'U'}
-                    </div>
-                  )}
+                  <StaffAvatar value={user.avatar_url} username={user.username || ''} className="w-16 h-16 rounded-full"/>
                   {user.role === 'admin' && (
                     <div className="absolute -bottom-1 -right-1 bg-white p-1 rounded-full shadow-sm">
                       <ShieldCheck size={14} className="text-[#0071e3]" />
@@ -215,30 +210,16 @@ export default function UsuariosPage() {
               <div className="staff-modal-body" role="region" aria-label="Datos del usuario" tabIndex={0}>
               <fieldset disabled={isSaving} className="min-w-0 p-6 md:px-8 space-y-6">
 
-              {/* FILA 1: IMAGEN Y ROL */}
-              <div className="flex gap-6 items-start">
-                <div className="flex-shrink-0 flex flex-col items-center gap-3">
-                  <div className="w-24 h-24 rounded-full bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden relative group">
-                    {formData.avatar_url ? (
-                      <Image unoptimized width={64} height={64} src={formData.avatar_url} alt="Vista previa de la foto" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon className="text-slate-300" size={32} />
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex-1 space-y-4">
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Enlace de la foto (opcional)</label>
-                    <input
-                      type="url"
-                      placeholder="https://ejemplo.com/foto.jpg"
-                      className="w-full bg-[#f5f5f7] border border-transparent focus:border-[#0071e3]/30 rounded-xl px-4 py-3 text-sm font-medium outline-none transition-all"
-                      value={formData.avatar_url}
-                      onChange={e => setFormData({...formData, avatar_url: e.target.value})}
-                    />
-                  </div>
-
+              <div className="space-y-4">
+                <fieldset className="staff-avatar-picker" aria-label="Avatar">
+                  <legend>Avatar</legend>
+                  <div>{staffAvatars.map(avatar => <button key={avatar.src} type="button" aria-label={`Elegir ${avatar.label.toLowerCase()}`} aria-pressed={formData.avatar_url === avatar.src}
+                    onClick={() => setFormData({...formData, avatar_url: avatar.src})}>
+                    <StaffAvatar value={avatar.src} username="" size={48}/>
+                    <span>{avatar.label}</span>
+                    {formData.avatar_url === avatar.src && <Check size={15} aria-hidden="true"/>}
+                  </button>)}</div>
+                </fieldset>
                   <div>
                     <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Nivel de Acceso</label>
                     <div className="grid grid-cols-2 gap-3">
@@ -254,7 +235,6 @@ export default function UsuariosPage() {
                         className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 ${formData.role === 'cashier' ? 'border-[#1d1d1f] text-[#1d1d1f] bg-slate-50' : 'border-slate-100 text-slate-500 bg-white'}`}><Wallet size={16} /> Cajero</button>
                     </div>
                   </div>
-                </div>
               </div>
 
               {/* FILA 2: DATOS PERSONALES */}
