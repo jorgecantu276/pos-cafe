@@ -5,6 +5,7 @@ import '../register/workspace.css';
 import './login.css';
 
 import { type LoginProfile } from '@/lib/pos-types';
+import StaffAvatar from '@/components/StaffAvatar';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -90,7 +91,7 @@ export default function LoginPage() {
   return <main className="workspace-login"><header><span className="workspace-login-brand"><Coffee size={22} /><strong>Cariñito Mío</strong></span><span>Caja</span></header><section className="workspace-login-panel"><div className="workspace-login-heading"><span aria-hidden="true"><Coffee size={30} /></span><h1>Iniciar sesión</h1><p>Selecciona tu perfil para abrir la caja.</p></div>
     <form onSubmit={handleLogin}><fieldset disabled={loading} className="workspace-login-profiles"><legend>Perfil</legend>
       {loadingUsers ? <p role="status">Cargando perfiles…</p> : users.map(user => <button type="button" key={user.id} aria-label={user.full_name} aria-pressed={selectedUsername === user.username} onClick={() => handleUserSelect(user.username || '')}>
-        <span className="workspace-login-avatar" aria-hidden="true">{user.full_name.trim().split(/\s+/).map(word => word[0]).slice(0, 2).join('')}</span><span className="workspace-login-profile-copy"><strong><span>{user.full_name.split(' ')[0]}</span> {user.full_name.split(' ').slice(1).join(' ')}</strong><small>{user.username}</small></span>{selectedUsername === user.username && <Check size={21} aria-hidden="true" />}
+        <StaffAvatar value={user.avatar_url} username={user.username || user.full_name} size={40} className="workspace-login-avatar"/><span className="workspace-login-profile-copy"><strong><span>{user.full_name.split(' ')[0]}</span> {user.full_name.split(' ').slice(1).join(' ')}</strong><small>{user.username}</small></span>{selectedUsername === user.username && <Check size={21} aria-hidden="true" />}
       </button>)}
       {!loadingUsers && !users.length && <p>No hay perfiles disponibles.</p>}
     </fieldset>
