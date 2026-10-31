@@ -1,27 +1,31 @@
 import Link from 'next/link';
-import { ArrowUpRight, Banknote, ChevronRight, ClipboardList, Coffee, ContactRound, Monitor, Printer, ReceiptText, Settings2, TicketPercent, UsersRound, XCircle } from 'lucide-react';
+import { Banknote, ChevronRight, Coffee, ContactRound, Printer, ReceiptText, Settings2, UsersRound, Archive, Star, Monitor, XCircle } from 'lucide-react';
 
-const dailyTools = [
-  { name: 'Ventas', detail: 'Historial y comprobantes', path: 'ventas', icon: ReceiptText },
-  { name: 'Productos', detail: 'Catálogo y opciones', path: 'productos', icon: Coffee },
-  { name: 'Favoritos de caja', detail: 'Selección y orden compartidos', path: 'favoritos', icon: Coffee },
-  { name: 'Caja y tipo de cambio', detail: 'Turnos, entregas y recuperación', path: 'caja', icon: Banknote },
-  { name: 'Cortes de caja', detail: 'Conteos y reportes de turno', path: 'cortes', icon: ClipboardList },
-  { name: 'Recuperar impresión', detail: 'Revisar copias pendientes', path: 'impresion', icon: Printer },
+const mainTools = [
+  { name: 'Ventas', detail: 'Consultar y reimprimir tickets', path: 'ventas', icon: ReceiptText },
+  { name: 'Caja', detail: 'Revisar cortes de caja', path: 'cortes', icon: Banknote },
+  { name: 'Productos', detail: 'Cambiar precios y productos', path: 'productos', icon: Coffee },
+  { name: 'Clientes', detail: 'Buscar clientes y ver sus puntos', path: 'clientes', icon: ContactRound },
 ];
-const managementTools = [
-  { name: 'Clientes', detail: 'Datos y puntos', path: 'clientes', icon: ContactRound },
-  { name: 'Cancelaciones', detail: 'Consultar y registrar', path: 'cancelaciones', icon: XCircle },
-  { name: 'Usuarios', detail: 'Contraseñas y permisos', path: 'usuarios', icon: UsersRound },
-  { name: 'Cupones', detail: 'Estado de promociones', path: 'cupones', icon: TicketPercent },
-  { name: 'Ajustes', detail: 'Datos de los tickets', path: 'ajustes', icon: Settings2 },
-  { name: 'Respaldos', detail: 'Última copia y recuperación', path: 'respaldos', icon: ClipboardList },
+const otherTools = [
+  { name: 'Equipo', path: 'usuarios', icon: UsersRound },
+  { name: 'Favoritos en caja', path: 'favoritos', icon: Star },
+  { name: 'Tipo de cambio y entregas', path: 'caja', icon: Banknote },
+  { name: 'Cancelaciones', path: 'cancelaciones', icon: XCircle },
+  { name: 'Resolver impresión pendiente', path: 'impresion', icon: Printer },
+  { name: 'Datos del ticket', path: 'ajustes', icon: ReceiptText },
+  { name: 'Respaldos', path: 'respaldos', icon: Archive },
 ];
 
 export default function Administration() {
-  return <div className="workspace-admin-menu"><div className="workspace-admin-page-title"><h1>Administración</h1></div>
-    <div className="workspace-admin-groups"><section><h2>Operación</h2><nav aria-label="Herramientas principales">{dailyTools.map(({name, detail, path, icon: Icon}) => <Link href={`/admin/${path}`} key={path}><span className="workspace-admin-menu-icon"><Icon size={21} strokeWidth={1.7}/></span><span className="workspace-admin-menu-label"><strong>{name}</strong><small>{detail}</small></span><ChevronRight size={17} aria-hidden="true"/></Link>)}</nav></section>
-    <section><h2>Gestión</h2><nav aria-label="Más herramientas">{managementTools.map(({name, detail, path, icon: Icon}) => <Link href={`/admin/${path}`} key={path}><span className="workspace-admin-menu-icon"><Icon size={21} strokeWidth={1.7}/></span><span className="workspace-admin-menu-label"><strong>{name}</strong><small>{detail}</small></span><ChevronRight size={17} aria-hidden="true"/></Link>)}</nav></section></div>
-    <Link className="workspace-admin-tv" href="/tv" target="_blank" rel="noopener noreferrer"><Monitor size={18}/><span>Ventas en TV</span><ArrowUpRight size={16}/></Link>
+  return <div className="workspace-admin-menu workspace-admin-simple"><div className="workspace-admin-page-title"><h1>Administración</h1></div>
+    <nav className="workspace-admin-main-tools" aria-label="Herramientas principales">{mainTools.map(({name, detail, path, icon: Icon}) => <Link href={`/admin/${path}`} key={path}>
+      <span className="workspace-admin-menu-icon"><Icon size={24} strokeWidth={1.7}/></span><span className="workspace-admin-menu-label"><strong>{name}</strong><small>{detail}</small></span><ChevronRight size={18} aria-hidden="true"/>
+    </Link>)}</nav>
+    <details className="workspace-admin-more"><summary><Settings2 size={19} aria-hidden="true"/><span>Más opciones</span><ChevronRight size={18} aria-hidden="true"/></summary>
+      <nav aria-label="Más opciones">{otherTools.map(({name, path, icon: Icon}) => <Link href={`/admin/${path}`} key={path}><Icon size={19} aria-hidden="true"/><span>{name}</span><ChevronRight size={16} aria-hidden="true"/></Link>)}
+        <Link href="/tv" target="_blank" rel="noopener noreferrer"><Monitor size={19} aria-hidden="true"/><span>Pantalla de ventas</span><ChevronRight size={16} aria-hidden="true"/></Link>
+      </nav>
+    </details>
   </div>;
 }
