@@ -13,6 +13,7 @@ export function validReceiptIssuer(issuer: ReceiptIssuer | undefined): issuer is
 }
 export interface SalePrintDocument {
   title: string; sections: string[][]; styles?: PrintLineStyle[][];
+  cupLabels?: { folio: string; service: string; date: string; time: string }[];
   issuerComplete?: boolean; testOnly?: boolean;
 }
 export interface SalePrintJob {
@@ -83,19 +84,22 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
   if (units > 2000) throw new Error('La orden requiere revisión por su cantidad de etiquetas.');
   let unit = 0;
   const baristaStyles: PrintLineStyle[][] = [];
+  const cupLabels: NonNullable<SalePrintDocument['cupLabels']> = [];
   const sections = order.items.flatMap(item => Array.from({ length: item.quantity }, () => {
-    const lines = [text(order.customer_name).toLocaleUpperCase('es-MX') || 'MOSTRADOR', text(item.product.name)];
+    const lines = [text(order.customer_name) || 'Mostrador', text(item.product.name)];
     const styles: PrintLineStyle[] = ['name', 'drink'];
-    if (item.product.displayExtras?.length) { lines.push(item.product.displayExtras.map(extra => text(extra.name)).join(' · ')); styles.push('modifier'); }
+    for (const extra of item.product.displayExtras ?? []) { lines.push(text(extra.name)); styles.push('modifier'); }
     if (item.product.note) { lines.push(text(item.product.note)); styles.push('note'); }
     if (order.order_note) { lines.push(`ORDEN: ${text(order.order_note)}`); styles.push('modifier'); }
     const time = new Date(order.created_at).toLocaleTimeString('es-MX', { timeZone: 'America/Matamoros', hour: '2-digit', minute: '2-digit', hour12: false });
     lines.push(`#${ticket} · ${++unit}/${units} · ${text(order.order_type)} · ${time}`); styles.push('footer');
+    cupLabels.push({ folio: `#${ticket} · ${unit}/${units}`, service: text(order.order_type),
+      date: new Date(order.created_at).toLocaleDateString('es-MX', { timeZone: 'America/Matamoros', day: '2-digit', month: '2-digit', year: '2-digit' }), time });
     baristaStyles.push(styles);
     return lines;
   }));
   return { customer: { title: `CM #${ticket} CLIENTE`, sections: [receipt], styles: [receiptStyles], issuerComplete, testOnly: options.testOnly === true },
-    barista: { title: `CM #${ticket} BARRA`, sections, styles: baristaStyles } };
+    barista: { title: `CM #${ticket} BARRA`, sections, styles: baristaStyles, cupLabels } };
 }
 
 export interface PrintStorage { length: number; key(index: number): string | null; getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }

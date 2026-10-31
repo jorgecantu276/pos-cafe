@@ -39,7 +39,8 @@ test('Mexican receipt separates issuer identity, unit/line amounts and CFDI requ
   const draft=saleDocuments(sale()).customer;
   assert.equal(draft.issuerComplete,false);assert.match(draft.sections.flat().join(' '),/\[NOMBRE O RAZÓN SOCIAL\].*\[RFC DEL EMISOR\].*\[RÉGIMEN FISCAL\].*\[DOMICILIO DEL ESTABLECIMIENTO\]/);
   const label=docs.barista;
-  assert.equal(label.sections[0][0],'ANA & JOSÉ');assert.equal(label.styles?.[0][0],'name');assert.equal(label.styles?.[0][1],'drink');assert.equal(label.styles?.[0].at(-1),'footer');
+  assert.equal(label.sections[0][0],'Ana & José');assert.equal(label.styles?.[0][0],'name');assert.equal(label.styles?.[0][1],'drink');assert.equal(label.styles?.[0].at(-1),'footer');
+  assert.deepEqual(label.cupLabels?.[0], { folio:'#1234 · 1/2',service:'Para Llevar',date:'30/10/26',time:'11:20' });
 });
 
 test('completing fiscal placeholders upgrades only a withheld customer draft and never reprints the accepted barista job', async () => {
@@ -76,7 +77,7 @@ test('one confirmed snapshot yields financial customer context and complete per-
   assert.equal(docs.barista.sections.length, 2);
   for (const section of docs.barista.sections) {
     const text = section.join('\n');
-    for (const expected of ['1234', 'ANA & JOSÉ', 'Para Llevar', 'Iced coffee vainilla', 'Leche de avena', 'Sin hielo <urgente>', 'Entregar juntos']) assert.ok(text.includes(expected));
+    for (const expected of ['1234', 'Ana & José', 'Para Llevar', 'Iced coffee vainilla', 'Leche de avena', 'Sin hielo <urgente>', 'Entregar juntos']) assert.ok(text.includes(expected));
   }
   assert.doesNotMatch(barista, /\$|TOTAL|Cambio|efectivo/);
   assert.match(barista, /1\/2/); assert.match(barista, /2\/2/);

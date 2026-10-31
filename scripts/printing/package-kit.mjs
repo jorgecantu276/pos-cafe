@@ -37,7 +37,7 @@ await copyFile(process.execPath, path.join(destination, 'node.exe'));
 const licenseUrl = 'https://raw.githubusercontent.com/nodejs/node/v24.22.2/LICENSE';
 const response = await fetch(licenseUrl); assert.ok(response.ok, 'Exact Node runtime license is required');
 await writeFile(path.join(destination, 'Node-LICENSE.txt'), await response.text());
-const instructions = `CARIÑITO MÍO: PRUEBA DE IMPRESORAS V6
+const instructions = `CARIÑITO MÍO: PRUEBA DE IMPRESORAS V7
 31 DE OCTUBRE DE 2026
 
 Este paquete usa el mismo servicio de impresión de la caja e incluye
@@ -46,7 +46,11 @@ No instala ni reemplaza el punto de venta. Guarda las pruebas en esta PC.
 No cobra, cambia inventario, instala controladores, empareja dispositivos,
 cambia ajustes predeterminados ni envía comandos de corte, cajón o RAW.
 
-V6 corrige la lectura del estado de las colas ocupadas o que están imprimiendo.
+V7 integra tipografía Arial Bold uniforme, columnas explícitas en el ticket y
+etiquetas verticales con el diseño local de encabezado/pie. El formato físico
+sigue en 57 x 32 mm; el dibujo se gira 90 grados dentro de cada etiqueta.
+La prueba física del 31 de octubre aprobó el renderizador de prueba anterior
+tras esas correcciones; el diseño combinado de V7 requiere nueva revisión en papel.
 Si ya usaste otro paquete, detén las pruebas antes de actualizarlo. Conserva
 completa su carpeta runtime, con las muestras guardadas, el registro de
 impresión y sus archivos asociados. Para reintentar una orden anterior,
@@ -60,6 +64,12 @@ BARRA: Nulltonex Y813BT Sticker / controlador Y813BT Label 1.1.3.1 observado
        VEVOR es el nombre observado en el paquete del controlador.
        Etiquetas Hybsk de 2.25 x 1.25 pulgadas = 57.15 x 31.75 mm.
        La impresión selecciona el formato anunciado de 57 x 32 mm.
+
+Ajustes observados/aprobados el 31 de octubre (este kit NO los cambia):
+POS80: densidad 16, velocidad 75 mm/s.
+Y813BT: Rotate Portrait, orientación Windows Vertical, densidad 8, velocidad 4,
+Label With Gaps, separación 3 mm, offset 0. Se aplicó Study Label y el usuario
+confirmó movimiento seguido de reposo. Revisa el papel antes de recalibrar.
 
 Extrae todo el ZIP a una carpeta local permanente. Usa la misma carpeta y
 conserva runtime entre reintentos. Evita carpetas de red o sincronizadas.
@@ -117,6 +127,8 @@ Abre PowerShell en esa carpeta. No debería requerir permisos de administrador.
 
    Para probar la recuperación Bluetooth: apaga la impresora de etiquetas,
    ejecuta -TestCase bluetooth-offline y revisa ambas colas de Windows.
+   Un caso Bluetooth nuevo usa un vaso compacto marcado ANA (PRUEBA), total
+   MXN110, recibido MXN150, cambio MXN40; conserva cualquier muestra ya guardada.
    Enciende la impresora y repite el mismo caso. Windows puede haber aceptado
    el trabajo mientras estaba desconectada; espera a que termine ese trabajo
    antes de crear una reposición.
@@ -144,10 +156,11 @@ programa antes de copiar o respaldar los archivos SQLite. Las reimpresiones
 manuales o históricas desde Windows no tienen la protección contra duplicados
 de este servicio.
 
-Todavía falta comprobar la impresión en papel. También deben verificarse en
-la cafetería la marca y modelo exactos del equipo USB, la conexión y salida
-Bluetooth, la alineación y la versión instalada de Node. Una simulación local
-no comprueba la salida en papel. ExecutionPolicy Bypass se aplica únicamente
+El usuario confirmó la salida corregida y recuperación Bluetooth del paquete
+anterior el 31 de octubre. Esta versión combina esas correcciones con el nuevo
+diseño local y necesita nueva revisión de papel/alineación. La marca y modelo
+exactos del equipo USB siguen pendientes. Una simulación local no comprueba
+la salida en papel. ExecutionPolicy Bypass se aplica únicamente
 al proceso de PowerShell que ejecuta cada comando.
 
 ${issuerSource ? 'Este paquete incluye los datos del emisor transcritos de la constancia\nsuministrada. No incluye el PDF original, CURP, idCIF, QR ni sello electrónico.\nNo consulta al contribuyente ni envía facturas. Después puede copiarse el mismo\narchivo fuera de la carpeta de versión y configurarse en el servidor mediante\nPOS_RECEIPT_ISSUER_FILE. Este paquete no cambia la configuración de la aplicación\nen uso.\n' : ''}
@@ -160,7 +173,7 @@ for (const file of files) {
   const bytes = await readFile(path.join(destination, file));
   hashes.push({ file, bytes: (await stat(path.join(destination, file))).size, sha256: createHash('sha256').update(bytes).digest('hex') });
 }
-await writeFile(path.join(destination, 'manifest.json'), JSON.stringify({ builtOn: '2026-10-30', targetTestDate: '2026-10-31',
+await writeFile(path.join(destination, 'manifest.json'), JSON.stringify({ builtOn: new Date().toISOString().slice(0, 10), targetTestDate: '2026-10-31',
   platform: 'Windows x64', node: process.version, sqlite, sourceModules: Object.keys(bundle.metafile.inputs),
   runtimeLicenseSource: licenseUrl, labelSource: 'User-supplied Hybsk packaging images', issuerProfile: issuerSource ? 'receipt-issuer.json' : null, files: hashes }, null, 2));
 console.log('Prepared exact-machine physical test kit: ' + destination);

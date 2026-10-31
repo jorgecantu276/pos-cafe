@@ -35,6 +35,18 @@ cashier retry still never resend an uncertain or accepted copy automatically.
 
 ## Exact machine profile
 
+The October 31 cup-label design uses black text and two divider rules on the
+colored Hybsk stock. Name and folio/cup count form the header, each modifier
+has its own line, and service type and Matamoros date/time form the footer.
+The physical form remains 57.15 × 31.75 mm; logical vertical artwork is rotated
+90 degrees inside that page. All label styles use Arial Bold 8.5 pt. Narrow
+header/footer fields stack instead of competing for columns. Continuations
+repeat all identifiers. Saved documents without cup-label metadata retain their
+flowing content and cup footers, with the accepted fonts/rotation. Upgrading
+does not replace saved documents or resend completed copies. This combined
+reference design needs a new paper check; the accepted standalone renderer
+used a simpler flowing layout.
+
 `config/cafe-printers.json` records the original supplied café discovery:
 
 | Destination | Exact queue / driver | Connection | Job paper form |
@@ -48,7 +60,8 @@ Bluetooth APIs reported conflicting 57 × 32 and approximately 100 × 150 mm
 defaults. The user subsequently supplied Hybsk packaging images specifying
 2.25 × 1.25 inches, equivalent to 57.15 × 31.75 mm, matching the advertised
 57 × 32 mm form. This stock is selected in the machine profile and test kit.
-Tomorrow still needs a physical check that this exact roll is loaded.
+The user physically confirmed this exact roll on October 31. Confirm it again
+after media changes; the recorded observation cannot inspect the current roll.
 
 The user confirms **Nulltonex** branding. Its [Y813BT support](https://nulltonex.com/pages/y813bt-video-tutorial-1)
 and [model-specific driver selection](https://nulltonex.com/pages/y813) take
@@ -88,7 +101,7 @@ POS_RECEIPT_ISSUER_FILE=C:\POS-Cafe-Data\receipt-issuer.json
 ```
 
 Those paths are deployment examples, not directories created by these changes.
-No café environment was modified. Use a permanent local disk path outside the
+The standalone kit did not configure the café POS server. Use a permanent local disk path outside the
 source/release folder. Give the signed-in POS account access; never use a
 network share or a shared journal across two physical PCs. Preserve the entire
 directory, including SQLite WAL/SHM files when active. Do not delete or roll
@@ -100,7 +113,8 @@ application stopped or through SQLite-aware backup.
 `POS_PRINT_MODE=mock` writes only synthetic spool records and uses a separate
 `mock-jobs.sqlite`; Windows uses `windows-jobs.sqlite`. Omission/disabled mode
 withholds dispatch and retains print intents. No real print mode was enabled
-on the development PC or café PC. Network/Auth/order-read failure retains the
+on the development PC or full café POS. The standalone kit did print marked
+samples on October 31. Network/Auth/order-read failure retains the
 print intent; the existing POS still depends on cloud access and does not gain
 offline sales or offline access authorization from this feature.
 
@@ -136,11 +150,14 @@ No invented VAT rate, fiscal UUID, seal, invoicing portal or request deadline is
 printed. Customers are directed to the cashier to request a CFDI. Do not copy
 dated or merchant-specific invoicing restrictions from the reference receipts.
 
-Barista labels use a Starbucks-inspired reading order: bold customer name,
-bold full menu drink name, milk/options, emphasized item instruction, order
+Barista labels use a Starbucks-inspired reading order: customer name,
+full menu drink name, milk/options, item instruction, order
 instruction, then a small folio/cup count/order type/time footer. Each unit has
 its own section. No Starbucks logo, invented size/recipe code or payment data
-is added. The actual Windows renderer uses styled fonts at the selected size.
+is added. Labels use uniform Arial Bold 8.5 pt. Receipts use Arial Bold 8.5 pt
+for body/issuer/meta, 10 pt headings, 11 pt total and 12 pt brand. Quantity,
+unit price and line amount use measured left/middle/right columns, rather
+than relying on spaces to align proportional type.
 No remote images or QR services are needed. Small labels continue onto further
 identified labels instead of clipping instructions. Every styled barista label,
 including each continuation, reserves its folio/cup-count footer. Long notes
@@ -194,9 +211,17 @@ and deleting the local journal are outside that guarantee. If a handoff outcome
 is uncertain, stopping for physical reconciliation is necessary to avoid a
 duplicate. Do not press charge again or bypass this guard by deleting files.
 
-## Tomorrow's physical test
+## Physical acceptance and subsequent tests
 
-The current kit is **V6**, superseding V5 and V4. Its runtime is Node 24.22.2 x64 with
+The October 31 standalone test passed after corrections to font weight,
+orientation, paper loading and label learning. Bluetooth recovered the existing
+Windows job after power-on; same-case repeats produced no extra paper. See
+[the acceptance record](printer-acceptance-2026-10-31.md) for approved settings,
+evidence hashes and the boundary between that renderer and the newer reference
+design. This does not establish full-POS, cutter or drawer acceptance.
+
+The source builder now produces **V7**, incorporating the accepted rendering
+corrections and local reference design. Its runtime is Node 24.22.2 x64 with
 SQLite 3.53.4. When upgrading an existing installation, preserve its persistent
 journal in place; never replace it with a fresh kit's empty journal to retry
 previous orders.
@@ -247,7 +272,7 @@ Windows UTF-8 BOM profiles and cup identity on every continuation label.
 The test kit is for hardware acceptance, not an already accepted production
 deployment. After hardware acceptance, the full POS must use the reviewed app,
 compatible schema, existing release/backup procedure and local machine
-configuration. No GitHub sync, café app deployment or live migration was done.
+configuration. The acceptance session did not deploy the café app or run live migrations.
 
 ## Verification
 

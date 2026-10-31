@@ -2,7 +2,75 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { saleDocuments } from '../lib/sale-printing';
+
+test('reference matcha with four preparation lines fits one physical label and retains date and cup identity', { skip: process.platform !== 'win32' }, () => {
+  const doc = saleDocuments({id:'reference',ticket_number:1287,status:'completed',total:110,
+    items:[{id:'cup',quantity:1,product:{id:'matcha',name:'Iced Matcha Latte',price:110,category:'Bebidas',
+      displayExtras:['Leche de avena','Vainilla','Hielo normal','1 Shot Espresso'].map(name=>({name,price:0}))}}],
+    customer_name:'María López',order_type:'Para llevar',order_note:'',created_at:'2025-05-12T16:45:00Z',
+    payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:20,change_mxn:0}).barista;
+  const result=spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
+    ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
+    {input:JSON.stringify({...doc,verticalLabel:true,fontPoints:9,widthMm:56.9,heightMm:31.75})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
+  assert.equal(result.status,0,result.stderr||result.stdout);
+  const pages:{lines:string[]}[]=JSON.parse(result.stdout);
+  assert.equal(pages.length,1);
+  for(const value of ['María López','#1287 · 1/1','Iced Matcha Latte','- Leche de avena','- Vainilla','- Hielo normal','- 1 Shot Espresso','Para llevar','12/05/25','11:45']) assert.ok(pages[0].lines.join(' ').includes(value),value);
+});
+
+test('accepted receipt weights and fixed columns survive rendering; label rotation keeps the physical stock size', { skip: process.platform !== 'win32' }, () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'cafe-onsite-layout-'));
+  const docs = saleDocuments({ id:'onsite-layout',ticket_number:1234,status:'completed',total:110,
+    items:[{id:'cup',quantity:1,product:{id:'iced',name:'Iced coffee caramelo',price:110,category:'Bebidas',displayExtras:[{name:'Leche de avena',price:15}],note:'Sin hielo'}}],
+    customer_name:'Ana',order_type:'Para Llevar',order_note:'',created_at:'2026-10-31T17:00:00Z',
+    payment_method:'efectivo',tender_mxn:150,tender_usd:0,exchange_rate:20,change_mxn:40 });
+  function preview(audience: 'customer' | 'barista') {
+    const destination = path.join(directory, audience);
+    const result = spawnSync(path.join(process.env.SystemRoot!, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
+      {input:JSON.stringify({...docs[audience],verticalLabel:audience==='barista',fontPoints:9,
+        widthMm:audience==='barista'?56.9:71.88,heightMm:audience==='barista'?32:210.06,previewDirectory:destination})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
+    assert.equal(result.status,0,result.stderr||result.stdout);
+    return {pages:JSON.parse(result.stdout) as {lines:string[]}[],svg:readFileSync(path.join(destination,'page-1.svg'),'utf8'),png:readFileSync(path.join(destination,'page-1.png'))};
+  }
+  try {
+    const receipt = preview('customer');
+    assert.equal(receipt.pages.length,1);
+    assert.match(receipt.svg, /font-size="12" font-weight="700">CARIÑITO MÍO/);
+    assert.match(receipt.svg, /font-size="11" font-weight="700">TOTAL:/);
+    assert.match(receipt.svg, /font-size="8.5" font-weight="700">Cambio:/);
+    assert.doesNotMatch(receipt.svg, /font-weight="400"|Courier|rotate\(90\)/);
+    const cells = [...receipt.svg.matchAll(/<text x="([\d.]+)" y="([\d.]+)"[^>]*>(CANT\.|P.UNITARIO|IMPORTE|1|\$110.00)<\/text>/g)];
+    const header=cells.filter(m=>['CANT.','P.UNITARIO','IMPORTE'].includes(m[3]));
+    const amounts=cells.filter(m=>['1','$110.00'].includes(m[3]));
+    assert.equal(header.length,3);assert.equal(amounts.length,3);
+    for(const row of [header,amounts]) { assert.equal(new Set(row.map(m=>m[2])).size,1);assert(+row[0][1]<+row[1][1]&&+row[1][1]<+row[2][1]); }
+    const label = preview('barista');
+    assert.equal(label.pages.length,1);
+    assert.match(label.svg, /width="56.9mm" height="32mm"/);
+    assert.match(label.svg, /<g transform="translate\([\d.]+ 0\) rotate\(90\)">/);
+    assert.doesNotMatch(label.svg, /font-size="(?!8.5")|font-weight="400"|Arial Narrow/);
+    assert.equal(label.png.readUInt32BE(16),455);assert.equal(label.png.readUInt32BE(20),256);
+  } finally { rmSync(directory,{recursive:true,force:true}); }
+});
+
+test('saved pre-metadata label snapshots retain all notes and cup footers with the vertical renderer', { skip: process.platform !== 'win32' }, () => {
+  const note='Sin hielo. '.repeat(20)+'FIN-NOTA';
+  const document={title:'CM #PRUEBA BARRA',sections:[['ANA','Iced coffee caramelo',note,'#PRUEBA · 1/1 · Para Llevar · 12:13']],
+    styles:[['name','drink','note','footer']],verticalLabel:true,fontPoints:9,widthMm:56.9,heightMm:32};
+  const result=spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
+    ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
+    {input:JSON.stringify(document)+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
+  assert.equal(result.status,0,result.stderr||result.stdout);
+  const pages:{lines:string[]}[]=JSON.parse(result.stdout);
+  assert.ok(pages.length>1);
+  for(const page of pages) assert.match(page.lines.join(' '),/#PRUEBA · 1\/1 · Para Llevar · 12:13/);
+  const content=pages.flatMap(page=>page.lines).join(' ');
+  assert.equal((content.match(/Sin hielo\./g)||[]).length,20);assert.match(content,/FIN-NOTA/);
+});
 
 test('every overflow label identifies its own cup, including two different drinks with long instructions', { skip: process.platform !== 'win32' }, () => {
   const docs=saleDocuments({id:'overflow-cups',ticket_number:9876,status:'completed',total:220,
@@ -12,7 +80,7 @@ test('every overflow label identifies its own cup, including two different drink
     payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:20,change_mxn:0});
   const result=spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
     ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
-    {input:JSON.stringify({...docs.barista,fontPoints:9,widthMm:57.15,heightMm:31.75})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
+    {input:JSON.stringify({...docs.barista,verticalLabel:true,fontPoints:9,widthMm:57.15,heightMm:31.75})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
   assert.equal(result.status,0,result.stderr||result.stdout);
   const pages:{lines:string[]}[]=JSON.parse(result.stdout);
   assert.ok(pages.length>4);
@@ -50,8 +118,9 @@ test('normal real-menu cup context fits the selected Hybsk 57.15 x 31.75 mm stoc
     payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:20,change_mxn:0 });
   const result = spawnSync(path.join(process.env.SystemRoot!, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
     ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
-    { input:JSON.stringify({...docs.barista,fontPoints:9,widthMm:57.15,heightMm:31.75})+'\n',encoding:'utf8',windowsHide:true,timeout:30_000 });
+    { input:JSON.stringify({...docs.barista,verticalLabel:true,fontPoints:9,widthMm:57.15,heightMm:31.75})+'\n',encoding:'utf8',windowsHide:true,timeout:30_000 });
   assert.equal(result.status,0,result.stderr||result.stdout);
   const pages: {lines:string[]}[] = JSON.parse(result.stdout);
-  assert.equal(pages.length,1);assert.match(pages[0].lines.join(' '),/ANA Y JOSÉ.*Iced coffee caramelo.*Leche de avena.*Sin hielo.*Entregar juntos.*1234.*Para Llevar/);
+  assert.equal(pages.length,1);
+  for (const value of ['Ana y José','#1234 · 1/1','Iced coffee caramelo','Leche de avena','Sin hielo','Entregar juntos','Para Llevar','30/10/26','12:00']) assert.ok(pages[0].lines.join(' ').includes(value), value);
 });

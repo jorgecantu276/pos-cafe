@@ -40,6 +40,14 @@ else {
       displayExtras: [{ name: 'Leche de avena', price: 15 }], note: 'NO PREPARAR. PRUEBA FÍSICA; SIN HIELO.' } }],
     customer_name: 'PRUEBA LOCAL — NO CLIENTE', order_type: 'Para Llevar', order_note: 'PRUEBA DE IMPRESORAS — NO ES UNA VENTA NI UN COBRO',
     created_at: new Date().toISOString(), payment_method: 'efectivo', tender_mxn: 250, tender_usd: 0, exchange_rate: 20, change_mxn: 30 };
+  // Match the compact one-cup Bluetooth proof accepted on October 31. An
+  // existing saved sample always wins above; never replace a previous case.
+  if (testCase === 'bluetooth-offline') {
+    order.items[0].quantity = 1;
+    order.items[0].product.note = 'SIN HIELO / NO PREPARAR';
+    order.customer_name = 'ANA (PRUEBA)'; order.order_note = '';
+    order.total = 110; order.tender_mxn = 150; order.change_mxn = 40;
+  }
   if (testCase === 'long-notes') order.items = ['Iced coffee caramelo', 'Iced coffee vainilla'].map((name,index) => ({
     id: `long-${index}`,quantity:1,product:{id:`synthetic-${index}`,name,price:110,category:'Bebidas',
       displayExtras:[{name:'Leche de avena',price:15}],

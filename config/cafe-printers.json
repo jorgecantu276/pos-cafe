@@ -1,5 +1,5 @@
 {
-  "source": "User-supplied cafe-PC discovery October 27 and console evidence October 30, 2026. Queue/port/forms verified in software; physical output remains unverified.",
+  "source": "User-supplied cafe-PC discovery October 27/30 and physical acceptance October 31, 2026. Final corrective receipt/vertical labels and Bluetooth recovery personally confirmed by the user; see docs/printer-acceptance-2026-10-31.md.",
   "windows": "Windows 11 Pro 24H2 x64 build 26100.9711",
   "customer": {
     "queue": "POS80 Printer",
@@ -14,7 +14,8 @@
     "paperHeightMm": 210,
     "observedDefaultHeightMm": 3276,
     "requiredFormObservedMm": [71.88, 210.06],
-    "hardwareModel": null
+    "hardwareModel": null,
+    "approvedPreferencesObserved": { "density": 16, "speedMmPerSecond": 75 }
   },
   "barista": {
     "brandReportedByUser": "Nulltonex",
@@ -26,18 +27,21 @@
     "deviceName": "Y813BT-E08D",
     "driverPackage": "VEVOR",
     "dpi": 203,
-    "stockConfirmed": false,
+    "stockConfirmed": true,
     "stockSpecificationConfirmed": true,
     "selectedStockSource": "User-supplied Hybsk direct thermal label packaging image, October 30, 2026: 2.25 x 1.25 inches",
     "selectedWidthMm": 57.15,
     "selectedHeightMm": 31.75,
     "selectedDriverFormMm": [57, 32],
     "selectedFormObservedMm": [56.9, 32],
-    "loadedRollPhysicallyVerified": false,
-    "loadedWidthMm": null,
-    "loadedHeightMm": null,
+    "loadedRollPhysicallyVerified": true,
+    "loadedWidthMm": 57.15,
+    "loadedHeightMm": 31.75,
+    "physicalVerificationDate": "2026-10-31",
+    "approvedPreferencesObserved": { "vendorRotation": "Portrait", "windowsOrientation": "Vertical", "density": 8, "speed": 4, "mediaMode": "Label With Gaps", "gapMm": 3, "offsetMm": 0, "studyLabelPhysicallyConfirmed": true },
+    "artworkRotationDegrees": 90,
     "conflictingObservedDefaultsMm": [[57, 32], [100, 150]],
-    "connectionLastObserved": "October 30: printer and Realtek Bluetooth adapter report device code 0; SPP traffic and paper not tested",
+    "connectionLastObserved": "October 31: existing Windows-owned offline job printed automatically after label printer power-on; same-case repeat produced no additional paper. Final queues empty.",
     "bluetoothAdapterUsbId": "0BDA:A728",
     "internalIntelAdapterErrorCode": 22
   },
