@@ -64,6 +64,20 @@ runtime Python dependency is involved. New journal documents snapshot the QR
 matrix and target. The 203-dpi preview was independently decoded to that URL;
 scan/readability and logo contrast still need a new physical paper check.
 
+For a customer-only café check, use `scripts/printing/package-receipt-test.mjs`
+with a new absolute output directory. This separate package requires the
+ORIGINAL nonempty journal and existing issuer profile via `-ExistingKitRoot`.
+Inspection/preview is read-only; `-PrintTest` saves one new PRUEBA-RECIBO-V8
+sample in that original runtime and selects only the customer copy for ensure
+and dispatch. It creates no barista row and checks that unrelated jobs, source
+records and the recovery audit stay unchanged. Normal POS sales still ensure
+both copies atomically. Repeating the receipt command preserves its identity
+and submission fence. A missing original journal or missing sample for an
+already journaled receipt ticket stops the test instead of starting afresh.
+The ZIP includes `CAFE-PC-PROMPT.txt`; no journal, issuer data or old-case runner
+is packaged. Do not overlay the old café kit or run its full two-printer suite
+when checking only this new receipt.
+
 The October 31 cup-label design uses black text and two divider rules on the
 colored Hybsk stock. Name and folio/cup count form the header, each modifier
 has its own line, and service type and Matamoros date/time form the footer.

@@ -99,6 +99,24 @@ test('all 82 real menu presentations preserve their names and prices without cat
   }
 });
 
+test('receipt-only acceptance creates no barista copy and preserves prior journal jobs across retries', async () => {
+  const directory=scratch(),sent:PrintAudience[]=[],old=sale(),receipt={...sale(),ticket_number:'PRUEBA-RECIBO-V8'};
+  const journal=new PrintJournal(path.join(directory,'jobs.sqlite'),{async prepare(job){return{async submit(){sent.push(job.audience);},dispose(){}};}});
+  try {
+    journal.ensure('physical-test-only',old,queues);await journal.dispatch('physical-test-only',old.id);
+    const previous=journal.get('physical-test-only',old.id);
+    journal.ensure('physical-test-only',receipt,queues,{testOnly:true},'customer');
+    await journal.dispatch('physical-test-only',receipt.id,'customer');
+    journal.ensure('physical-test-only',receipt,queues,{testOnly:true},'customer');
+    await journal.dispatch('physical-test-only',receipt.id,'customer');
+    assert.deepEqual(sent.sort(),['barista','customer','customer']);
+    assert.deepEqual(journal.get('physical-test-only',old.id),previous);
+    const jobs=journal.get('physical-test-only',receipt.id);
+    assert.equal(jobs.length,1);assert.equal(jobs[0].audience,'customer');assert.equal(jobs[0].attempts,1);
+    assert.equal(jobs[0].state,'submitted');
+  } finally {journal.close();remove(directory);}
+});
+
 test('two workers, repeated POSTs, refresh and process restart cannot submit a successful copy twice', async () => {
   const directory = scratch(), order = sale();
   const sent: PrintAudience[] = [];
