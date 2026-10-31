@@ -29,7 +29,6 @@ export default function UsuariosPage() {
 
   const initialFormState = {
     id: '',
-    full_name: '',
     username: '',
     password: '',
     role: 'cashier',
@@ -40,7 +39,7 @@ export default function UsuariosPage() {
 
   const loadUsers = useCallback(async (signal: AbortSignal) => {
     const { data, error } = await supabase.from('profiles').select('id, full_name, username, role, avatar_url, is_active')
-      .eq('is_active', true).order('full_name', { ascending: true }).abortSignal(signal);
+      .eq('is_active', true).order('username', { ascending: true }).abortSignal(signal);
     if (error) throw error;
     return (data || []) as StaffProfile[];
   }, []);
@@ -54,7 +53,6 @@ export default function UsuariosPage() {
     if (mode === 'edit' && user) {
       setFormData({
         id: user.id,
-        full_name: user.full_name || '',
         username: user.username || '',
         password: '', // Se deja en blanco por seguridad
         role: user.role === 'admin' ? 'admin' : 'cashier',
@@ -139,10 +137,10 @@ export default function UsuariosPage() {
               <div className="flex items-center gap-6">
                 <div className="relative">
                   {user.avatar_url ? (
-                    <Image unoptimized width={64} height={64} src={user.avatar_url} alt={user.full_name} className="w-16 h-16 rounded-full object-cover shadow-sm border border-slate-200" />
+                    <Image unoptimized width={64} height={64} src={user.avatar_url} alt={user.username || 'Usuario'} className="w-16 h-16 rounded-full object-cover shadow-sm border border-slate-200" />
                   ) : (
                     <div className="w-16 h-16 bg-gradient-to-b from-slate-50 to-slate-100 rounded-full flex items-center justify-center text-[#1d1d1f] font-semibold text-xl shadow-inner border border-slate-200/50 uppercase">
-                      {user.full_name?.charAt(0) || 'U'}
+                      {user.username?.charAt(0) || 'U'}
                     </div>
                   )}
                   {user.role === 'admin' && (
@@ -154,14 +152,13 @@ export default function UsuariosPage() {
 
                 <div className="space-y-1">
                   <div className="flex items-center gap-3">
-                    <h4 className="font-semibold text-lg text-[#1d1d1f]">{user.full_name}</h4>
+                    <h4 className="font-semibold text-lg text-[#1d1d1f]">{user.username || 'Usuario'}</h4>
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-tight uppercase ${
                       user.role === 'admin' ? 'bg-[#0071e3]/10 text-[#0071e3]' : 'bg-slate-100 text-slate-500'
                     }`}>
                       {user.role === 'admin' ? 'ADMINISTRADOR' : 'CAJERO'}
                     </span>
                   </div>
-                  <p className="text-sm text-[#86868b] font-medium tracking-tight">@{user.username || 'usuario'}</p>
                 </div>
               </div>
 
@@ -173,7 +170,7 @@ export default function UsuariosPage() {
                   <Edit2 size={14} /> Editar
                 </button>
 
-                <button disabled={isSaving || !!pendingChange} aria-label={'Desactivar a ' + user.full_name} onClick={() => handleDelete(user.id)} className="p-2.5 text-slate-300 hover:bg-red-50 hover:text-[#ff3b30] rounded-full transition-all">
+                <button disabled={isSaving || !!pendingChange} aria-label={'Desactivar a ' + user.username} onClick={() => handleDelete(user.id)} className="p-2.5 text-slate-300 hover:bg-red-50 hover:text-[#ff3b30] rounded-full transition-all">
                    <Trash2 size={18} strokeWidth={1.5} />
                 </button>
               </div>
@@ -261,21 +258,11 @@ export default function UsuariosPage() {
               </div>
 
               {/* FILA 2: DATOS PERSONALES */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-50 pt-6">
+              <div className="border-t border-slate-50 pt-6">
                 <div>
-                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Nombre Completo</label>
+                  <label htmlFor="staff-username" className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Usuario</label>
                   <input
-                    type="text"
-                    required
-                    placeholder="Ej. Juan Pérez"
-                    className="w-full bg-white border border-slate-200 focus:border-[#0071e3]/40 rounded-xl px-4 py-3 text-sm font-semibold outline-none transition-all shadow-sm"
-                    value={formData.full_name}
-                    onChange={e => setFormData({...formData, full_name: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2">Nombre de usuario</label>
-                  <input
+                    id="staff-username" autoComplete="username"
                     type="text"
                     required
                     placeholder="Ej. juan"

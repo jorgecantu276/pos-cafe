@@ -8,7 +8,7 @@ const folder = process.argv[2];
 assert.ok(folder && path.isAbsolute(folder), 'Pass an absolute prepared release directory.');
 const manifest = JSON.parse(readFileSync(path.join(folder, 'release.json'), 'utf8'));
 assert.equal(manifest.fixtureOnly, true, 'This smoke drill only runs loopback builds, never client targets.');
-for (const devTool of ['@embedded-postgres','embedded-postgres','eslint','supabase']) {
+for (const devTool of ['@embedded-postgres','embedded-postgres','eslint','oxlint','@oxlint','supabase']) {
   assert.equal(existsSync(path.join(folder,'app/node_modules',devTool)),false,'Release must exclude development tool: '+devTool);
 }
 const scratch = mkdtempSync(path.join(tmpdir(), 'pos-cafe-release-'));
