@@ -22,9 +22,14 @@ try {
     [string[][]]$sections = @($printInput.sections | ForEach-Object { ,([string[]]$_) })
     [string[][]]$styles = $null
     if ($printInput.styles) { $styles = @($printInput.styles | ForEach-Object { ,([string[]]$_) }) }
+    [string[][]]$referenceLabels = $null
+    if ($printInput.labelLayout -ceq 'reference-v2') {
+        if (@($printInput.referenceLabels).Count -ne $sections.Length) { throw 'Incomplete reference label identity' }
+        $referenceLabels = @($printInput.referenceLabels | ForEach-Object { ,([string[]]@($_.folio,$_.cup,$_.service,$_.date,$_.time)) })
+    }
     if ($LayoutOnly) {
         # No printer discovery, device context, or spooler call on this path.
-        $pages = [CafeDesktopPrinter]::Preview($printInput.title, $sections, [float]$printInput.fontPoints, [float]$printInput.widthMm, [float]$printInput.heightMm, $styles, $printInput.previewDirectory, [bool]$printInput.verticalLabel)
+        $pages = [CafeDesktopPrinter]::Preview($printInput.title, $sections, [float]$printInput.fontPoints, [float]$printInput.widthMm, [float]$printInput.heightMm, $styles, $printInput.previewDirectory, [bool]$printInput.verticalLabel, $referenceLabels, [bool]$printInput.transparentBackground)
         $preview = @($pages | ForEach-Object { @{ lines = @($_ | ForEach-Object { [string]$_ }) } })
         [Console]::WriteLine((ConvertTo-Json -InputObject $preview -Depth 10 -Compress))
         exit 0
@@ -37,7 +42,7 @@ try {
         throw 'Installed queue does not match the cafe driver/port profile'
     }
     [CafeDesktopPrinter]::Prepare($printInput.queue, $printInput.title, $sections, [float]$printInput.fontPoints,
-        [float]$printInput.stock.widthMm, [float]$printInput.stock.heightMm, $styles, $printInput.layoutTitle, [bool]$printInput.verticalLabel)
+        [float]$printInput.stock.widthMm, [float]$printInput.stock.heightMm, $styles, $printInput.layoutTitle, [bool]$printInput.verticalLabel, $referenceLabels)
     [Console]::WriteLine('{"state":"ready"}')
     # The parent has durably committed 'submitting' before granting permission.
     if ([Console]::ReadLine() -cne 'PRINT') { throw 'No dispatch permission' }

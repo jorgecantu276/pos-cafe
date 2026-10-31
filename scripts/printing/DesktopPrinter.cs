@@ -5,7 +5,7 @@ using System.Drawing;
 using System.Drawing.Printing;
 
 public static class CafeDesktopPrinter {
-    private sealed class Run { public string Text; public string Style; public float Y; public string[] Cells; }
+    private sealed class Run { public string Text; public string Style; public float Y; public string[] Cells; public float? X; public float RuleWidth; }
     private static PrintDocument document;
     private static List<List<Run>> pages;
     private static Font regular, bold;
@@ -32,7 +32,7 @@ public static class CafeDesktopPrinter {
         qrRows = rows;
     }
 
-    public static void Prepare(string queue, string title, string[][] sections, float points, float widthMm, float heightMm, string[][] styles, string layoutTitle, bool verticalLabel) {
+    public static void Prepare(string queue, string title, string[][] sections, float points, float widthMm, float heightMm, string[][] styles, string layoutTitle, bool verticalLabel, string[][] referenceLabels) {
         if (!Environment.UserInteractive) throw new InvalidOperationException("Desktop session required");
         PrinterSettings settings = new PrinterSettings();
         settings.PrinterName = queue;
@@ -70,7 +70,7 @@ public static class CafeDesktopPrinter {
         pageWidth = (rotateLabel ? area.Height : area.Width) * 0.72f;
         using (Graphics g = settings.CreateMeasurementGraphics()) {
             g.PageUnit = GraphicsUnit.Point;
-            pages = Layout(g, String.IsNullOrEmpty(layoutTitle) ? title : layoutTitle, sections, pageWidth, (rotateLabel ? area.Width : area.Height) * 0.72f, styles);
+            pages = Layout(g, String.IsNullOrEmpty(layoutTitle) ? title : layoutTitle, sections, pageWidth, (rotateLabel ? area.Width : area.Height) * 0.72f, styles, referenceLabels);
         }
         currentPage = 0;
         document.PrintPage += DrawPage;
@@ -89,6 +89,12 @@ public static class CafeDesktopPrinter {
         fonts["receipt-total"] = new Font("Arial", 15, FontStyle.Bold, GraphicsUnit.Point);
         fonts["quote"] = new Font("Times New Roman", 10, FontStyle.Bold | FontStyle.Italic, GraphicsUnit.Point);
         fonts["social"] = new Font("Arial", 11, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["ref-name"] = new Font("Arial", 9, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["ref-drink"] = new Font("Arial", 12, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["ref-body"] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["ref-note"] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["ref-meta"] = new Font("Arial", 7, FontStyle.Bold, GraphicsUnit.Point);
+        fonts["ref-service"] = new Font("Arial", 8, FontStyle.Bold, GraphicsUnit.Point);
         foreach (string style in new [] { "name", "drink", "modifier", "note", "footer" })
             fonts[style] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
     }
@@ -99,13 +105,19 @@ public static class CafeDesktopPrinter {
         if (style == "separator") return 7;
         return style.StartsWith("legacy") ? regular.SizeInPoints * 1.4f : FontFor(style).SizeInPoints * 1.22f + 0.5f;
     }
-    private static List<List<Run>> Layout(Graphics g, string title, string[][] sections, float width, float height, string[][] styles) {
+    private static List<List<Run>> Layout(Graphics g, string title, string[][] sections, float width, float height, string[][] styles, string[][] referenceLabels) {
         float margin = 2 * MmToPt;
         float usable = width - 2 * margin;
         if (usable < 40 || height < margin * 2 + LineHeight("modifier") * 3) throw new InvalidOperationException("Printable stock too small");
         List<List<Run>> output = new List<List<Run>>();
         for (int sectionIndex = 0; sectionIndex < sections.Length; sectionIndex++) {
             string[] section = sections[sectionIndex];
+            if (referenceLabels != null) {
+                if (sectionIndex >= referenceLabels.Length || referenceLabels[sectionIndex].Length != 5 || section.Length < 3)
+                    throw new InvalidOperationException("Incomplete reference label");
+                LayoutReferenceLabel(g, section, styles == null ? null : styles[sectionIndex], referenceLabels[sectionIndex], width, height, output);
+                continue;
+            }
             // A long note may span multiple physical labels. Reserve the cup
             // footer on EVERY label so detached instructions cannot be confused
             // with another drink in the same sale. Customer/legacy docs retain
@@ -173,6 +185,53 @@ public static class CafeDesktopPrinter {
         if (output.Count == 0 || output.Count > 10000) throw new InvalidOperationException("Invalid page count");
         return output;
     }
+    private static float MeasuredWidth(Graphics g, string text, string style) {
+        return g.MeasureString(text, FontFor(style), Int32.MaxValue, StringFormat.GenericTypographic).Width;
+    }
+    private static void LayoutReferenceLabel(Graphics g, string[] section, string[] styles, string[] identity, float width, float height, List<List<Run>> output) {
+        float margin = 2 * MmToPt, usable = width - 2 * margin;
+        float dateWidth = Math.Max(MeasuredWidth(g, identity[3], "ref-meta"), MeasuredWidth(g, identity[4], "ref-meta"));
+        List<string> service = new List<string>(Wrap(g, identity[2], FontFor("ref-service"), usable - dateWidth - 4));
+        float footerHeight = Math.Max(service.Count * LineHeight("ref-service"), 2 * LineHeight("ref-meta")) + 5;
+        float footerTop = height - margin - footerHeight, bottom = footerTop - 3;
+        List<string> drink = new List<string>(Wrap(g, section[1], FontFor("ref-drink"), usable));
+        List<Run> body = new List<Run>();
+        for (int i = 2; i < section.Length - 1; i++) {
+            bool note = styles != null && i < styles.Length && styles[i] == "note";
+            string style = note ? "ref-note" : "ref-body";
+            string value = note ? section[i] : "- " + section[i];
+            foreach (string line in Wrap(g, value, FontFor(style), usable)) body.Add(new Run { Text = line, Style = style });
+        }
+        int next = 0, part = 0;
+        do {
+            List<Run> page = new List<Run>(); output.Add(page);
+            List<string> ids = new List<string>(Wrap(g, identity[0], FontFor("ref-meta"), usable * 0.45f));
+            ids.AddRange(Wrap(g, identity[1] + (part++ > 0 ? " CONT." : ""), FontFor("ref-meta"), usable * 0.45f));
+            float idWidth = 0;
+            foreach (string id in ids) idWidth = Math.Max(idWidth, MeasuredWidth(g, id, "ref-meta"));
+            List<string> names = new List<string>(Wrap(g, section[0], FontFor("ref-name"), usable - idWidth - 4));
+            float y = margin;
+            foreach (string name in names) { page.Add(new Run {Text=name,Style="ref-name",X=margin,Y=y}); y += LineHeight("ref-name"); }
+            float idY = margin;
+            foreach (string id in ids) { page.Add(new Run {Text=id,Style="ref-meta",X=width-margin-MeasuredWidth(g,id,"ref-meta"),Y=idY}); idY += LineHeight("ref-meta"); }
+            y = Math.Max(y,idY) + 2;
+            page.Add(new Run {Text="",Style="label-rule",X=margin,Y=y,RuleWidth=usable}); y += 4;
+            float required = drink.Count * LineHeight("ref-drink") + 3 + (body.Count > 0 ? LineHeight("ref-body") : 0);
+            if (y + required > bottom) throw new InvalidOperationException("Customer/drink identity leaves no room for label instructions");
+            foreach (string line in drink) { page.Add(new Run {Text=line,Style="ref-drink",X=margin,Y=y}); y += LineHeight("ref-drink"); }
+            y += 3;
+            int first = next;
+            while (next < body.Count && y + LineHeight(body[next].Style) <= bottom) {
+                Run line = body[next++]; page.Add(new Run {Text=line.Text,Style=line.Style,X=margin,Y=y}); y += LineHeight(line.Style);
+            }
+            if (first == next && next < body.Count) throw new InvalidOperationException("No instruction fits label");
+            page.Add(new Run {Text="",Style="label-rule",X=margin,Y=footerTop,RuleWidth=usable});
+            float serviceY = footerTop + 4;
+            foreach (string line in service) { page.Add(new Run {Text=line,Style="ref-service",X=margin,Y=serviceY}); serviceY += LineHeight("ref-service"); }
+            page.Add(new Run {Text=identity[3],Style="ref-meta",X=width-margin-MeasuredWidth(g,identity[3],"ref-meta"),Y=footerTop+4});
+            page.Add(new Run {Text=identity[4],Style="ref-meta",X=width-margin-MeasuredWidth(g,identity[4],"ref-meta"),Y=footerTop+4+LineHeight("ref-meta")});
+        } while (next < body.Count);
+    }
     private static void AppendFooter(List<Run> page, List<string> footer, float y) {
         foreach (string line in footer) {
             page.Add(new Run { Text = line, Style = "footer", Y = y }); y += LineHeight("footer");
@@ -227,7 +286,7 @@ public static class CafeDesktopPrinter {
         g.Restore(saved);
     }
     private static float TextX(Graphics g, Run run, Font font, float width) {
-        float margin = 2 * MmToPt, x = margin;
+        float margin = 2 * MmToPt, x = run.X ?? margin;
         float measured = g.MeasureString(run.Text, font, Int32.MaxValue, StringFormat.GenericTypographic).Width;
         if (run.Style == "brand" || run.Style == "meta" || run.Style == "issuer" || run.Style == "phone" || run.Style == "receipt-heading" || run.Style == "receipt-total" || run.Style == "quote" || run.Style == "social") x = Math.Max(margin, (width - measured) / 2);
         if (run.Style == "total") x = Math.Max(margin, width - margin - measured);
@@ -241,6 +300,7 @@ public static class CafeDesktopPrinter {
     private static void DrawRuns(Graphics g, List<Run> page, float width) {
         float margin = 2 * MmToPt;
         foreach (Run run in page) {
+            if (run.Style == "label-rule") { using (Pen pen = new Pen(Color.Black, 0.65f)) g.DrawLine(pen, run.X.Value, run.Y, run.X.Value + run.RuleWidth, run.Y); continue; }
             if (run.Style == "logo") {
                 using (var attributes = new System.Drawing.Imaging.ImageAttributes()) {
                     attributes.SetThreshold(0.85f);
@@ -267,14 +327,14 @@ public static class CafeDesktopPrinter {
         }
     }
     public static void Send() { document.Print(); }
-    public static string[][] Preview(string title, string[][] sections, float points, float widthMm, float heightMm, string[][] styles, string outputDirectory, bool verticalLabel) {
+    public static string[][] Preview(string title, string[][] sections, float points, float widthMm, float heightMm, string[][] styles, string outputDirectory, bool verticalLabel, string[][] referenceLabels, bool transparentBackground) {
         InitializeFonts(points);
         using (Bitmap bitmap = new Bitmap(1, 1)) using (Graphics g = Graphics.FromImage(bitmap)) {
             bitmap.SetResolution(203, 203);
             g.PageUnit = GraphicsUnit.Point;
             float logicalWidth = (verticalLabel ? heightMm : widthMm) * MmToPt;
             float logicalHeight = (verticalLabel ? widthMm : heightMm) * MmToPt;
-            List<List<Run>> layout = Layout(g, title, sections, logicalWidth, logicalHeight, styles);
+            List<List<Run>> layout = Layout(g, title, sections, logicalWidth, logicalHeight, styles, referenceLabels);
             List<string[]> result = new List<string[]>();
             foreach (List<Run> page in layout) result.Add(page.ConvertAll(run => run.Text).ToArray());
             if (!String.IsNullOrEmpty(outputDirectory)) {
@@ -282,7 +342,7 @@ public static class CafeDesktopPrinter {
                 for (int index = 0; index < layout.Count; index++) {
                     using (Bitmap image = new Bitmap((int)Math.Ceiling(widthMm / 25.4f * 203), (int)Math.Ceiling(heightMm / 25.4f * 203))) {
                         image.SetResolution(203, 203);
-                        using (Graphics canvas = Graphics.FromImage(image)) { canvas.Clear(Color.White); canvas.PageUnit = GraphicsUnit.Point; DrawPhysicalPage(canvas, layout[index], widthMm * MmToPt, logicalWidth, verticalLabel); }
+                        using (Graphics canvas = Graphics.FromImage(image)) { canvas.Clear(transparentBackground ? Color.Transparent : Color.White); canvas.PageUnit = GraphicsUnit.Point; DrawPhysicalPage(canvas, layout[index], widthMm * MmToPt, logicalWidth, verticalLabel); }
                         image.Save(System.IO.Path.Combine(outputDirectory, "page-" + (index + 1) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
                     }
                     WriteSvg(g, layout[index], widthMm, heightMm, logicalWidth, verticalLabel, System.IO.Path.Combine(outputDirectory, "page-" + (index + 1) + ".svg"));
@@ -301,6 +361,7 @@ public static class CafeDesktopPrinter {
         svg.Append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"" + Number(widthMm) + "mm\" height=\"" + Number(heightMm) + "mm\" viewBox=\"0 0 " + Number(widthMm * MmToPt) + " " + Number(heightMm * MmToPt) + "\"><title>Barista label</title>");
         if (verticalLabel) svg.Append("<g transform=\"translate(" + Number(widthMm * MmToPt) + " 0) rotate(90)\">");
         foreach (Run run in page) {
+            if (run.Style == "label-rule") { svg.Append("<path d=\"M" + Number(run.X.Value) + " " + Number(run.Y) + "h" + Number(run.RuleWidth) + "\" stroke=\"black\" stroke-width=\"0.65\"/>"); continue; }
             if (run.Style == "logo") {
                 svg.Append("<svg x=\"" + Number((logicalWidth - LogoWidth) / 2) + "\" y=\"" + Number(run.Y) + "\" width=\"" + Number(LogoWidth) + "\" height=\"" + Number(LogoHeight) + "\" viewBox=\"185 280 820 640\"><image width=\"1200\" height=\"1200\" href=\"data:image/jpeg;base64," + receiptLogoData + "\"/></svg>"); continue;
             }

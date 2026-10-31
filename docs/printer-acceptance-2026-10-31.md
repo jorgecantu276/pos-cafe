@@ -58,18 +58,19 @@ Do not delete, replace or restore an older journal, or include one in a release.
 
 ## Integration boundary
 
-The repo previously contained an untested reference sticker design with
-divider rules and date/service fields. The user's latest instruction is to
-integrate the outputs physically accepted at the café. New POS barista
-documents now use the approved uppercase, flowing template; the custom
-reference-layout renderer has been removed. Existing snapshots retain their
-immutable text and cup footers; unused reference metadata does not select a
-different renderer or reset submission state.
+The physically accepted flowing template was integrated into the POS at
+commit 434ef81. The user then supplied the colored-sticker reference again and
+explicitly requested its design for new labels. Current new documents select
+the versioned reference-v2 black-only layout. The physical sticker supplies
+the color. Earlier snapshots without that marker retain the accepted flowing
+rendering, immutable text and cup footers. Obsolete reference metadata does
+not select a different layout or reset submission state.
 No taxpayer-specific style matching from the diagnostic scripts is copied;
 the generic `meta`/`issuer` styles cover every issuer.
 
-The active POS pipeline now combines the accepted V8 receipt with the accepted
-flowing vertical label, matching the physical combined test below. Automated
+The V8 receipt remains unchanged. The prior flowing label is still the layout
+covered by the physical combined test below; the new reference design has
+local verification. Automated
 rendering, continuation, journal/retry and production HTTP checks validate the
 integration locally. The original acceptance did not install the
 replacement POS, validate its hosted backend, verify drawer/cutter commands
@@ -162,9 +163,9 @@ in the separate `D:\Cafe-Receipt-Only-V8-2026-10-31` folder.
 ## POS integration verification
 
 The integration uses one source generator and the normal authenticated print
-endpoint for both outputs. A new production HTTP check submits one completed
-sale concurrently from four requests, verifies the branded receipt and exact
-accepted label content in the mock spool, and renders both using the isolated
+endpoint for both outputs. A production HTTP check submits one completed
+sale concurrently from four requests, verifies the branded receipt and current
+versioned label content in the mock spool, and renders both using the isolated
 production app's actual PowerShell/C# helper and bundled logo. The one-cup
 sample fits one customer page and one vertical label. Restart/retry submits
 neither again. Existing checkout/outbox, cashier access and journal protections

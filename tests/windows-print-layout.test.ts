@@ -6,21 +6,21 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { saleDocuments } from '../lib/sale-printing';
 
-test('POS generates the exact flowing barista content accepted in the simultaneous physical test', { skip: process.platform !== 'win32' }, () => {
-  const doc = saleDocuments({id:'approved-dual',ticket_number:'PRUEBA-D1',status:'completed',total:110,
-    items:[{id:'cup',quantity:1,product:{id:'caramelo',name:'Iced coffee caramelo',price:110,category:'Bebidas',
-      displayExtras:[{name:'Leche de avena',price:15}],note:'SIN HIELO. NO PREPARAR.'}}],
-    customer_name:'ANA (PRUEBA)',order_type:'Llevar',order_note:'',created_at:'2026-10-31T18:13:00Z',
-    payment_method:'efectivo',tender_mxn:150,tender_usd:0,exchange_rate:20,change_mxn:40}).barista;
-  assert.deepEqual(doc.sections,[['ANA (PRUEBA)','Iced coffee caramelo','Leche de avena','SIN HIELO. NO PREPARAR.','#PRUEBA-D1 · 1/1 · Llevar · 13:13']]);
-  assert.equal(doc.cupLabels,undefined);
+test('reference design fits customer/folio, large drink, four modifiers and dated footer on one label', { skip: process.platform !== 'win32' }, () => {
+  const doc = saleDocuments({id:'reference',ticket_number:1287,status:'completed',total:110,
+    items:[{id:'cup',quantity:1,product:{id:'matcha',name:'Iced Matcha Latte',price:110,category:'Bebidas',
+      displayExtras:['Leche de avena','Vainilla','Hielo normal','1 Shot Espresso'].map(name=>({name,price:0}))}}],
+    customer_name:'María López',order_type:'Para llevar',order_note:'',created_at:'2025-05-12T16:45:00Z',
+    payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:20,change_mxn:0}).barista;
+  assert.equal(doc.labelLayout,'reference-v2');
+  assert.deepEqual(doc.referenceLabels,[{folio:'#1287',cup:'1/1',service:'Para llevar',date:'12/05/25',time:'11:45 AM'}]);
   const result=spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
     ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
     {input:JSON.stringify({...doc,verticalLabel:true,fontPoints:9,widthMm:56.9,heightMm:31.75})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
   assert.equal(result.status,0,result.stderr||result.stdout);
   const pages:{lines:string[]}[]=JSON.parse(result.stdout);
   assert.equal(pages.length,1);
-  for(const value of doc.sections[0]) assert.ok(pages[0].lines.join(' ').includes(value),value);
+  for(const value of ['María López','#1287','1/1','Iced Matcha Latte','- Leche de avena','- Vainilla','- Hielo normal','- 1 Shot Espresso','Para llevar','12/05/25','11:45 AM']) assert.ok(pages[0].lines.join(' ').includes(value),value);
 });
 
 test('accepted receipt weights and fixed columns survive rendering; label rotation keeps the physical stock size', { skip: process.platform !== 'win32' }, () => {
@@ -58,7 +58,10 @@ test('accepted receipt weights and fixed columns survive rendering; label rotati
     assert.equal(label.pages.length,1);
     assert.match(label.svg, /width="56.9mm" height="32mm"/);
     assert.match(label.svg, /<g transform="translate\([\d.]+ 0\) rotate\(90\)">/);
-    assert.doesNotMatch(label.svg, /font-size="(?!8.5")|font-weight="400"|Arial Narrow/);
+    assert.match(label.svg,/font-size="12" font-weight="700">Iced coffee/);
+    assert.match(label.svg,/font-size="8.5" font-weight="700">- Leche de avena/);
+    assert.doesNotMatch(label.svg,/font-weight="400"|Arial Narrow|fill="(?:blue|pink|yellow|#[0-9a-fA-F]+)"/);
+    assert.equal((label.svg.match(/stroke-width="0.65"/g)||[]).length,2);
     assert.equal(label.png.readUInt32BE(16),455);assert.equal(label.png.readUInt32BE(20),256);
   } finally { rmSync(directory,{recursive:true,force:true}); }
 });
@@ -93,8 +96,8 @@ test('every overflow label identifies its own cup, including two different drink
   assert.ok(pages.length>4);
   let secondCup=false;
   for(const page of pages){
-    if(page.lines.some(line=>line==='Iced coffee vainilla'))secondCup=true;
-    assert.match(page.lines.join(' '),new RegExp('#9876 · '+(secondCup?'2':'1')+'/2'),
+    if(page.lines.some(line=>/^2\/2(?: CONT\.)?$/.test(line)))secondCup=true;
+    assert.match(page.lines.join(' '),new RegExp('#9876.*'+(secondCup?'2':'1')+'/2'),
       'A detached continuation must retain its folio AND cup identity');
   }
   assert.match(pages.flatMap(page=>page.lines).join(' '),/FIN-1/);
@@ -129,5 +132,5 @@ test('normal real-menu cup context fits the selected Hybsk 57.15 x 31.75 mm stoc
   assert.equal(result.status,0,result.stderr||result.stdout);
   const pages: {lines:string[]}[] = JSON.parse(result.stdout);
   assert.equal(pages.length,1);
-  for (const value of ['ANA Y JOSÉ','#1234 · 1/1','Iced coffee caramelo','Leche de avena','Sin hielo','Entregar juntos','Para Llevar','12:00']) assert.ok(pages[0].lines.join(' ').includes(value), value);
+  for (const value of ['Ana y José','#1234','1/1','Iced coffee caramelo','Leche de avena','Sin hielo','Entregar juntos','Para Llevar','12:00']) assert.ok(pages[0].lines.join(' ').includes(value), value);
 });

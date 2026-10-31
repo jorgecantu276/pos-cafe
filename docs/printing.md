@@ -81,22 +81,31 @@ The ZIP includes `CAFE-PC-PROMPT.txt`; no journal, issuer data or old-case runne
 is packaged. Do not overlay the old café kit or run its full two-printer suite
 when checking only this new receipt.
 
-### Production label: the physically approved flowing layout
+### Current label: black artwork on colored stock
 
-The POS now generates the same flowing label used in the accepted PRUEBA-D1
-combined test: uppercase customer, full drink name, options joined with ` · `,
-preparation note, order note, then folio/cup count/service/time. Every style is
-Arial Bold 8.5 pt. Long text continues without clipping, with the cup/folio
-footer reserved on every label. The logical vertical artwork rotates 90 degrees
-inside the installed 57 × 32 mm form; neither driver defaults nor media change.
+The user subsequently clarified that new stickers should match the supplied
+María López / Iced Matcha photo. Their blue/yellow/pink color comes from the
+physical stock. New POS documents explicitly select `labelLayout=reference-v2`:
+customer name and folio/cup identity at top, a larger drink name, dashed
+modifiers on individual lines, two black divider rules, and service opposite
+Matamoros date/time at bottom. No colored background or outside border is drawn.
+Arial Bold sizes are 9 pt name, 12 pt drink, 8.5 pt instructions, 8 pt service
+and 7 pt identity/date. The footer uses a two-line date and 12-hour time.
 
-Per the user's latest instruction to integrate the physically printed outputs,
-the experimental divided header/footer design is no longer generated or
-rendered. Old `cupLabels` metadata is ignored, while its saved text and journal
-identity remain intact. No queued/submitted document is rewritten and no job
-is reset or resent to apply the layout. Normal confirmed POS sales generate
-the accepted V8 receipt and this accepted label through the shared dispatcher;
-no diagnostic scripts or second application are needed.
+The physical 57 × 32 mm form and 90-degree artwork rotation remain unchanged.
+Explicitly versioned per-cup metadata is saved with each new document. A long
+note continues onto identified labels repeating name, folio/cup, drink and
+service/date/time; instructions are not clipped. An oversized identity that
+cannot leave room for instructions blocks preparation instead of printing
+overlapping text. PNG preview export optionally supports transparency; physical
+printing draws only the black text/rules onto the pre-colored sticker.
+
+Existing documents without this version marker retain their physically approved
+flowing layout, text and footer. Obsolete `cupLabels` metadata stays ignored.
+No saved document, journal identity or accepted/uncertain state is reset to apply
+the new design. Normal confirmed POS sales still dispatch both copies together.
+The V8 customer receipt is unchanged. The new reference design has local
+rendering verification, distinct from the earlier flowing-label physical test.
 
 `config/cafe-printers.json` records the original supplied café discovery:
 
@@ -272,12 +281,12 @@ Windows job after power-on; same-case repeats produced no extra paper. See
 evidence hashes and the boundary between that renderer and the newer reference
 design. Later PRUEBA-R8 physically accepted the branded receipt/QR, and PRUEBA-D1
 passed concurrent V8 receipt plus the previously approved flowing Bluetooth
-label. The POS now uses that approved flowing label, replacing the untested
-reference layout. These tests
+label. The user later requested the versioned reference sticker layout described
+above; the earlier physical test did not exercise that design. These tests
 do not establish full-POS, cutter or drawer acceptance.
 
-The source builder now produces **V8**, incorporating the accepted rendering
-corrections, the accepted V8 receipt and the accepted flowing label. Its runtime is Node 24.22.2 x64 with
+The source builder now produces **V9**, incorporating the accepted V8 receipt
+and the newly requested black-only reference label. Its runtime is Node 24.22.2 x64 with
 SQLite 3.53.4. When upgrading an existing installation, preserve its persistent
 journal in place; never replace it with a fresh kit's empty journal to retry
 previous orders.

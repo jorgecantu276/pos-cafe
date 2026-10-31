@@ -133,7 +133,9 @@ try {
   assert.equal(receiptDoc.styles[0][0], 'logo'); assert.equal(receiptDoc.testOnly, false);
   assert.match(receiptDoc.sections.flat().join(' '), /TOTAL: \$110\.00 MXN.*Recibido MXN: \$150\.00.*Cambio: \$40\.00/);
   assert.equal(labelDoc.cupLabels, undefined);
-  assert.deepEqual(labelDoc.sections[0].slice(0, 4), ['ANA (PRUEBA)', 'Iced coffee caramelo', 'Leche de avena', 'SIN HIELO. NO PREPARAR.']);
+  assert.equal(labelDoc.labelLayout,'reference-v2');
+  assert.equal(labelDoc.referenceLabels[0].folio,'#4004');assert.equal(labelDoc.referenceLabels[0].cup,'1/1');
+  assert.deepEqual(labelDoc.sections[0].slice(0, 4), ['Ana (Prueba)', 'Iced coffee caramelo', 'Leche de avena', 'SIN HIELO. NO PREPARAR.']);
   assert.match(labelDoc.sections[0].at(-1), /^#4004 · 1\/1 · Para Llevar ·/);
   if (process.platform === 'win32') {
     for (const audience of ['customer', 'barista']) {
@@ -149,7 +151,7 @@ try {
   }
   await app.restart(); await post({ orderId: approved });
   assert.equal((await spool()).length, beforeApproved + 2);
-  pass('Confirmed POS sale uses the physically accepted V8 receipt and flowing vertical label; production renderers fit both and restart cannot duplicate them');
+  pass('Confirmed POS sale uses the V8 receipt and versioned reference label; production renderers fit both and restart cannot duplicate them');
   if(process.env.POS_MULTI_ITEM_DB_EVIDENCE){
     const evidence=JSON.parse(await readFile(process.env.POS_MULTI_ITEM_DB_EVIDENCE,'utf8'));
     assert.equal(evidence.exactUiPayloadUsed,true);assert.equal(evidence.liveDataAccess,false);
