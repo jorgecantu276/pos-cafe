@@ -78,6 +78,24 @@
 .workspace-admin-tv { display: inline-flex; align-items: center; gap: 10px; margin: 20px 0 0 2px; min-height: 44px; color: #46719e; font-size: 13px; text-decoration: none; }
 .workspace-admin-tv span { flex: 1; }
 
+.workspace-admin-simple { max-width: 820px; padding-top: 16px; }
+.workspace-admin-simple .workspace-admin-page-title { margin-bottom: 28px; }
+.workspace-admin-simple nav.workspace-admin-main-tools { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
+.workspace-admin-simple nav.workspace-admin-main-tools > a { min-height: 116px; padding: 22px; border: 1px solid var(--admin-line); border-radius: 20px; background: #fff; gap: 16px; }
+.workspace-admin-simple nav.workspace-admin-main-tools > a:hover { background: #f8faff; border-color: #b9d4f5; }
+.workspace-admin-simple .workspace-admin-main-tools .workspace-admin-menu-icon { width: 48px; height: 48px; border-radius: 15px; }
+.workspace-admin-simple .workspace-admin-main-tools strong { font-size: 20px; }
+.workspace-admin-simple .workspace-admin-main-tools small { margin-top: 5px; font-size: 13px; }
+.workspace-admin-more { margin-top: 22px; }
+.workspace-admin-more > summary { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 10px 4px; color: #52627a; cursor: pointer; list-style: none; font-weight: 600; }
+.workspace-admin-more > summary::-webkit-details-marker { display: none; }
+.workspace-admin-more > summary span { flex: 1; }
+.workspace-admin-more[open] > summary > svg:last-child { transform: rotate(90deg); }
+.workspace-admin-simple .workspace-admin-more nav { margin-top: 6px; }
+.workspace-admin-simple .workspace-admin-more nav > a { min-height: 52px; padding: 12px 18px; font-size: 14px; }
+.workspace-admin-more nav > a > span { flex: 1; }
+@media(max-width:600px) { .workspace-admin-simple { padding-top: 0; }.workspace-admin-simple nav.workspace-admin-main-tools { grid-template-columns: 1fr; gap: 10px; }.workspace-admin-simple nav.workspace-admin-main-tools > a { min-height: 88px; padding: 16px; } }
+
 .workspace-sales { max-width: 1100px; margin: auto; }
 .workspace-sales h1 { margin: 0 0 22px; }
 .workspace-sales-filters { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
