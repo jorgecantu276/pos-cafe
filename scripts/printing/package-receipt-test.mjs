@@ -49,7 +49,7 @@ No Bluetooth power action or label inspection is needed for this receipt test.
 After checking receipt paper and an empty Windows receipt queue, print ONCE:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Test-NewReceipt.ps1 -ExistingKitRoot 'D:\\Cafe-Printer-Test-2026-10-31' -PrintTest
 
-Expected: PRUEBA-RECIBO-V8, ANA (PRUEBA), one Iced coffee caramelo with oat milk,
+Expected: PRUEBA-R8, ANA (PRUEBA), one Iced coffee caramelo with oat milk,
 SIN HIELO / NO PREPARAR; MXN110 total, MXN150 received, MXN40 change.
 Check the supplied logo, phone, title, columns, total, issuer block, QR,
 MENÚ E INSTAGRAM, closing phrase and Instagram handle. Scan the physical QR:

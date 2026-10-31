@@ -100,7 +100,7 @@ test('all 82 real menu presentations preserve their names and prices without cat
 });
 
 test('receipt-only acceptance creates no barista copy and preserves prior journal jobs across retries', async () => {
-  const directory=scratch(),sent:PrintAudience[]=[],old=sale(),receipt={...sale(),ticket_number:'PRUEBA-RECIBO-V8'};
+  const directory=scratch(),sent:PrintAudience[]=[],old=sale(),receipt={...sale(),ticket_number:'PRUEBA-R8'};
   const journal=new PrintJournal(path.join(directory,'jobs.sqlite'),{async prepare(job){return{async submit(){sent.push(job.audience);},dispose(){}};}});
   try {
     journal.ensure('physical-test-only',old,queues);await journal.dispatch('physical-test-only',old.id);

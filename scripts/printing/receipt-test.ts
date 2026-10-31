@@ -49,13 +49,13 @@ const sampleFile = path.join(directory, 'sample-receipt-branding-v8.json');
 const issuer = readReceiptIssuer({ POS_RECEIPT_ISSUER_FILE: path.join(existingRoot, 'receipt-issuer.json') });
 assert(issuer, 'Existing receipt-issuer.json is required; do not invent issuer details.');
 const order: SavedOrder = existsSync(sampleFile) ? JSON.parse(readFileSync(sampleFile, 'utf8').replace(/^\uFEFF/, '')) : {
-  id: randomUUID(), ticket_number: 'PRUEBA-RECIBO-V8', status: 'completed', total: 110,
+  id: randomUUID(), ticket_number: 'PRUEBA-R8', status: 'completed', total: 110,
   customer_name: 'ANA (PRUEBA)', order_type: 'Llevar', order_note: '', created_at: new Date().toISOString(),
   payment_method: 'efectivo', tender_mxn: 150, tender_usd: 0, exchange_rate: 20, change_mxn: 40,
   items: [{ id: 'receipt-only', quantity: 1, product: { id: 'sample-caramelo', name: 'Iced coffee caramelo', price: 110,
     category: 'Bebidas', displayExtras: [{ name: 'Leche de avena', price: 15 }], note: 'SIN HIELO. NO PREPARAR.' } }],
 };
-assert.equal(order.ticket_number, 'PRUEBA-RECIBO-V8', 'Existing receipt sample differs; preserve it and investigate.');
+assert.equal(order.ticket_number, 'PRUEBA-R8', 'Existing receipt sample differs; preserve it and investigate.');
 assert.equal(order.total, 110); assert.equal(order.tender_mxn, 150); assert.equal(order.change_mxn, 40);
 assert.equal(order.items.length, 1); assert.equal(order.items[0].quantity, 1);
 assert.match(order.items[0].product.note ?? '', /NO PREPARAR/);

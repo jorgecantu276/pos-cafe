@@ -67,7 +67,7 @@ scan/readability and logo contrast still need a new physical paper check.
 For a customer-only café check, use `scripts/printing/package-receipt-test.mjs`
 with a new absolute output directory. This separate package requires the
 ORIGINAL nonempty journal and existing issuer profile via `-ExistingKitRoot`.
-Inspection/preview is read-only; `-PrintTest` saves one new PRUEBA-RECIBO-V8
+Inspection/preview is read-only; `-PrintTest` saves one new PRUEBA-R8
 sample in that original runtime and selects only the customer copy for ensure
 and dispatch. It creates no barista row and checks that unrelated jobs, source
 records and the recovery audit stay unchanged. Normal POS sales still ensure

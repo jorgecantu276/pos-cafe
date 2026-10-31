@@ -16,7 +16,7 @@ Confirm POS80 Printer / POS80 / CP001 and the approximately 72 x 210 mm form. St
 3. Ask me to confirm receipt paper is loaded, cover latched and the printer ready. Then run ONCE:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-NewReceipt.ps1 -ExistingKitRoot 'D:\Cafe-Printer-Test-2026-10-31' -PrintTest
 
-Expected new folio: PRUEBA-RECIBO-V8. One Iced coffee caramelo with oat milk, ANA (PRUEBA), SIN HIELO / NO PREPARAR. Total MXN110, received MXN150, change MXN40. This adds only the new customer copy to the ORIGINAL journal; zero barista jobs. Its stable sample is runtime\windows\sample-receipt-branding-v8.json. Always retain and reuse that identity.
+Expected new folio: PRUEBA-R8. One Iced coffee caramelo with oat milk, ANA (PRUEBA), SIN HIELO / NO PREPARAR. Total MXN110, received MXN150, change MXN40. This adds only the new customer copy to the ORIGINAL journal; zero barista jobs. Its stable sample is runtime\windows\sample-receipt-branding-v8.json. Always retain and reuse that identity.
 
 4. Ask me to inspect actual paper for logo darkness, readable/complete text, alignment/feed, amounts, issuer, closing phrase and handle. Ask me to scan the QR and confirm it opens https://www.instagram.com/_carinitomio/. Windows 'submitted' alone is not a physical pass.
 
