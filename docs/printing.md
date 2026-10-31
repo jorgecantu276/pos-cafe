@@ -82,6 +82,19 @@ The ZIP includes `CAFE-PC-PROMPT.txt`; no journal, issuer data or old-case runne
 is packaged. Do not overlay the old café kit or run its full two-printer suite
 when checking only this new receipt.
 
+For remote testing of BOTH current outputs, build with
+`scripts/printing/package-current-tickets.mjs`. The separate V9 package includes
+`Test-CurrentTickets.ps1` and a Spanish AnyDesk/Codex prompt. It requires the same
+original nonempty journal and issuer profile in place. Its new PRUEBA-D2 sample
+uses the current no-CFDI receipt and reference-v2 sticker. Both documents are
+previewed first and must fit one page/label before dispatch. The wrapper checks
+both queue identities, forms, faults and pending jobs without changing them.
+Both new copies dispatch concurrently through the actual POS journal/adapter;
+old rows and recovery history are checked unchanged. Repeating the same sample
+preserves accepted/uncertain guards. The package contains no journal or issuer
+data. Physical approval requires the person at the café to confirm paper/photos;
+AnyDesk and Windows queue acceptance alone do not establish paper output.
+
 ### Current label: black artwork on colored stock
 
 The user subsequently clarified that new stickers should match the supplied
