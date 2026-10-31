@@ -13,13 +13,15 @@ test('user-management boundary refuses anonymous, operational and deactivated ac
   await requireAdministrator(caller(true,'admin'));
 });
 test('user creation validates roles, login identity, password and avatar URL', () => {
-  const input={full_name:'Ana',username:'ana.cm',password:'test-only-password',role:'barista',avatar_url:''};
+  const input={full_name:'Ana',username:'ana.cm',password:'test-only-password',role:'cashier',avatar_url:''};
   assert.equal(userInput(input,true).username,'ana.cm');
+  assert.equal(userInput({...input,role:'admin'},true).role,'admin');
+  for (const create of [true,false]) assert.throws(()=>userInput({...input,role:'barista'},create));
   for (const altered of [{role:'owner'},{username:'ana @host'},{password:'123'},{avatar_url:'javascript:alert(1)'}]) assert.throws(()=>userInput({...input,...altered},true));
 });
 test('profile insert failure removes the incomplete Auth account and exposes no password', async () => {
   let deleted='';
   const client={auth:{admin:{createUser:async()=>({data:{user:{id:'new-user'}},error:null}),deleteUser:async(id:string)=>{deleted=id;return {error:null};}}},from:()=>({insert:async()=>({error:{message:'database unavailable'}})})} as unknown as SupabaseClient;
-  await assert.rejects(createStaff(client,userInput({full_name:'Ana',username:'ana',password:'test-password',role:'barista'},true)),/incompleto fue eliminado/);
+  await assert.rejects(createStaff(client,userInput({full_name:'Ana',username:'ana',password:'test-password',role:'cashier'},true)),/incompleto fue eliminado/);
   assert.equal(deleted,'new-user');
 });

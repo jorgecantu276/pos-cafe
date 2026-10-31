@@ -49,6 +49,10 @@
 .workspace-admin main [role="dialog"] > div { border: 1px solid #e7ecf4; border-radius: 24px !important; box-shadow: 0 24px 72px #172b4d38 !important; }
 .workspace-admin main [role="dialog"] h3 { font-size: 22px; font-weight: 700; font-style: normal; letter-spacing: -.4px; }
 .workspace-admin main [role="dialog"] fieldset { padding-block: 20px; }
+.workspace-admin main [role="dialog"] > .staff-modal { display: grid; grid-template-rows: auto minmax(0,1fr); height: min(760px,calc(100dvh - 36px)); max-height: calc(100dvh - 36px); overflow: hidden; }
+.staff-modal-form { display: grid; grid-template-rows: minmax(0,1fr) auto; min-height: 0; overflow: hidden; }
+.staff-modal-body { min-height: 0; overflow-y: scroll; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.staff-modal-body > fieldset { display: block; min-width: 0; margin: 0; border: 0; }
 .workspace-admin main [role="dialog"] footer { background: #fff; border-color: var(--admin-line); }
 .workspace-admin main [role="dialog"] footer button { min-height: 50px; }
 .workspace-admin main [role="dialog"] button[aria-label^="Cerrar"] { display: grid; place-items: center; min-width: 36px; min-height: 36px; border-radius: 50%; color: #69778a; }
