@@ -4,12 +4,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as ts from 'typescript';
 import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, type CheckoutReview } from '../lib/checkout';
-import { errorMessage } from '../lib/pos-types';
+import { errorMessage, validPagerNumber } from '../lib/pos-types';
 import {withDeadline} from '../lib/request-deadline';
 import {savedShiftHtml} from '../lib/shift-printing';
 import {confirmClosingPrints} from '../lib/closing-print-check';
 import { rememberSalePrint } from '../lib/sale-printing';
-import { customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
+import {beginPhoneRequest,completePhoneRequest,getPhoneOrder,phoneRequestKey,readPhoneRequest,submitPhoneRequest,validPhoneContact,type PhoneOrder,type PhoneRequest} from '../lib/phone-orders';
+import { createCartStore,customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
+import {bindCartDraft,cartDraftKey} from '../lib/cart-draft';
 
 test('quick loyalty enrollment selects the new customer for the current order with required phone and optional birthday',async()=>{
   const person={id:'new-member',name:'Ana',points:50};let selected:unknown,hidden=false,saving=false;
@@ -106,7 +108,7 @@ test('a cashier can stop closing when unfinished printing needs attention',async
 // Exercise the actual page handlers with browser/network dependencies replaced;
 // no request reaches Supabase and no print dialog is opened by these checks.
 function handler(name: string, context: Record<string, unknown>, file='../app/register/Register.tsx'): (...args: unknown[]) => unknown {
-  context = { clipEnabled:false,pagerNumber:null,ClipPaymentPending,catalogStale:false, withDeadline,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
+  context = { clipEnabled:false,pagerNumber:1,validPagerNumber,phonePending:null,phoneBusy:false,phoneError:'',phoneOrder:false,selectedPhoneOrder:null,setSelectedPhoneOrder:()=>{},readPhoneRequest,readCheckoutReview,setCheckoutReview:()=>{},draftOwner:{current:'test-user'},ClipPaymentPending,catalogStale:false, withDeadline,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
   const source=ts.createSourceFile('page.tsx',readFileSync(new URL(file,import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
   let body='';
   function visit(node: ts.Node) {
@@ -119,7 +121,7 @@ function handler(name: string, context: Record<string, unknown>, file='../app/re
   return new Function(...Object.keys(context),compiled+';return extracted;')(...Object.values(context));
 }
 
-function checkoutHarness(storage=new Map<string,string>(), online=true, retire=()=>{}, timeoutMs=12_000) {
+function checkoutHarness(storage=new Map<string,string>(), online=true, retire=()=>{}, timeoutMs=12_000, pagerNumber:number|null=1) {
   let calls=0,successful=false;
   const alerts:string[]=[];
   let settle!: (value: unknown)=>void;
@@ -127,7 +129,7 @@ function checkoutHarness(storage=new Map<string,string>(), online=true, retire=(
   const item:CartItem={id:'line',quantity:1,product:{id:'coffee',name:'Coffee',price:60,category:'Bebidas'}};
   const checkoutKey={current:'test-user'}, binding={current:{requestId:()=>crypto.randomUUID(),complete:retire}};
   const fn=handler('processCheckout',{
-    checkoutInFlight:{current:false},checkoutReviewKey:checkoutKey,
+    checkoutInFlight:{current:false},checkoutReviewKey:checkoutKey,pagerNumber,
     cartDraft:binding,draftError:null,customerRestoring:false,customerId:null,
     localStorage:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)},
     navigator:{onLine:online},setIsProcessingCheckout:()=>{},getTotal:()=>60,items:[item],isPaymentInsufficient:false,activeCustomer:null,
@@ -152,13 +154,13 @@ test('actual checkout handler releases a stalled confirmation and keeps its pers
   const pending = h.storage.get('test-user'); await first;
   assert.equal(h.storage.get('test-user'), pending); assert.equal(h.successful, false);
   assert.match(h.alerts[0], /conexión no respondió.*\nNo vuelvas a cobrar/);
-  h.settle({ data: { id: 'one-sale', ticket_number: 12, total: 60, items: [], status: 'completed' }, error: null });
+  h.settle({ data: { id: 'one-sale', ticket_number: 12, total: 60, items: [], status: 'completed', pager_number:1 }, error: null });
   await h.fn(); assert.equal(h.successful, true); assert.equal(h.storage.has('test-user'), false);
 });
 
-test('refresh recovery sends the persisted payload rather than the new cart',async()=>{
-  const pending={startedAt:'2026-10-27',total:90,requestId:'saved-key',payload:{expected_total:90}};
-  const h=checkoutHarness(new Map([['test-user',JSON.stringify(pending)]]));
+test('refresh recovery preserves a historical no-control payload rather than using the new cart selection',async()=>{
+  const pending={startedAt:'2026-10-27',total:90,requestId:'saved-key',payload:{expected_total:90,pager_number:null}};
+  const h=checkoutHarness(new Map([['test-user',JSON.stringify(pending)]]),true,undefined,12_000,null);
   const run=h.fn();assert.equal(h.calls,1);
   h.settle({data:{id:'order',ticket_number:12,total:90,items:[],status:'completed'},error:null});await run;
   assert.equal(h.storage.has('test-user'),false);assert.ok(h.storage.has('test-user:print:v1:order'));assert.equal(h.successful,true);
@@ -171,7 +173,7 @@ test('confirmed first-attempt database rejection leaves the cart editable and ne
 test('confirmed sale cannot clear its recovery guard if unpaid-draft retirement fails',async()=>{
   const h=checkoutHarness(undefined,true,()=>{throw Error('Storage unavailable');});
   const run=h.fn();
-  h.settle({data:{id:'order',ticket_number:12,total:60,items:[],status:'completed'},error:null}); await run;
+  h.settle({data:{id:'order',ticket_number:12,total:60,items:[],status:'completed',pager_number:1},error:null}); await run;
   assert.equal(h.successful,false); assert.ok(JSON.parse(h.storage.get('test-user')!).requestId);
   assert.match(h.alerts[0],/No vuelvas a cobrar/);
 });
@@ -181,7 +183,7 @@ test('confirmed sale retains checkout recovery if the print outbox cannot be sav
     set(key:string,value:string) { if(key.includes(':print:v1:'))throw Error('Print outbox unavailable');return super.set(key,value); }
   }
   const h=checkoutHarness(new FailedPrintStorage());const run=h.fn();
-  h.settle({data:{id:'order',ticket_number:12,total:60,items:[],status:'completed'},error:null});await run;
+  h.settle({data:{id:'order',ticket_number:12,total:60,items:[],status:'completed',pager_number:1},error:null});await run;
   assert.ok(h.storage.has('test-user'));assert.equal(h.successful,false);assert.match(h.alerts[0],/No vuelvas a cobrar/);
 });
 
@@ -191,15 +193,65 @@ test('a checkout response arriving after cashier switch only retires its origina
   assert.equal(h.calls,1); h.checkoutKey.current='cashier-b';
   h.binding.current={requestId:()=>crypto.randomUUID(),complete:()=>{retiredB++;}};
   h.storage.set('cashier-b','B pending request');
-  h.settle({data:{id:'order-a',ticket_number:12,total:60,items:[],status:'completed'},error:null}); await run;
+  h.settle({data:{id:'order-a',ticket_number:12,total:60,items:[],status:'completed',pager_number:1},error:null}); await run;
   assert.equal(retiredA,1);assert.equal(retiredB,0);assert.equal(h.storage.has('test-user'),false);
   assert.equal(h.storage.get('cashier-b'),'B pending request'); assert.equal(h.successful,false);assert.equal(h.alerts.length,0);
 });
 test('offline before submission leaves the order unsent',async()=>{
   const h=checkoutHarness(undefined,false);await h.fn();assert.equal(h.calls,0);assert.equal(h.storage.size,0);assert.ok(h.alerts[0].includes('La venta no se envió'));
 });
+
+test('the actual checkout handler rejects a new sale without a valid control before persisting or sending it',async()=>{
+  for(const number of [null,0,31,1.2]) {
+    const h=checkoutHarness(undefined,true,undefined,12_000,number);await h.fn();
+    assert.equal(h.calls,0);assert.equal(h.storage.size,0);assert.equal(h.successful,false);assert.match(h.alerts[0],/Elige un control del 1 al 30/);
+  }
+});
+
+test('a phone request from another window blocks the new save; only explicit recovery sends its frozen payload and never retires another draft',async()=>{
+  const actor='test-user',memory=new Map<string,string>(),request:PhoneRequest={actor,kind:'save',request:crypto.randomUUID(),payload:{items:[{product_id:'old',quantity:1,extra_ids:[],note:'Original'}],expected_total:40,contact_name:'Ana',contact_phone:'8681234567',customer_id:null,order_type:'Para Llevar',order_note:''}};
+  const storage={getItem:(key:string)=>memory.get(key)??null,setItem:(key:string,value:string)=>{memory.set(key,value);},removeItem:(key:string)=>{memory.delete(key);}};
+  const order:PhoneOrder={id:'old-phone',folio:1,status:'pending',contact_name:'Ana',contact_phone:'528681234567',customer_id:null,created_by:actor,created_at:'2026-11-02T18:00:00Z',revision:0,paid_order_id:null,snapshot:{items:[{id:'line',quantity:1,product:{id:'old',name:'Original',price:40,category:'Bebidas'}}],total:40,customer_name:'Ana',order_type:'Para Llevar',order_note:'',created_at:'2026-11-02T18:00:00Z',source:'phone',inventory_reserved:false}};
+  let pending:unknown,paymentReview:unknown,calls=0,retired=0,printed=0;const locks:string[]=[];
+  const run=handler('handlePhoneRequest',{phoneInFlight:{current:false},checkoutInFlight:{current:false},checkoutReview:null,closingShift:{current:false},draftOwner:{current:actor},cartDraft:{current:{requestId:()=>assert.fail('Must not generate a new identity'),retireRequest:(id:string)=>{assert.equal(id,request.request);if(JSON.parse(memory.get('current-draft')!).id===id)retired++;}}},
+    setPhoneBusy:()=>{},setPhoneError:()=>{},setCheckoutReview:(value:unknown)=>paymentReview=value,withCheckoutLock:async(key:string,action:()=>Promise<unknown>)=>{locks.push(key);return action();},withPhoneLock:async(_actor:string,action:()=>Promise<unknown>)=>action(),readPhoneRequest,localStorage:storage,setPhonePending:(value:unknown)=>pending=value,beginPhoneRequest,submitPhoneRequest,completePhoneRequest,
+    getPhoneOrder,supabase:{rpc:async(name:string,args:unknown)=>{if(name==='pos_phone_get'){assert.deepEqual(args,{p_id:order.id});return{data:order,error:null};}calls++;assert.equal(name,'pos_phone_save');assert.deepEqual(args,{p_request:request.request,p_payload:request.payload});return{data:order,error:null};}},
+    rememberPhonePrint:()=>{printed++;return'phone:old-phone';},cartDraftKey:()=> 'current-draft',setPhonePrintId:()=>{},setPhonePrintNotice:()=>{},setSavedPhone:()=>{},setShowPhoneContact:()=>{},setShowPhoneOrders:()=>{},
+    validPhoneContact,items:[{id:'new-line',quantity:2}],phoneOrder:true,phoneName:'Bea',phoneContact:'8685551234',draftError:null,customerRestoring:false,customerError:null,getTotal:()=>80,customerId:null,orderType:'En Local',orderNote:'Nuevo',
+  });
+  // The page was rendered with no pending operation; another window writes it now.
+  beginPhoneRequest(storage,request);memory.set('current-draft',JSON.stringify({id:'other-current-order'}));
+  assert.equal(await run(),false);assert.equal(calls,0);assert.deepEqual(pending,request);assert.equal(retired,0);
+  assert.equal(await run(true),true);assert.equal(calls,1);assert.equal(printed,1);assert.equal(retired,0);assert.ok(memory.has('current-draft'));assert.equal(memory.has(phoneRequestKey(actor)),false);
+  const payment={startedAt:'2026-11-02',total:40,requestId:crypto.randomUUID(),payload:{expected_total:40}};memory.set(`mi_cafe_checkout_review:${actor}`,JSON.stringify(payment));
+  assert.equal(await run(),false);assert.equal(calls,1);assert.deepEqual(paymentReview,payment);assert.equal(retired,0);assert.deepEqual(locks,Array(3).fill(`mi_cafe_checkout_review:${actor}`));
+});
 test('legacy uncertain sale cannot be converted into a new transaction by refresh',async()=>{
   const h=checkoutHarness(new Map([['test-user',JSON.stringify({startedAt:'old',total:60,orderId:'existing'})]]));await h.fn();assert.equal(h.calls,0);assert.equal(h.storage.size,1);
+});
+
+for(const status of ['paid','cancelled'] as const)for(const newerCart of [false,true])test(`phone save replay reads today's ${status} state in a new shift, with ${newerCart?'a newer counter draft':'the old phone draft'}, and never schedules preparation`,async()=>{
+  const actor='test-user',request:PhoneRequest={actor,kind:'save',request:crypto.randomUUID(),payload:{items:[{product_id:'coffee',quantity:1,extra_ids:[],note:'Original'}],expected_total:40,contact_name:'Ana',contact_phone:'8681234567',customer_id:null,order_type:'Para Llevar',order_note:''}};
+  const initial:PhoneOrder={id:'phone',folio:1,status:'pending',contact_name:'Ana',contact_phone:'528681234567',customer_id:null,created_by:actor,created_at:'2026-11-02T18:00:00Z',revision:0,paid_order_id:null,snapshot:{items:[{id:'line',quantity:1,product:{id:'coffee',name:'Café',price:40,category:'Bebidas'}}],total:40,customer_name:'Ana',order_type:'Para Llevar',order_note:'',created_at:'2026-11-02T18:00:00Z',source:'phone',inventory_reserved:false}};
+  const current:PhoneOrder={...initial,status,revision:1,paid_order_id:status==='paid'?'paid-sale':null},memory=new Map<string,string>();
+  const storage={getItem:(key:string)=>memory.get(key)??null,setItem:(key:string,value:string)=>{memory.set(key,value);},removeItem:(key:string)=>{memory.delete(key);}};
+  const store=createCartStore(),product={...initial.snapshot.items[0].product,is_active:true};
+  const bind=(registerId:string)=>bindCartDraft({storage,userId:actor,registerId,products:[product],extras:[],store,onError:message=>assert.fail(message),onRepriced:()=>assert.fail()});
+  const oldBinding=bind('old-shift');store.getState().addItem(customizeProduct(product,[],'Original'));store.getState().setPhoneOrder(true);request.request=oldBinding.requestId();oldBinding.disconnect();beginPhoneRequest(storage,request);
+  const binding=bind('new-shift');assert.equal(store.getState().items.length,0);
+  if(newerCart)store.getState().addItem({...product,id:'counter',price:70});
+  const before=memory.get(cartDraftKey(actor));let readFails=true,shown:PhoneOrder|undefined,error='',pending:unknown;const saves:unknown[]=[];
+  const run=handler('handlePhoneRequest',{phoneInFlight:{current:false},checkoutInFlight:{current:false},checkoutReview:null,closingShift:{current:false},draftOwner:{current:actor},cartDraft:{current:binding},
+    setPhoneBusy:()=>{},setPhoneError:(value:string)=>error=value,setPhonePending:(value:unknown)=>pending=value,withPhoneLock:async(_actor:string,action:()=>Promise<unknown>)=>action(),localStorage:storage,readPhoneRequest,submitPhoneRequest,completePhoneRequest,getPhoneOrder,
+    supabase:{rpc:async(name:string,args:unknown)=>{if(name==='pos_phone_save'){saves.push(args);return{data:initial,error:null};}assert.equal(name,'pos_phone_get');return readFails?{data:null,error:{message:'Lectura interrumpida'}}:{data:current,error:null};}},
+    rememberPhonePrint:()=>assert.fail('A paid/cancelled order must not schedule a new preparation'),setPhonePrintId:()=>assert.fail(),setPhonePrintNotice:()=>{},setSavedPhone:(value:PhoneOrder)=>shown=value,setShowPhoneContact:()=>{},setShowPhoneOrders:()=>{},
+  });
+  // Saving committed on A; the acknowledgment was lost. B has now resolved it.
+  assert.equal(await run(true),false);assert.match(error,/Lectura interrumpida/);assert.equal(memory.get(cartDraftKey(actor)),before);assert.deepEqual(pending,request);assert.equal(shown,undefined);
+  readFails=false;assert.equal(await run(true),true);assert.equal(memory.has(phoneRequestKey(actor)),false);assert.deepEqual(shown,current);assert.deepEqual(saves[0],saves[1]);
+  if(newerCart){assert.equal(memory.get(cartDraftKey(actor)),before);assert.equal(store.getState().getTotal(),70);}
+  else{assert.equal(memory.has(cartDraftKey(actor)),false);assert.equal(store.getState().items.length,0);store.getState().addItem(product);assert.equal(JSON.parse(memory.get(cartDraftKey(actor))!).registerId,'new-shift');assert.notEqual(binding.requestId(),request.request);}
+  binding.disconnect();
 });
 test('a cancelled committed sale resolves its recovery marker without reporting a new sale',async()=>{
   const h=checkoutHarness(new Map([['test-user',JSON.stringify({startedAt:'old',total:60,requestId:'saved',payload:{}})]]));
@@ -235,9 +287,31 @@ test('opening a customization edit leaves the original line intact until confirm
   useCartStore.getState().addItem(customizeProduct({id:'coffee',name:'Coffee',price:50,category:'Bebidas'},[{name:'Vainilla',price:10}],''));
   const original=useCartStore.getState().items[0];
   handler('handleEditItem',{
-    buildWizardSteps:()=>[{}],setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},setEditingItemId:()=>{},setEditingQuantity:(quantity:number)=>assert.equal(quantity,original.quantity),setDynamicSteps:()=>{},setCustomizationStep:()=>{},
+    products:[],buildWizardSteps:()=>[{}],setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},setEditingItemId:()=>{},setEditingQuantity:(quantity:number)=>assert.equal(quantity,original.quantity),setDynamicSteps:()=>{},setCustomizationStep:()=>{},
   })(original);
   assert.deepEqual(useCartStore.getState().items,[original]);
+});
+
+test('editing an old draft uses current milk options while preserving the original line and price until saved',()=>{
+  useCartStore.getState().clearCart();
+  const extras=[{id:'almond',name:'Almendra',price:15,phase:'Tipo de Leche',active:true}];
+  useCartStore.getState().addItem(customizeProduct({id:'coffee',name:'Café',price:50,category:'Bebidas',customizable:false,wizard_steps:[]},extras,'sin hielo'));
+  const first=useCartStore.getState().items[0];useCartStore.getState().updateQuantity(first.id,2);
+  const original=useCartStore.getState().items[0],snapshot=JSON.stringify(original);
+  const products=[{...original.product,price:100,customizable:true,wizard_steps:['Tipo de Leche']}];
+  let selected=original.product,steps:Array<{id:string}>=[];
+  const buildWizardSteps=handler('buildWizardSteps',{useCallback:(fn:unknown)=>fn,dbExtras:extras});
+  handler('handleEditItem',{products,buildWizardSteps,setSelectedProduct:(value:typeof selected)=>selected=value,
+    setActiveExtras:(value:unknown)=>assert.deepEqual(value,extras),setProductNote:(value:string)=>assert.equal(value,'sin hielo'),
+    setEditingItemId:(value:string)=>assert.equal(value,original.id),setEditingQuantity:(value:number)=>assert.equal(value,2),
+    setDynamicSteps:(value:typeof steps)=>steps=value,setCustomizationStep:()=>{},})(original);
+  assert.deepEqual(steps.map(step=>step.id),['Tipo de Leche','notes']);
+  assert.equal(selected.price,65);assert.equal(selected.basePrice,50);assert.equal(JSON.stringify(useCartStore.getState().items[0]),snapshot);
+  handler('handleConfirmAdd',{selectedProduct:selected,products,items:[original],editingItemId:original.id,editingQuantity:2,
+    customizeProduct,activeExtras:extras,productNote:'sin hielo',productAvailable:()=>true,replaceItem:useCartStore.getState().replaceItem,
+    setEditingItemId:()=>{},setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},alert:()=>assert.fail()})();
+  const saved=useCartStore.getState().items[0];assert.equal(saved.quantity,2);assert.equal(saved.product.price,65);assert.equal(saved.product.note,'sin hielo');assert.deepEqual(saved.product.displayExtras,extras);
+  useCartStore.getState().clearCart();
 });
 
 test('catalog name/price editing cannot reset stock consumed since the editor loaded',async()=>{

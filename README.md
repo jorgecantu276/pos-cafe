@@ -12,7 +12,8 @@ Punto de venta para una cafetería con una sola caja física. Next.js 16.4.3, Re
 | Backend del cliente | Las 15 migraciones retenidas, incluidas 013–016, están aplicadas. |
 | Receptor CLIP | `clip-webhook` v1 desplegado y verificado. Recibir un aviso no crea ni aprueba un cobro. |
 | Cobro automático CLIP | **Apagado. Token como placeholder.** Pendiente de habilitación de PinPad, token real y aceptación con la terminal. |
-| Controles de entrega 1–30 | Selección manual, guardado con la venta y número en ticket del cliente y etiquetas del barista. |
+| Controles de entrega 1–30 | Obligatorios en mostrador. **Pedido por teléfono** permite guardar sin control y cobrar al recoger; migraciones 018/019 pendientes en el backend alojado. |
+| Pedidos por teléfono | Pendientes compartidos entre turnos, precio acordado, preparación sin pagar y cobro único al recoger. Ver [flujo completo](docs/phone-orders.md). |
 | App en la PC del café | Instalación/configuración de esta versión y aceptación operativa pendientes. Publicar código en GitHub no instala la app. |
 | Inventario | Integrado en Catálogo y probado localmente; **apagado al inicio**. La migración 017 sigue pendiente en el backend alojado. |
 | Tipo de cambio del negocio | **1 USD = 16 MXN** guardado para la próxima apertura. El turno abierto anterior conserva 18; sus ventas no se recalculan. |
@@ -42,11 +43,11 @@ La integración automática guarda una cotización validada por el servidor ante
 
 **Mantener `POS_CLIP_ENABLED=0` / `ClipEnabled: false`.** El token real pertenece a un archivo privado fuera de la versión instalada; no va en Git ni en variables `NEXT_PUBLIC_`. Los ejemplos solo contienen un placeholder. Ver [configuración, despliegue y recuperación](docs/clip-payments.md) y [ejemplo de entorno](config/clip.env.example).
 
-El cajero elige un control **1–30** o **Sin control**. Su número se conserva al recargar, se guarda en el comprobante y aparece en el ticket del cliente y cada etiqueta/página del barista. La siguiente orden empieza sin control. El barista activa el localizador desde su base física; el POS no se comunica por radio con esa base.
+En mostrador, el cajero elige un control **1–30 antes de cobrar**. Su número se conserva al recargar, se guarda en el comprobante y aparece en el ticket del cliente y cada etiqueta/página del barista. Debajo de los números aparece **Pedido por teléfono**: se guarda sin control, no suma ingresos hasta pagarse y se recupera desde **Pedidos por cobrar**. La excepción se verifica con el pedido persistido en el backend. Una nueva orden vuelve a mostrador. El barista activa el localizador desde su base física; el POS no se comunica por radio con esa base.
 
 ## Impresión y recuperación
 
-Las ventas confirmadas generan dos trabajos independientes: cliente a **POS80 Printer** por USB y etiquetas a **Y813BT Sticker** por Bluetooth. El servidor usa el comprobante guardado y un diario SQLite por copia. No reenvía automáticamente una entrega incierta a Windows. Reimpresiones históricas y cortes usan el diálogo de Windows.
+Las ventas de mostrador generan dos trabajos independientes: cliente a **POS80 Printer** por USB y etiquetas a **Y813BT Sticker** por Bluetooth. El pedido por teléfono genera sus copias **pendientes de pago** al guardarse; al cobrar se imprime solo el recibo del cliente, sin repetir la preparación. El servidor usa documentos guardados y un diario SQLite por copia. No reenvía automáticamente una entrega incierta a Windows. Reimpresiones históricas y cortes usan el diálogo de Windows.
 
 Los recibos nuevos conservan logo, importes, QR de Instagram y datos del emisor; omiten el nombre individual y las líneas de CFDI retiradas. Las etiquetas nuevas usan el diseño negro `reference-v2`. Los documentos y diarios anteriores no se reescriben. La aceptación física anterior y las comprobaciones pendientes se distinguen en el [registro de impresoras](docs/printer-acceptance-2026-10-31.md).
 
@@ -77,12 +78,13 @@ El POS requiere conexión al backend. La PWA no habilita ventas offline: el serv
 | `npm test` | Carrito, UI real, permisos, recuperación, CLIP simulado, controles y diseño Windows sin papel. |
 | `npm run test:db` | PostgreSQL 17.6 aislado: precios, transacciones, concurrencia, puntos, cortes, CLIP/pagers y permisos. Puerto 55439. |
 | `npm run test:admin-http` | Auth/PostgREST y app de producción: cuatro áreas, inventario apagado/activo, venta, devolución, roles, control guardado y CLIP apagado. API/DB 55481/55482 y app 3111. Requiere Docker. |
+| `npm run test:phone-http` | Auth/PostgREST y producción para teléfono: guardar sin cobrar, preparación simulada, recuperación entre turnos y pago al recoger. API/DB 55501/55502 y app 3112. Con `POS_BROWSER_QUALITY=1`, incluye navegador y capturas. |
 | `npm run test:printing` | Endpoints de impresión/reimpresión y diario con backend/impresoras simulados; app 3112. |
 | `npm run typecheck` / `npm run lint` | TypeScript y reglas sin advertencias. |
 | `npm run build:verify` | Compilación de producción aislada de la vista previa en ejecución. |
 | `npm audit` / `npm audit --omit=dev` | Dependencias completas y de ejecución. |
 
-La integración pasó localmente **212 pruebas y 2,539 comprobaciones de PostgreSQL**. GitHub Actions repite los checks Windows y el ensayo Auth/PostgREST en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
+La integración pasó localmente **242 pruebas y 2,700 comprobaciones de PostgreSQL**. GitHub Actions repite los checks Windows y los ensayos Auth/PostgREST y teléfono en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
 
 Con `POS_BROWSER_QUALITY=1`, el ensayo HTTP también abre Chromium/Edge aislado y ejecuta axe WCAG 2.2 AA, navegación real, conteo cero por UI y revisión de desbordamiento sobre 82 productos de referencia. CI ejecuta este modo. Necesita un navegador Chromium instalado; no usa un perfil personal ni envía papel. Las mediciones locales de carga/eventos se registran como laboratorio, sin atribuirles cumplimiento de Core Web Vitals en campo.
 
@@ -96,6 +98,6 @@ La PC de desarrollo prepara el paquete; la del café recibe una versión revisad
 
 Las migraciones 013–016 y el receptor CLIP ya están desplegados. Un respaldo cifrado previo y las huellas de las 28 tablas existentes confirmaron datos conservados. **No reinstalar estas migraciones ni activar CLIP para probar el despliegue.**
 
-La instalación debe conservar el POS anterior, configuración privada, respaldos y diario de impresión. **Antes de instalar esta app, aplicar su migración 017; aquí solo se ha aplicado a bases locales desechables.** El inventario apagado no limita ni descuenta ventas. Al activarlo se deben registrar/importar conteos físicos actualizados. Los pendientes están declarados en la revisión de preparación.
+La instalación debe conservar el POS anterior, configuración privada, respaldos y diario de impresión. **Antes de instalar esta app, aplicar las migraciones 017–019; solo se han ensayado en bases locales desechables y siguen pendientes en el backend alojado.** El inventario apagado no limita ni descuenta ventas. Al activarlo se deben registrar/importar conteos físicos actualizados. Los pendientes están declarados en la revisión de preparación.
 
 Ver [contrato de base de datos](supabase/README.md), [instalación Windows](docs/windows-deployment.md), [respaldos](docs/business-backups.md) y [revisión de preparación](docs/integration-readiness.md).

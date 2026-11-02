@@ -28,6 +28,9 @@ import * as drafts from '../lib/cart-draft';
 import * as shiftState from '../lib/shift-state';
 import PrototypeRegister, {PrototypeCheckout,PrototypeCustomization} from '../app/register/PrototypeRegister';
 import WorkspaceRegister, {WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog} from '../app/register/WorkspaceRegister';
+import PagerPicker from '../app/register/PagerPicker';
+import PhoneOrders,{PhoneOrderContact} from '../app/register/PhoneOrders';
+import * as phoneOrders from '../lib/phone-orders';
 
 for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['prototype','cashier',false],['workspace','cashier',false],['workspace','admin',false],['workspace','admin',true]] as const) test(`the actual ${appearance} ${role} POS ${clipEnabled?'with CLIP ':''}preserves recovery and automatically dispatches both synthetic copies`, async () => {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://127.0.0.1' });
@@ -95,14 +98,14 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
       return { error: null, data: { id: 'fixture-order', ticket_number: 1234, status: 'completed', total: fixtureProduct.price,
         items: [{ id: 'fixture-line', quantity: 1, product: { ...fixtureProduct, category: 'Bebidas', image_url: undefined } }],
         customer_name: 'Invitado', created_at: '2026-10-27T12:10:00Z', order_type: 'En Local', order_note: '',
-        payment_method: 'tarjeta', tender_mxn: 0, tender_usd: 0, exchange_rate: 20, change_mxn: 0 } };
+        payment_method: 'tarjeta', tender_mxn: 0, tender_usd: 0, exchange_rate: 20, change_mxn: 0, pager_number:args.p_payload.pager_number } };
     },
   };
   const nodeRequire = createRequire(import.meta.url);
   const router = { replace: () => {}, refresh: () => {} };
   const imports: Record<string, unknown> = { '@/lib/drawer':drawer,'./DrawerGate':{default:DrawerGate,__esModule:true}, '@/lib/request-deadline':deadline, '@/lib/receipt-reprint':reprint, '@/lib/supabase': { supabase: client }, '@/store/useCartStore': cart,
     '@/lib/checkout': checkout, '@/lib/printing': printing, '@/lib/sale-printing':salePrinting, './PrintDispatch':{default:PrintDispatch,__esModule:true}, './printing.css':{}, '@/lib/shift': shift, '@/lib/shift-state':shiftState,
-    './PrototypeRegister':{default:PrototypeRegister,PrototypeCheckout,PrototypeCustomization,__esModule:true}, './prototype.css':{},
+    './PrototypeRegister':{default:PrototypeRegister,PrototypeCheckout,PrototypeCustomization,__esModule:true}, './prototype.css':{}, './PagerPicker':{default:PagerPicker,__esModule:true},'./PhoneOrders':{default:PhoneOrders,PhoneOrderContact,__esModule:true},'@/lib/phone-orders':phoneOrders,
     './WorkspaceRegister':{default:WorkspaceRegister,WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog,__esModule:true}, './workspace.css':{}, '@/lib/pos-types': types, '@/lib/use-resource': resource, '@/lib/cart-draft': drafts, 'next/navigation': { useRouter: () => router } };
   const source = readFileSync(new URL('../app/register/Register.tsx', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020,
@@ -200,6 +203,9 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
     screen=dom.window.document.getElementById('root')!.firstElementChild!;
     assert.equal(cart.useCartStore.getState().getTotal(),80);
     assert.equal(Boolean(submitted),false, 'Restoring a draft must never submit a payment');
+    assert.equal(button(appearance==='owner'?'Pagar Ahora':'Cobrar').disabled,true,'An order cannot be charged before choosing a control');
+    await click(button('Control de entrega: Elegir control'));await click(button('Control 30'));
+    assert.equal(cart.useCartStore.getState().pagerNumber,30);assert.equal(cart.useCartStore.getState().getTotal(),80);
     let expectedTotal=80;
     if (appearance==='workspace') {
       const unchangedDraft=dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user'));
@@ -233,9 +239,11 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
     assert.equal(submitted?.payment_method, 'tarjeta'); assert.equal(submitted?.expected_total, expectedTotal);
     assert.equal(submitted?.order_type, 'Para Llevar'); assert.equal(submitted?.order_note, 'Entrega en puerta');
     assert.equal(submitted?.customer_id, 'local-member');
+    assert.equal(submitted?.pager_number,30);
     assert.match(dom.window.document.body.textContent!, appearance==='workspace'?/Venta guardada/:/Venta guardada/);
     assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user')), null);
     assert.equal(cart.useCartStore.getState().items.length, 0);
+    assert.equal(cart.useCartStore.getState().pagerNumber,null,'A new sale requires its own control');
     assert.equal(printJobs.length,2);assert.ok(dispatches.length>=1);
     assert.match(dom.window.document.body.textContent!,/Ticket del cliente/);assert.match(dom.window.document.body.textContent!,/Etiquetas del barista/);
     assert.equal(salePrinting.pendingSalePrints(dom.window.localStorage,'mi_cafe_checkout_review:fixture-user').length,0);

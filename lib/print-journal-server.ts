@@ -60,6 +60,11 @@ export class PrintJournal {
   get(owner: string, orderId: string): SalePrintJob[] {
     return (this.db.prepare('SELECT * FROM jobs WHERE owner=? AND order_id=? ORDER BY audience').all(owner, orderId) as Row[]).map(row => this.view(row));
   }
+  listRegister(owner:string):SalePrintJob[] {
+    const shared=this.db.prepare(`SELECT * FROM jobs WHERE owner<>? AND order_id LIKE 'phone:%' AND state NOT IN ('submitted','cancelled')
+      UNION ALL SELECT * FROM (SELECT * FROM jobs WHERE owner<>? AND order_id LIKE 'phone:%' AND state IN ('submitted','cancelled') ORDER BY updated DESC LIMIT 20)`).all(owner,owner) as Row[];
+    return [...this.list(owner),...shared.map(row=>this.view(row))];
+  }
   listAll(): (SalePrintJob & { cashierId: string; canRetry: boolean })[] {
     const rows = this.db.prepare(`SELECT * FROM jobs WHERE state NOT IN ('submitted','cancelled')
       UNION ALL SELECT * FROM (SELECT * FROM jobs WHERE state IN ('submitted','cancelled') ORDER BY updated DESC LIMIT 20)
@@ -103,12 +108,16 @@ export class PrintJournal {
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
   cancel(owner: string, orderId: string) {
-    this.db.prepare(`UPDATE jobs SET state='cancelled',message='Venta cancelada. No enviar a preparación.',updated=?
-      WHERE owner=? AND order_id=? AND state IN ('queued','blocked','preparing')`).run(this.now(), owner, orderId);
+    this.db.prepare(`UPDATE jobs SET state='cancelled',message=?,updated=?
+      WHERE owner=? AND order_id=? AND state IN ('queued','blocked','preparing')`).run(orderId.startsWith('phone:')?'Pedido cancelado. No enviar a preparación.':'Venta cancelada. No enviar a preparación.',this.now(), owner, orderId);
   }
   ensure(owner: string, order: SavedOrder, queues: Record<PrintAudience, string>, options: ReceiptOptions = {}, only?: PrintAudience) {
     const documents = saleDocuments(order, options);
-    const sourceHash = createHash('sha256').update(JSON.stringify(canonical(order))).digest('hex');
+    this.ensureDocuments(owner,order,queues,documents,only);
+  }
+  ensureDocuments(owner:string,sourceDocument:{id:string;ticket_number:string|number},queues:Record<PrintAudience,string>,documents:Record<PrintAudience,SalePrintDocument>,only?:PrintAudience) {
+    const order=sourceDocument;
+    const sourceHash = createHash('sha256').update(JSON.stringify(canonical(sourceDocument))).digest('hex');
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const source = this.db.prepare('SELECT * FROM sale_sources WHERE order_id=?').get(order.id) as { owner: string; source_hash: string } | undefined;
@@ -163,8 +172,8 @@ export class PrintJournal {
       if (!changed.changes) return;
       submitting = true; // Durable commit BEFORE the first potentially printing call.
       await prepared.submit();
-      this.db.prepare(`UPDATE jobs SET state='submitted',message='Enviado a Windows. Si falta papel o Bluetooth, revisa esa cola; no vuelvas a cobrar.',updated=?
-        WHERE order_id=? AND audience=? AND claim=?`).run(this.now(), orderId, audience, claim);
+      this.db.prepare(`UPDATE jobs SET state='submitted',message=?,updated=?
+        WHERE order_id=? AND audience=? AND claim=?`).run(orderId.startsWith('phone:')?'Enviado a Windows. Si falta la comanda, revisa esa cola antes de reponerla.':'Enviado a Windows. Si falta papel o Bluetooth, revisa esa cola; no vuelvas a cobrar.',this.now(), orderId, audience, claim);
     } catch (error) {
       const message = submitting ? 'Resultado incierto. Revisa la cola de Windows y el papel; no se reenviará automáticamente.'
         : (error instanceof Error ? error.message : 'No se pudo preparar la impresora.');

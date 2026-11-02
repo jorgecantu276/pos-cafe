@@ -87,6 +87,10 @@ export interface WizardStep {
 }
 export type CatalogProduct = Product & { is_active: boolean };
 
+export function validPagerNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 30;
+}
+
 export function catalogProduct(row: ProductRow): CatalogProduct {
   return { id: row.id, name: row.name, price: row.price, category: row.category ?? '',
     image_url: row.image_url ?? undefined, is_active: row.is_active === true,

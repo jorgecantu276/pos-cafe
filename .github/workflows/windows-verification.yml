@@ -33,6 +33,8 @@ jobs:
       - run: npm ci
       - name: Exercise real Auth, PostgREST and production app on a disposable local backend
         run: npm run test:admin-http
+      - name: Exercise phone preparation and pickup payment with real sessions and simulated printing
+        run: npm run test:phone-http
   verify:
     runs-on: windows-latest
     timeout-minutes: 20

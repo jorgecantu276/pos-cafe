@@ -14,6 +14,7 @@ export function validReceiptIssuer(issuer: ReceiptIssuer | undefined): issuer is
     && /^\d{3}\s*-\s*.+/.test(issuer.taxRegime) && /^\d{5}$/.test(issuer.postalCode) && issuer.establishmentAddress.trim() && issuer.city.trim());
 }
 export interface SalePrintDocument {
+  kind?: 'phone';
   title: string; sections: string[][]; styles?: PrintLineStyle[][];
   // Older local snapshots may contain this unused reference-design metadata.
   // Keep reading their text; never rewrite a saved document to remove it.
@@ -51,6 +52,8 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
   if (options.testOnly || !issuerComplete) add('PRUEBA DE IMPRESIÓN · NO ES UNA VENTA', 'heading');
   add(`Folio: ${ticket} · ${date}`);
   add(`Cliente: ${text(order.customer_name) || 'Público en general'}`);
+  const phone=order as SavedOrder & {phone_order_id?:string;phone_folio?:number|string};
+  if(phone.phone_order_id)add(`Pedido por teléfono: T${text(phone.phone_folio).padStart(4,'0')}`,'heading');
   if (order.pager_number != null) {
     if (!Number.isInteger(order.pager_number) || order.pager_number < 1 || order.pager_number > 30) throw new Error('Control de entrega inválido.');
     add(`CONTROL: ${order.pager_number}`, 'receipt-heading');
@@ -93,6 +96,11 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
   add('', 'separator');
   add('Para el postre y una sonrisa,', 'quote'); add('siempre hay espacio.', 'quote');
   add('@_carinitomio', 'social');
+  return { customer: { title: `CM #${ticket} CLIENTE`, sections: [receipt], styles: [receiptStyles], receiptBranding, issuerComplete, testOnly: options.testOnly === true },
+    barista: preparationDocument(order,ticket) };
+}
+
+function preparationDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_note'|'order_type'|'created_at'|'pager_number'>,ticket:string,phone=false):SalePrintDocument {
   const units = order.items.reduce((sum, i) => sum + i.quantity, 0);
   if (units > 2000) throw new Error('La orden requiere revisión por su cantidad de etiquetas.');
   let unit = 0;
@@ -105,15 +113,41 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
     if (item.product.note) { lines.push(text(item.product.note)); styles.push('note'); }
     if (order.order_note) { lines.push(`ORDEN: ${text(order.order_note)}`); styles.push('modifier'); }
     const time = new Date(order.created_at).toLocaleTimeString('es-MX', { timeZone: 'America/Matamoros', hour: '2-digit', minute: '2-digit', hour12: false });
-    lines.push(`#${ticket} · ${++unit}/${units} · ${order.pager_number != null ? `CONTROL: ${order.pager_number} · ` : ''}${text(order.order_type)} · ${time}`); styles.push('footer');
-    referenceLabels.push({ folio:order.pager_number != null ? `CONTROL ${order.pager_number} · #${ticket}` : `#${ticket}`,cup:`${unit}/${units}`,service:text(order.order_type),
+    lines.push(`${phone?`TELÉFONO ${ticket} · SIN PAGAR`:`#${ticket}`} · ${++unit}/${units} · ${order.pager_number != null ? `CONTROL: ${order.pager_number} · ` : ''}${text(order.order_type)} · ${time}`); styles.push('footer');
+    referenceLabels.push({ folio:phone?`TELÉFONO ${ticket} · SIN PAGAR`:order.pager_number != null ? `CONTROL ${order.pager_number} · #${ticket}` : `#${ticket}`,cup:`${unit}/${units}`,service:text(order.order_type),
       date:new Date(order.created_at).toLocaleDateString('es-MX',{timeZone:'America/Matamoros',day:'2-digit',month:'2-digit',year:'2-digit'}),
       time:new Date(order.created_at).toLocaleTimeString('en-US',{timeZone:'America/Matamoros',hour:'2-digit',minute:'2-digit',hour12:true}) });
     baristaStyles.push(styles);
     return lines;
   }));
-  return { customer: { title: `CM #${ticket} CLIENTE`, sections: [receipt], styles: [receiptStyles], receiptBranding, issuerComplete, testOnly: options.testOnly === true },
-    barista: { title: `CM #${ticket} BARRA`, sections, styles: baristaStyles, labelLayout:'reference-v2',referenceLabels } };
+  return { title: `CM #${ticket} BARRA`, sections, styles: baristaStyles, labelLayout:'reference-v2',referenceLabels,...(phone?{kind:'phone' as const}:{}) };
+}
+
+export interface PhonePreparation {
+  id:string;folio:number|string;contact_name:string;contact_phone:string;
+  snapshot:Pick<SavedOrder,'items'|'total'|'customer_name'|'order_type'|'order_note'|'created_at'>;
+}
+export function phoneOrderDocuments(order:PhonePreparation):Record<PrintAudience,SalePrintDocument> {
+  const snapshot=order.snapshot,ticket=`T${text(order.folio).padStart(4,'0')}`;
+  if(!order.id||!order.contact_name.trim()||!order.contact_phone.trim()||!snapshot?.items?.length||!Number.isFinite(snapshot.total)||snapshot.total<=0
+    ||!Number.isFinite(Date.parse(snapshot.created_at))||snapshot.items.some(i=>!Number.isInteger(i.quantity)||i.quantity<1||i.quantity>1000||!i.product?.name||!Number.isFinite(i.product.price)))
+    throw new Error('El pedido por teléfono no tiene una comanda completa.');
+  const lines:string[]=[],styles:PrintLineStyle[]=[];
+  const add=(line:string,style:PrintLineStyle='mono')=>{lines.push(line);styles.push(style);};
+  add('CARIÑITO MÍO','logo');add('','separator');add('PEDIDO POR TELÉFONO','receipt-heading');
+  add('PENDIENTE DE PAGO','receipt-heading');add('PAGA AL RECOGER','heading');
+  add(`Pedido: ${ticket}`);add(new Date(snapshot.created_at).toLocaleString('es-MX',{timeZone:'America/Matamoros'}),'meta');
+  add(`Cliente: ${text(order.contact_name)}`);add(`Teléfono: ${text(order.contact_phone)}`);add(text(snapshot.order_type),'heading');add('','separator');
+  for(const item of snapshot.items){
+    add(`${item.quantity} × ${text(item.product.name)}`);add(money(item.quantity*item.product.price));
+    for(const extra of item.product.displayExtras??[])add(`  + ${text(extra.name)} (incl.)`);
+    if(item.product.note)add(`  ${text(item.product.note)}`);
+  }
+  if(snapshot.order_note)add(`Nota: ${text(snapshot.order_note)}`);
+  add('','separator');add(`POR COBRAR: ${money(snapshot.total)}`,'receipt-total');
+  add('Este documento no acredita el pago.','meta');
+  return {customer:{kind:'phone',title:`CM ${ticket} POR COBRAR`,sections:[lines],styles:[styles],receiptBranding},
+    barista:preparationDocument({...snapshot,customer_name:order.contact_name,pager_number:null},ticket,true)};
 }
 
 export interface PrintStorage { length: number; key(index: number): string | null; getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }
@@ -121,6 +155,14 @@ const prefix = (checkoutKey: string) => `${checkoutKey}:print:v1:`;
 // One key per sale avoids two tabs overwriting each other's outbox.
 export function rememberSalePrint(storage: PrintStorage, checkoutKey: string, order: Pick<SavedOrder, 'id' | 'ticket_number'>) {
   storage.setItem(prefix(checkoutKey) + order.id, JSON.stringify({ id: order.id, ticket: String(order.ticket_number) }));
+}
+export function rememberPhonePrint(storage:PrintStorage,checkoutKey:string,order:{id:string;folio:number|string}) {
+  const id=`phone:${order.id}`;rememberSalePrint(storage,checkoutKey,{id,ticket_number:`T${order.folio}`});
+  if(typeof window!=='undefined')window.dispatchEvent(new window.Event('pos-print-pending'));
+  return id;
+}
+export function printRequestTarget(orderId:string) {
+  return orderId.startsWith('phone:')?{url:'/api/phone-printing',body:{phoneOrderId:orderId.slice(6)}}:{url:'/api/printing',body:{orderId}};
 }
 export function pendingSalePrints(storage: PrintStorage, checkoutKey: string): string[] {
   const ids: string[] = [];

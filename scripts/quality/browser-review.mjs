@@ -6,12 +6,13 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {root,work,run} from '../staging/runtime.mjs';
+import {seedQualityMenu} from './menu-fixture.mjs';
 
 // Only called with the fresh disposable backend owned by the HTTP drill.
 export async function browserQualityReview({url,actors,db,appDirectory}) {
-  assert.equal(url,'http://127.0.0.1:3111');
+  assert.ok(['http://127.0.0.1:3111','http://127.0.0.1:3112'].includes(url),'Only dedicated local quality app URLs are allowed');
   const menu=JSON.parse(await readFile(path.join(root,'tests/fixtures/real-menu.json'),'utf8'));
-  for(const product of menu.products) await db.query('insert into products(name,price,category,is_active,customizable,wizard_steps) select $1,$2,$3,true,false,$4 where not exists(select 1 from products where name=$1)',[product.name,product.price_mxn,product.category,[]]);
+  await seedQualityMenu(db,menu);
   const executablePath=process.env.POS_QUALITY_BROWSER || [
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe','/usr/bin/google-chrome','/usr/bin/chromium',
   ].find(existsSync);
@@ -106,8 +107,29 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     await audit(cashier,'register');
     await cashier.setViewportSize({width:1093,height:614});await audit(cashier,'register-scaled-125');
     await cashier.setViewportSize({width:1093,height:560});await audit(cashier,'register-short-screen');
+    await printingStatusReview(cashier,audit);
     await cashier.setViewportSize({width:1366,height:768});
-    await cashier.locator('.workspace-product').first().click();
+    await cashier.locator('.workspace-product').filter({hasText:'Agua natural'}).first().click();
+    await cashier.getByRole('button',{name:'Editar Agua natural',exact:true}).waitFor();
+    assert.equal(await cashier.getByRole('dialog').count(),0,'Packaged water enters the order directly');
+    cashier.once('dialog',dialog=>dialog.accept());await cashier.getByRole('button',{name:'Vaciar orden',exact:true}).click();
+    await cashier.locator('.workspace-product').filter({hasText:'Iced coffee caramelo'}).first().click();
+    const customization=cashier.getByRole('dialog',{name:'Iced coffee caramelo',exact:true});
+    await customization.getByRole('group',{name:'Tipo de Leche',exact:true}).waitFor();
+    assert.equal(await customization.getByRole('group',{name:'Tipo de Leche',exact:true}).getByRole('button').count(),7);
+    await customization.getByRole('button',{name:/^almendra/i}).click();
+    assert.equal(await customization.locator('.workspace-custom-price').textContent(),'$110.00');
+    await audit(cashier,'milk-customization');
+    await cashier.setViewportSize({width:1093,height:560});await audit(cashier,'milk-customization-short-screen');
+    await cashier.setViewportSize({width:1366,height:768});
+    await customization.getByRole('button',{name:'Agregar a la orden',exact:true}).click();
+    await cashier.locator('.workspace-order-line').filter({hasText:'Iced coffee caramelo'}).waitFor();
+    assert.equal(await cashier.getByRole('button',{name:'Cobrar',exact:true}).isDisabled(),true,'A new order needs a delivery control');
+    await cashier.getByRole('button',{name:'Control de entrega: Elegir control',exact:true}).click();
+    await audit(cashier,'required-pager');
+    await cashier.setViewportSize({width:1093,height:560});await audit(cashier,'required-pager-short-screen');
+    await cashier.getByRole('button',{name:'Control 30',exact:true}).click();
+    await cashier.setViewportSize({width:1366,height:768});
     await cashier.getByRole('button',{name:'Cobrar',exact:true}).click();await audit(cashier,'checkout');
     await cashier.setViewportSize({width:1093,height:560});await audit(cashier,'checkout-short-screen');
     await cashier.getByRole('button',{name:'Cerrar Cobrar',exact:true}).click();
@@ -125,4 +147,26 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     assert.equal(view.layout.under44.length,0,`${view.name}: touch controls smaller than 44px: ${JSON.stringify(view.layout.under44)}`);
   }
   return report;
+}
+
+export async function printingStatusReview(cashier,audit) {
+  // The warning must remain visible without taking over the sales area.
+  // Intercept only this disposable browser's status GET; never submit paper.
+  await cashier.route('**/api/printing',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Prueba: registro de impresión no disponible.'})}));
+  await cashier.reload();
+  await cashier.locator('.print-dispatch > summary').getByText('Estado sin comprobar',{exact:true}).waitFor();
+  for(const viewport of [{width:1366,height:768},{width:1093,height:560}]) {
+    await cashier.setViewportSize(viewport);await audit(cashier,'printing-status-unavailable');
+    assert.equal(await cashier.locator('.print-dispatch').evaluate(e=>e.open),false);
+    assert.ok((await cashier.locator('.print-dispatch').boundingBox()).height<=56,'A failed print check uses one compact row');
+  }
+  const menuTop=await cashier.locator('main').evaluate(e=>e.getBoundingClientRect().top);
+  await cashier.locator('.print-dispatch > summary').click();await audit(cashier,'printing-status-expanded');
+  assert.equal(await cashier.locator('main').evaluate(e=>e.getBoundingClientRect().top),menuTop,'Opening print details must not move the sale area');
+  await cashier.unroute('**/api/printing');
+  // This also fails if an ancestor clips the panel or another element covers it.
+  await cashier.getByRole('button',{name:'Actualizar impresión',exact:true}).click();
+  await cashier.locator('.print-dispatch > summary').getByText('Estado sin comprobar',{exact:true}).waitFor({state:'hidden'});
+  assert.equal(await cashier.locator('.print-dispatch').evaluate(e=>e.open),true,'A refresh preserves the user’s expanded state');
+  await cashier.locator('.print-dispatch > summary').click();await audit(cashier,'printing-status-recovered');
 }

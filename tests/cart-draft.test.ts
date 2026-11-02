@@ -34,7 +34,16 @@ test('draft survives a fresh store with quantities, extras, both notes and order
   assert.equal(useCartStore.getState().orderType,'Para Llevar'); assert.equal(useCartStore.getState().orderNote,'Puerta');
   assert.equal(useCartStore.getState().customerId,'member-id'); assert.equal(f.notices,1);
   const raw=f.values.get(cartDraftKey('alice'))!;
-  assert.ok(!raw.includes('customer_name') && !raw.includes('phone')); binding.disconnect();
+  assert.ok(!raw.includes('customer_name'));assert.equal(JSON.parse(raw).phoneName,'');assert.equal(JSON.parse(raw).phoneContact,'');binding.disconnect();
+});
+
+test('phone contact and source survive a draft restart, while payment of a saved phone order preserves a separate counter draft',()=>{
+  const f=fixture();let binding=f.bind();useCartStore.getState().addItem(coffee);useCartStore.getState().setPhoneOrder(true);useCartStore.getState().setPhoneName('Ana');useCartStore.getState().setPhoneContact('8681234567');binding.disconnect();
+  binding=f.bind();assert.equal(useCartStore.getState().phoneOrder,true);assert.equal(useCartStore.getState().phoneName,'Ana');assert.equal(useCartStore.getState().phoneContact,'8681234567');
+  useCartStore.getState().setPagerNumber(1);assert.equal(useCartStore.getState().phoneOrder,false);const identity=binding.requestId();binding.disconnect();
+  f.values.set('mi_cafe_checkout_review:alice',JSON.stringify({requestId:crypto.randomUUID(),payload:{phone_order_id:'saved-phone'}}));
+  binding=f.bind();assert.equal(useCartStore.getState().getTotal(),50);assert.equal(useCartStore.getState().pagerNumber,1);assert.equal(binding.requestId(),identity);
+  useCartStore.getState().clearCart();assert.equal(useCartStore.getState().phoneOrder,false);assert.equal(useCartStore.getState().phoneName,'');assert.equal(useCartStore.getState().phoneContact,'');binding.disconnect();
 });
 
 test('cashier switches and closed shifts never inherit another user or shift draft',()=>{
@@ -45,6 +54,20 @@ test('cashier switches and closed shifts never inherit another user or shift dra
   b=f.bind('alice','another-shift'); assert.equal(useCartStore.getState().items.length,0); b.disconnect();
   b=f.bind(); assert.equal(useCartStore.getState().getTotal(),50); b.disconnect();
   assert.throws(()=>readCartDraft(original!,'bob','shift'),/No se pudo abrir el pedido/);
+});
+
+test('retiring a confirmed phone draft from a prior shift preserves the new binding identity and later counter order',()=>{
+  const f=fixture();let binding=f.bind('alice','old-shift');useCartStore.getState().addItem(coffee);useCartStore.getState().setPhoneOrder(true);useCartStore.getState().setPhoneName('Ana');useCartStore.getState().setPhoneContact('8681234567');
+  const oldRequest=binding.requestId();binding.disconnect();binding=f.bind('alice','new-shift');assert.equal(useCartStore.getState().items.length,0);assert.ok(f.values.has(cartDraftKey('alice')));
+  binding.retireRequest(oldRequest);assert.equal(f.values.has(cartDraftKey('alice')),false);assert.equal(useCartStore.getState().items.length,0);
+  useCartStore.getState().addItem(coffee);const newRequest=binding.requestId(),newRaw=f.values.get(cartDraftKey('alice'))!;assert.notEqual(newRequest,oldRequest);assert.equal(JSON.parse(newRaw).registerId,'new-shift');assert.deepEqual(f.errors,[]);
+  binding.retireRequest(oldRequest);assert.equal(f.values.get(cartDraftKey('alice')),newRaw);assert.equal(useCartStore.getState().getTotal(),50);assert.equal(binding.requestId(),newRequest);binding.disconnect();
+});
+
+test('a prior-shift phone draft already retired in another window does not leave the new binding storage expectation stale',()=>{
+  const f=fixture();let binding=f.bind('alice','old-shift');useCartStore.getState().addItem(coffee);const oldRequest=binding.requestId();binding.disconnect();binding=f.bind('alice','new-shift');
+  f.values.delete(cartDraftKey('alice'));binding.retireRequest(oldRequest);useCartStore.getState().addItem(coffee);
+  assert.deepEqual(f.errors,[]);assert.equal(JSON.parse(f.values.get(cartDraftKey('alice'))!).registerId,'new-shift');binding.disconnect();
 });
 
 test('corrupt drafts, invalid quantities and missing catalog choices are blocked without overwriting the saved draft',()=>{

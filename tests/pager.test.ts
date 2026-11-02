@@ -4,6 +4,7 @@ import {JSDOM} from 'jsdom';
 import {act,createElement,useState} from 'react';
 import PagerPicker from '../app/register/PagerPicker';
 import {WorkspaceCheckout} from '../app/register/WorkspaceRegister';
+import {PrototypeCheckout} from '../app/register/PrototypeRegister';
 import {createCartStore} from '../store/useCartStore';
 import {bindCartDraft,cartDraftKey,readCartDraft} from '../lib/cart-draft';
 import {checkoutPayload} from '../lib/checkout';
@@ -17,7 +18,7 @@ test('pager choice survives draft restart, rejects numbers outside 1–30 and cl
   const restored=createCartStore(),next=bindCartDraft({...options,store:restored});assert.equal(restored.getState().pagerNumber,30);
   const fields={register_id:'shift',expected_total:50,payment_method:'tarjeta',tender_mxn:0,tender_usd:0,customer_id:null,order_type:'En Local',order_note:''};
   assert.equal(checkoutPayload(restored.getState().items,{...fields,pager_number:30}).pager_number,30);
-  for(const pager_number of [0,31,1.2]) assert.throws(()=>checkoutPayload(restored.getState().items,{...fields,pager_number}));
+  for(const pager_number of [null,undefined,0,31,1.2]) assert.throws(()=>checkoutPayload(restored.getState().items,{...fields,pager_number}),/Elige un control/);
   const raw=storage.getItem(cartDraftKey('cashier'))!;
   assert.throws(()=>readCartDraft(JSON.stringify({...JSON.parse(raw),pagerNumber:31}),'cashier','shift'));
   restored.getState().clearCart();assert.equal(restored.getState().pagerNumber,null);assert.equal(storage.getItem(cartDraftKey('cashier')),null);next.disconnect();
@@ -42,11 +43,20 @@ test('touch picker offers exactly 1–30, retains its selection when busy, and C
   const click=async(name:string)=>{const button=[...dom.window.document.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')??b.textContent)===name);assert.ok(button);await act(async()=>button.click());};
   try {
     await act(async()=>root.render(createElement(Picker)));
-    await click('Control de entrega: Sin control');
+    await click('Control de entrega: Elegir control');
     const controls=[...dom.window.document.querySelectorAll<HTMLButtonElement>('.pos-pager-dialog button[aria-label^="Control "]')];assert.equal(controls.length,30);assert.equal(controls[0].getAttribute('aria-label'),'Control 1');assert.equal(controls[29].getAttribute('aria-label'),'Control 30');
-    await click('Control 12');assert.equal(selected,12);assert.match(dom.window.document.querySelector('.pos-pager-trigger')!.textContent!,/#12/);await click('Control de entrega: 12');await click('Sin control');assert.equal(selected,null);
+    assert.doesNotMatch(dom.window.document.body.textContent!,/Sin control/);
+    await click('Control 12');assert.equal(selected,12);assert.match(dom.window.document.querySelector('.pos-pager-trigger')!.textContent!,/#12/);await click('Control de entrega: 12');await click('Cerrar selección de control');assert.equal(selected,12);
     await act(async()=>root.render(createElement(PagerPicker,{value:30,onChange:()=>assert.fail('Busy picker changed'),disabled:true})));assert.ok([...dom.window.document.querySelectorAll('button')].every(button=>button.matches(':disabled')));
-    await act(async()=>root.render(createElement(WorkspaceCheckout,{total:50,method:'Tarjeta',mxn:'',usd:'',exchangeRate:20,orderType:'En Local',note:'',busy:false,insufficient:false,clipEnabled:true,onMethod:()=>{},onMXN:()=>{},onUSD:()=>{},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},onConfirm:()=>{sent++;}})));
+    const props={total:50,method:'Tarjeta',mxn:'',usd:'',exchangeRate:20,orderType:'En Local',note:'',busy:false,insufficient:false,clipEnabled:true,onMethod:()=>{},onMXN:()=>{},onUSD:()=>{},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},onConfirm:()=>{sent++;}};
+    for(const Checkout of [WorkspaceCheckout,PrototypeCheckout]) {
+      for(const method of ['Tarjeta','Efectivo','Mixto','Otro']) {
+        await act(async()=>root.render(createElement(Checkout,{...props,method})));
+        const confirm=[...dom.window.document.querySelectorAll('button')].find(button=>/^(Enviar a CLIP|Confirmar pago)$/.test(button.textContent??''))!;
+        assert.equal(confirm.disabled,true,`${method} cannot charge without a control`);await act(async()=>confirm.click());assert.equal(sent,0);
+      }
+    }
+    await act(async()=>root.render(createElement(WorkspaceCheckout,{...props,pagerNumber:1})));
     assert.equal(dom.window.document.querySelector('.workspace-card-confirm'),null);await click('Enviar a CLIP');assert.equal(sent,1);
   } finally {await act(async()=>root.unmount());dom.window.close();for(const[key,descriptor]of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}}
 });
