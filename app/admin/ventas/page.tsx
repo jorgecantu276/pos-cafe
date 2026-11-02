@@ -1,6 +1,7 @@
 'use client';
 
 import { type Sale, errorMessage } from '@/lib/pos-types';
+import Link from 'next/link';
 
 import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -12,7 +13,8 @@ import { ReportFilters, ReportPagination } from '../ReportControls';
 import { loadReport, reportParams, reportQuery, reportMoney, reportDate, reportPeriod, type SalesReport } from '@/lib/reports';
 import { isCanceled } from '@/lib/shift';
 import { cancelLegacySale, cancellationNotice } from '@/lib/cancellation';
-import { Loader2, Keyboard, Delete, X, Printer, Ban, AlertCircle } from 'lucide-react';
+import AdminDialog from '../AdminDialog';
+import { Loader2, Keyboard, Delete, Printer, Ban, AlertCircle } from 'lucide-react';
 
 export default function VentasPage() {
 
@@ -91,7 +93,7 @@ export default function VentasPage() {
 
   return (
     <div className="workspace-sales">
-      <header><h1>Ventas</h1><div className="workspace-sales-filters"><div className="workspace-sales-search"><input type="search" aria-label="Buscar ticket o producto" placeholder="Buscar ticket o producto" maxLength={100} value={searchTerm} onChange={event => changeSearch(event.target.value)} /><button type="button" aria-label="Teclado de búsqueda" aria-pressed={isKeyboardOpen} onClick={() => setIsKeyboardOpen(!isKeyboardOpen)}><Keyboard size={22}/></button></div><ReportFilters query={query} onChange={setQuery}/></div></header>
+      <header><div className="workspace-admin-heading-row"><h1>Ventas</h1><Link className="workspace-admin-text-action" href="/tv" target="_blank" rel="noopener noreferrer">Abrir pantalla de ventas</Link></div><div className="workspace-sales-filters"><div className="workspace-sales-search"><input type="search" aria-label="Buscar ticket o producto" placeholder="Buscar ticket o producto" maxLength={100} value={searchTerm} onChange={event => changeSearch(event.target.value)} /><button type="button" aria-label="Teclado de búsqueda" aria-pressed={isKeyboardOpen} onClick={() => setIsKeyboardOpen(!isKeyboardOpen)}><Keyboard size={22}/></button></div><ReportFilters query={query} onChange={setQuery}/></div></header>
       {loading ? <p role="status">Verificando reporte…</p> : <>
         <div className="workspace-sales-total"><span>Ventas completadas <strong>{reportMoney(report.summary.sales)}</strong></span><span>{report.summary.completed} tickets · {reportPeriod(query, report.day)}</span></div>
         <div className="workspace-sales-list" aria-label="Tickets">{filteredOrders.map(order => <button type="button" key={order.id} onClick={() => setSelectedOrder(order)}>
@@ -103,23 +105,12 @@ export default function VentasPage() {
         <ReportPagination page={report.page} pageSize={report.page_size} rows={report.summary.rows} onPage={page => setQuery({ ...query, page, asOf: report.as_of })}/>
         <details className="workspace-sales-details"><summary>Desglose</summary><p>{report.summary.pending} pendientes · {report.summary.cancelled} canceladas · Ticket promedio {reportMoney(report.summary.average)}</p><div>{report.payments.map(payment => <p key={payment.name}>{payment.name}: {reportMoney(payment.total)}</p>)}</div><p>Ventas completadas en MXN. Excluye pendientes y cancelaciones. No equivale al efectivo en caja.</p><p>Actualizado {reportDate(report.captured_at)} · Matamoros</p></details>
       </>}
-      {/* 🟢 MODAL DE DETALLE DE ORDEN (AQUÍ ESTÁ LA MAGIA DE CANCELAR Y REIMPRIMIR) */}
-      {selectedOrder && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[32px] w-full max-w-[500px] max-h-[85vh] overflow-y-auto shadow-2xl p-8 animate-in zoom-in-95 duration-200">
-            
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <h3 className="text-2xl font-black italic tracking-tight text-slate-900 mb-1">
-                  Ticket #{String(selectedOrder.ticket_number ?? selectedOrder.id.split('-')[0]).padStart(4, '0')}
-                </h3>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                  {new Date(selectedOrder.created_at).toLocaleString('es-MX', { timeZone: 'America/Matamoros', dateStyle: 'medium', timeStyle: 'short' })}
-                </p>
-              </div>
-              <button onClick={() => setSelectedOrder(null)} aria-label="Cerrar ticket" className="p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200 transition-colors"><X size={20}/></button>
-            </div>
-
+      {selectedOrder && <AdminDialog title={`Ticket #${String(selectedOrder.ticket_number ?? selectedOrder.id.split('-')[0]).padStart(4, '0')}`} onClose={() => setSelectedOrder(null)} busy={isCanceling} footer={<div className="ticket-actions">
+        <button type="button" disabled={isCanceling} onClick={() => void handleReprintTicket(selectedOrder)} className="admin-primary-button"><Printer size={20}/>Reimprimir ticket</button>
+        {selectedOrder.status === 'completed' && <button type="button" disabled={isCanceling} onClick={() => void handleCancelOrder()} className="admin-danger-button">{isCanceling ? <Loader2 className="animate-spin" size={20}/> : <Ban size={20}/>} {isCanceling ? 'Cancelando…' : 'Cancelar venta'}</button>}
+        <Link className="workspace-admin-text-action" href="/admin/impresion">Revisar impresión pendiente</Link>
+      </div>}>
+        <p className="ticket-date">{reportDate(selectedOrder.created_at)}</p>
             {isCanceled(selectedOrder.status) && (
               <div className="bg-red-50 text-red-600 border border-red-200 p-4 rounded-xl flex items-center gap-3 mb-6">
                 <AlertCircle size={20} />
@@ -144,28 +135,7 @@ export default function VentasPage() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={() => handleReprintTicket(selectedOrder)}
-                className="w-full bg-[#1d1d1f] hover:bg-black text-white h-14 rounded-[20px] font-bold text-base flex justify-center items-center gap-2 shadow-lg transition-all"
-              >
-                <Printer size={20} /> Reimprimir Ticket
-              </button>
-
-              {selectedOrder.status === 'completed' && (
-                <button 
-                  onClick={handleCancelOrder}
-                  disabled={isCanceling}
-                  className="w-full bg-white border-2 border-red-100 hover:border-red-200 hover:bg-red-50 text-red-500 h-14 rounded-[20px] font-bold text-base flex justify-center items-center gap-2 transition-all disabled:opacity-50"
-                >
-                  {isCanceling ? <Loader2 className="animate-spin" size={20} /> : <><Ban size={20} /> Cancelar Venta</>}
-                </button>
-              )}
-            </div>
-
-          </div>
-        </div>
-      )}
+      </AdminDialog>}
 
       {/* TECLADO VIRTUAL G-BOARD STYLE */}
       {isKeyboardOpen && (

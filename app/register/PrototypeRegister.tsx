@@ -1,5 +1,7 @@
 'use client';
 
+import PagerPicker from './PagerPicker';
+
 import {useState,type ReactNode} from 'react';
 import ProductPhoto from '@/components/ProductPhoto';
 import type {CartItem,Product,CartExtra} from '../../store/useCartStore';
@@ -82,9 +84,10 @@ export function PrototypeCustomization({product,steps,index,extras,dbExtras,note
   </Sheet>;
 }
 
-export function PrototypeCheckout({total,method,mxn,usd,exchangeRate,orderType,note,busy,insufficient,onMethod,onMXN,onUSD,onOrderType,onNote,onConfirm,onClose}:{
+export function PrototypeCheckout({total,method,mxn,usd,exchangeRate,orderType,note,busy,insufficient,onMethod,onMXN,onUSD,onOrderType,onNote,onConfirm,onClose,pagerNumber,onPagerNumber,clipEnabled}:{
   total:number;method:string;mxn:string|number;usd:string|number;exchangeRate:number;orderType:string;note:string;busy:boolean;insufficient:boolean;
   onMethod:(s:string)=>void;onMXN:(s:string)=>void;onUSD:(s:string)=>void;onOrderType:(s:string)=>void;onNote:(s:string)=>void;onConfirm:()=>void;onClose:()=>void;
+  pagerNumber?:number|null;onPagerNumber?:(value:number|null)=>void;clipEnabled?:boolean;
 }){
   const [currency,setCurrency]=useState<'MXN'|'USD'>('MXN'),[confirmed,setConfirmed]=useState(false),[notes,setNotes]=useState(false);
   const cash=method==='Efectivo'||method==='Mixto',received=Number(mxn||0)+Number(usd||0)*exchangeRate;
@@ -95,12 +98,13 @@ export function PrototypeCheckout({total,method,mxn,usd,exchangeRate,orderType,n
       <button disabled={busy} onClick={()=>setNotes(!notes)}>Notas de la orden{note?' · añadidas':''}</button>
       {notes&&<><textarea aria-label="Notas de la orden" disabled={busy} value={note} onChange={e=>onNote(e.target.value)} maxLength={1000}/><TouchKeyboard value={note} onChange={onNote}/></>}
       <div className="prototype-options">{['Efectivo','Mixto','Tarjeta','Otro'].map(m=><button key={m} disabled={busy} aria-pressed={method===m} onClick={()=>{onMethod(m);setConfirmed(false);}}>{m==='Mixto'?'MXN + USD':m}</button>)}</div>
-      {method==='Tarjeta'&&<label className="prototype-card-confirm"><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Confirmé el cobro aprobado en la terminal.</label>}
+      {method==='Tarjeta'&&!clipEnabled&&<label className="prototype-card-confirm"><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Confirmé el cobro aprobado en la terminal.</label>}
+      {onPagerNumber&&<PagerPicker value={pagerNumber??null} onChange={onPagerNumber} disabled={busy}/>}
       {method==='Otro'&&<p>Confirma el pago por separado antes de registrar la venta.</p>}
       {cash&&<><div className="prototype-service">{['MXN','USD'].map(c=><button key={c} disabled={busy} aria-pressed={currency===c} onClick={()=>setCurrency(c as 'MXN'|'USD')}>{c}</button>)}</div>
         <label>Recibido MXN<input inputMode="decimal" disabled={busy} value={mxn} onFocus={()=>setCurrency('MXN')} onChange={e=>onMXN(e.target.value)}/></label><label>Recibido USD<input inputMode="decimal" disabled={busy} value={usd} onFocus={()=>setCurrency('USD')} onChange={e=>onUSD(e.target.value)}/></label>
         <p>Tipo de cambio: {exchangeRate} MXN / USD</p><p>{received>=total?`Cambio MXN: ${money(received-total)}`:`Faltan MXN: ${money(total-received)}`}</p></>}
     </section>{cash&&!notes&&<section><fieldset disabled={busy}><legend>Teclado {currency}</legend><TouchKeyboard value={String(currency==='MXN'?mxn:usd)} onChange={key} numeric/></fieldset><button disabled={busy} onClick={()=>{onMXN(String(total));onUSD('');}}>Importe exacto en MXN</button></section>}</div>
-    <button className="prototype-primary" disabled={busy||insufficient||(method==='Tarjeta'&&!confirmed)} onClick={onConfirm}>{busy?'Confirmando…':'Confirmar Pago'}</button>
+    <button className="prototype-primary" disabled={busy||insufficient||(method==='Tarjeta'&&!clipEnabled&&!confirmed)} onClick={onConfirm}>{busy?'Confirmando…':method==='Tarjeta'&&clipEnabled?'Enviar a CLIP':'Confirmar Pago'}</button>
   </Sheet>;
 }

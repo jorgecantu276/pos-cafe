@@ -30,7 +30,7 @@ export default function DrawerAdmin() {
       setMessage('Tipo de cambio guardado. Los cajeros lo usarán automáticamente.'); setRate(''); await reload();
     } catch (error) { setMessage(errorMessage(error)); } finally { setBusy(false); }
   };
-  return <div className="space-y-6"><h1>Caja única</h1>
+  return <div className="space-y-6"><h1>Entregas y tipo de cambio</h1>
     <section className="border rounded-xl bg-white p-5 space-y-3"><h2>Tipo de cambio guardado</h2>
       <p>{data.status.rate ? `1 USD = ${data.status.rate} MXN` : 'El responsable debe definirlo antes de la primera apertura.'}</p>
       <p>Se conserva entre turnos. Cambia este valor solo cuando cambie la política del negocio; las ventas anteriores conservan su tipo de cambio.</p>

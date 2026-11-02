@@ -47,6 +47,12 @@ test('a broken merchant photo recovers locally and a different product can load 
     assert.equal(image().getAttribute('src'), '/product-photos/matcha.webp');
     await render('Brownie tradicional');
     assert.equal(image().getAttribute('src'), '/product-photos/brownie.webp');
+    await act(async () => root.render(createElement(ProductPhoto, { product: { name: 'Coca cola' }, illustrativeFallback: false, width: 56, height: 56 })));
+    assert.equal(dom.window.document.querySelector('img'), null);
+    await act(async () => root.render(createElement(ProductPhoto, { product: { name: 'Coca cola', image_url: 'https://example.test/coca-cola.jpg' }, illustrativeFallback: false, width: 56, height: 56 })));
+    assert.equal(image().getAttribute('src'), 'https://example.test/coca-cola.jpg');
+    await act(async () => { image().dispatchEvent(new dom.window.Event('error')); });
+    assert.equal(dom.window.document.querySelector('img'), null);
   } finally {
     await act(async () => root.unmount()); dom.window.close();
     for (const [key, descriptor] of saved) {

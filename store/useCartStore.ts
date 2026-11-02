@@ -30,13 +30,15 @@ interface CartStore {
   items: CartItem[];
   orderType: string;
   orderNote: string;
+  pagerNumber: number | null;
   customerId: string | null;
   setOrderType: (value: string) => void;
   setOrderNote: (value: string) => void;
+  setPagerNumber: (value: number | null) => void;
   setCustomerId: (value: string | null) => void;
   addItem: (product: Product) => void;
   removeItem: (itemId: string) => void;
-  replaceItem: (itemId: string, product: Product) => void;
+  replaceItem: (itemId: string, product: Product, quantity?: number) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   clearCart: () => void;
   getTotal: () => number;
@@ -69,9 +71,10 @@ export function customizeProduct(product: Product, extras: CartExtra[], note: st
 
 export const createCartStore = () => create<CartStore>((set, get) => ({
   items: [],
-  orderType: 'En Local', orderNote: '', customerId: null,
+  orderType: 'En Local', orderNote: '', pagerNumber: null, customerId: null,
   setOrderType: orderType => set({ orderType }),
   setOrderNote: orderNote => set({ orderNote }),
+  setPagerNumber: pagerNumber => set({ pagerNumber }),
   setCustomerId: customerId => set({ customerId }),
   
   addItem: (product) => {
@@ -100,9 +103,10 @@ export const createCartStore = () => create<CartStore>((set, get) => ({
     items: state.items.filter(i => i.id !== itemId) 
   })),
 
-  // Editing replaces only the chosen line and preserves its quantity.
-  replaceItem: (itemId, product) => set(state => ({
-    items: state.items.map(item => item.id === itemId ? { ...item, product } : item),
+  // Commit the edited product and quantity together so draft persistence sees one change.
+  replaceItem: (itemId, product, quantity) => set(state => ({
+    items: state.items.map(item => item.id === itemId ? { ...item, product,
+      quantity: quantity !== undefined && Number.isFinite(quantity) ? Math.max(1, Math.floor(quantity)) : item.quantity } : item),
   })),
 
   updateQuantity: (itemId, qty) => set((state) => ({
@@ -112,7 +116,7 @@ export const createCartStore = () => create<CartStore>((set, get) => ({
     )
   })),
 
-  clearCart: () => set({ items: [], orderType: 'En Local', orderNote: '', customerId: null }),
+  clearCart: () => set({ items: [], orderType: 'En Local', orderNote: '', pagerNumber: null, customerId: null }),
 
   getTotal: () => get().items.reduce((acc, item) => 
     acc + cents(item.product.price) * item.quantity, 0

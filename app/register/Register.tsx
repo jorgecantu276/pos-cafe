@@ -8,7 +8,9 @@ import PrototypeRegister, {PrototypeCheckout, PrototypeCustomization} from './Pr
 import './prototype.css';
 import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
 import RecentTickets from './RecentTickets';
+import ClipPaymentStatus from './ClipPaymentStatus';
 import { loadRegisterShortcuts } from '@/lib/register-shortcuts';
+import { catalogChangeKey, catalogFingerprint, loadLiveCatalog } from '@/lib/catalog-management';
 import './workspace.css';
 
 import { catalogProduct, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
@@ -27,7 +29,7 @@ import './printing.css';
 import { rememberSalePrint } from '@/lib/sale-printing';
 import { saveShiftBeforeExit, type ShiftReport } from '@/lib/shift';
 import { closeShift, expenseRequestKey, loadShiftSummary, recoverPendingExpenses, recoverShiftClose, restoreShiftExpenses, saveShiftExpenses, type ShiftSummary } from '@/lib/shift-state';
-import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, withCheckoutLock, type CheckoutReview, type SavedOrder } from '@/lib/checkout';
+import { CheckoutRejected, ClipPaymentPending, checkoutPayload, executeCheckout, readCheckoutReview, withCheckoutLock, type CheckoutReview, type SavedOrder } from '@/lib/checkout';
 import { bindCartDraft, cartDraftKey, type CartDraftBinding } from '@/lib/cart-draft';
 import { withDeadline } from '@/lib/request-deadline';
 import {
@@ -39,9 +41,9 @@ import {
 // DENOMINACIONES DE DINERO
 const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.50];
 
-export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'prototype'|'workspace'}={}) {
+export default function POSPage({appearance='workspace',clipEnabled=false}:{appearance?:'owner'|'prototype'|'workspace';clipEnabled?:boolean}={}) {
   const { items, addItem, removeItem, replaceItem, updateQuantity, getTotal, clearCart,
-    orderType, orderNote, customerId, setOrderType, setOrderNote, setCustomerId } = useCartStore();
+    orderType, orderNote, pagerNumber, customerId, setOrderType, setOrderNote, setPagerNumber, setCustomerId } = useCartStore();
   const router = useRouter();
   const cartDraft = useRef<CartDraftBinding | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -69,6 +71,8 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   const [favoritesError, setFavoritesError] = useState('');
   const [favoritesLoading, setFavoritesLoading] = useState(true);
   const [favoritesAttempt, setFavoritesAttempt] = useState(0);
+  const [catalogStale, setCatalogStale] = useState(false);
+  const [catalogCheckError, setCatalogCheckError] = useState('');
   const [dbExtras, setDbExtras] = useState<ExtraRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [ticketSearchTerm, setTicketSearchTerm] = useState(''); // 🟢 ESTADO PARA BUSCAR TICKET
@@ -141,6 +145,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [activeExtras, setActiveExtras] = useState<CartExtra[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingQuantity, setEditingQuantity] = useState(1);
   const [productNote, setProductNote] = useState('');
   const [customizationStep, setCustomizationStep] = useState(0);
 
@@ -219,6 +224,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
     catch { setCheckoutReview({ startedAt:'Registro pendiente ilegible', total:0 }); }
     setProducts(data.products);
     setDbExtras(data.extras);
+    setCatalogStale(false); setCatalogCheckError('');
     cartDraft.current?.disconnect(); cartDraft.current = null;
     useCartStore.getState().clearCart();
     setActiveCustomer(null); setCustomerRestoring(false); setCustomerError(null); setDraftError(null);
@@ -248,6 +254,33 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
     } else { setRegisterId(''); setExpenses([]); setCashSales(0); setExchangeRate(data.drawer.rate ? String(data.drawer.rate) : ''); setShowApertura(true); }
   }, [router]);
   const { loading, error: loadError, reload: fetchData } = useResource(loadPOS, null, applyPOS);
+
+  useEffect(() => {
+    if (loading || !drawerActor || (sessionActor !== null && sessionActor !== drawerActor)) return;
+    const controller = new AbortController();
+    let checking = false;
+    const current = catalogFingerprint(products, dbExtras, favoriteProductIds);
+    const check = async () => {
+      if (checking || document.visibilityState === 'hidden') return;
+      checking = true;
+      try {
+        const latest = await withDeadline(() => loadLiveCatalog(supabase, controller.signal), { signal: controller.signal });
+        if (!controller.signal.aborted) { setCatalogStale(latest !== current); setCatalogCheckError(''); }
+      } catch {
+        if (!controller.signal.aborted) setCatalogCheckError('No se pudo comprobar si el menú cambió.');
+      } finally { checking = false; }
+    };
+    const changed = (event: StorageEvent) => { if (event.key === catalogChangeKey || event.key === null) void check(); };
+    const poll = window.setInterval(() => void check(), 30_000);
+    window.addEventListener('focus', check); window.addEventListener(catalogChangeKey, check); window.addEventListener('storage', changed);
+    return () => { controller.abort(); window.clearInterval(poll); window.removeEventListener('focus', check); window.removeEventListener(catalogChangeKey, check); window.removeEventListener('storage', changed); };
+  }, [loading, drawerActor, sessionActor, products, dbExtras, favoriteProductIds]);
+
+  const refreshCatalog = () => {
+    if (loading || selectedProduct || showCheckoutModal || checkoutInFlight.current || checkoutReview || expenseInFlight.current || closingShift.current || openingInFlight.current) return;
+    setFavoritesAttempt(value => value + 1);
+    void fetchData();
+  };
 
   const calculateTotalCash = () => {
     const pesos = Object.entries(breakdown).reduce((sum, [den, qty]) => sum + (Number(den) * qty), 0);
@@ -513,6 +546,7 @@ const handleSaveAndClose = async () => {
     setActiveExtras(item.product.displayExtras || []);
     setProductNote(item.product.note || '');
     setEditingItemId(item.id);
+    setEditingQuantity(item.quantity);
     setDynamicSteps(steps);
     setCustomizationStep(0);
   };
@@ -520,7 +554,7 @@ const handleSaveAndClose = async () => {
   const handleConfirmAdd = () => {
     if (!selectedProduct) return;
     const productWithExtras = customizeProduct(selectedProduct, activeExtras, productNote);
-    if (editingItemId) replaceItem(editingItemId, productWithExtras);
+    if (editingItemId) replaceItem(editingItemId, productWithExtras, editingQuantity);
     else addItem(productWithExtras);
     setEditingItemId(null);
     setSelectedProduct(null);
@@ -529,6 +563,7 @@ const handleSaveAndClose = async () => {
   };
 
   const handleOpenCheckout = () => {
+    if (catalogStale) { alert('El menú cambió. Actualízalo y revisa el pedido antes de cobrar.'); return; }
     if (loading || loadError || draftError || customerError || customerRestoring || closingShift.current || shiftSaved.current) return;
     if (checkoutReview || checkoutInFlight.current) {
       alert('Revisa la venta pendiente antes de iniciar otro cobro.');
@@ -570,16 +605,18 @@ const handleSaveAndClose = async () => {
 
         let review = existing;
         if (!review) {
+          if (catalogStale) throw new Error('El menú cambió. Cierra el cobro, actualiza y revisa el pedido.');
           if (!binding || draftError || customerRestoring || (activeCustomer?.id ?? null) !== customerId)
             throw new Error('Revisa la recuperación del borrador y su cliente antes de cobrar.');
           const orderTotal = getTotal();
           if (!registerId || !items.length || !Number.isFinite(orderTotal) || orderTotal <= 0 || isPaymentInsufficient) throw new Error('Revisa la orden, el turno y el importe recibido.');
           const cash = ['Efectivo','Mixto'].includes(paymentMethod);
           review = { startedAt: new Date().toISOString(), total: orderTotal, requestId: binding.requestId(),
+            ...(clipEnabled && paymentMethod==='Tarjeta' ? {provider:'clip' as const} : {}),
             payload: checkoutPayload(items, {
               register_id: registerId, expected_total: orderTotal, payment_method: paymentMethod.toLowerCase(),
               tender_mxn: cash ? parseAmount(amountReceivedMXN) : 0, tender_usd: cash ? parseAmount(amountReceivedUSD) : 0,
-              customer_id: customerId, order_type: orderType, order_note: orderNote,
+              customer_id: customerId, order_type: orderType, order_note: orderNote, ...(pagerNumber ? {pager_number:pagerNumber} : {}),
             }),
           };
           // Persist the exact identity and payload before the first request.
@@ -619,7 +656,7 @@ const handleSaveAndClose = async () => {
       try { needsReview = Boolean(checkoutKey && localStorage.getItem(checkoutKey)); }
       catch { /* Storage failure must not hide the original save error. */ }
       if (needsReview) setShowCheckoutModal(false);
-      alert((error instanceof Error ? errorMessage(error) : 'No se confirmó la venta.') + (needsReview ? '\nNo vuelvas a cobrar. Usa recuperar venta para consultar o completar la misma transacción.' : ''));
+      if (!(error instanceof ClipPaymentPending)) alert((error instanceof Error ? errorMessage(error) : 'No se confirmó la venta.') + (needsReview ? '\nNo vuelvas a cobrar. Usa recuperar venta para consultar o completar la misma transacción.' : ''));
     } finally {
       if (stillCurrent()) { checkoutInFlight.current = false; setIsProcessingCheckout(false); }
     }
@@ -678,6 +715,7 @@ const handleSaveAndClose = async () => {
   const totalReceivedCombinedMXN = parseAmount(amountReceivedMXN) + (parseAmount(amountReceivedUSD) * parseAmount(exchangeRate));
   const isPaymentInsufficient = (paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && totalReceivedCombinedMXN < getTotal();
 
+  const catalogNotice = (catalogStale || catalogCheckError) && <div role="status" className="relative z-10 flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950"><span>{catalogStale ? 'El menú cambió. Actualiza y revisa el pedido antes de cobrar.' : catalogCheckError} {(selectedProduct || showCheckoutModal) && 'Cierra la ventana actual para actualizar.'}{checkoutReview && 'Primero resuelve la venta pendiente.'}</span><button type="button" className="rounded-xl border bg-white px-4 py-2 font-semibold disabled:opacity-50" disabled={loading || !!selectedProduct || showCheckoutModal || !!checkoutReview || isProcessingCheckout || isClosingShift || savingExpense || openingShift} onClick={refreshCatalog}>Actualizar menú</button></div>;
   const printStatus = <PrintDispatch key={printCheckoutKey} checkoutKey={printCheckoutKey} latestOrderId={savedSale?.id} />;
   const RegisterView = appearance === 'workspace' ? WorkspaceRegister : PrototypeRegister;
   const CheckoutView = appearance === 'workspace' ? WorkspaceCheckout : PrototypeCheckout;
@@ -779,11 +817,11 @@ const handleSaveAndClose = async () => {
 
       {/* MODAL: CIERRE DE TURNO CON GASTOS Y ARQUEO */}
       {showCierre && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" aria-label={closeAction==='handoff'?'Entregar caja':'Cierre de caja'} className="bg-white rounded-[32px] w-full max-w-[950px] max-h-[calc(100dvh-24px)] overflow-y-auto shadow-2xl flex animate-in zoom-in-95 duration-200">
+        <WorkspaceDialog title="Cierre de caja" busy={isClosingShift} onClose={() => setShowCierre(false)} className="pos-closing-dialog">
+          <div className="pos-closing-main">
 
              {/* PANEL IZQUIERDO: RESUMEN Y MATEMÁTICA */}
-             <div className="w-1/3 bg-[#1d1d1f] p-8 text-white flex flex-col justify-between">
+             <div className="pos-closing-summary">
                 <div className="space-y-4">
                   <h2 className="text-2xl font-semibold tracking-tighter mb-4">Resumen del Turno</h2>
 
@@ -817,15 +855,28 @@ const handleSaveAndClose = async () => {
              </div>
 
              {/* PANEL DERECHO: GASTOS Y ARQUEO */}
-             <div className="flex-1 p-6 lg:p-8 flex flex-col justify-between max-h-[90vh]">
+             <div className="pos-closing-content">
+
+                <fieldset className="pos-closing-operation" disabled={isClosingShift}>
+                  <legend>¿Qué harás con la caja?</legend>
+                  <div className="pos-closing-options">
+                    <button type="button" aria-pressed={closeAction==='close'} onClick={() => { setCloseAction('close'); setHandoffTarget(''); setCountConfirmed(false); }}>Cerrar caja</button>
+                    <button type="button" aria-pressed={closeAction==='handoff'} onClick={() => { setCloseAction('handoff'); setCountConfirmed(false); }}>Entregar a otro cajero</button>
+                  </div>
+                </fieldset>
+                {closeAction==='handoff' && <fieldset className="pos-closing-recipients" disabled={isClosingShift}>
+                  <legend>Recibirá la caja</legend>
+                  <div className="pos-closing-options">{drawer?.cashiers.map(c => <button type="button" key={c.id} aria-pressed={handoffTarget===c.id} onClick={() => { setHandoffTarget(c.id); setCountConfirmed(false); }}>{c.name}</button>)}</div>
+                  <p>{drawer?.cashiers.length ? 'El cajero elegido iniciará sesión y confirmará el efectivo recibido.' : 'No hay otro cajero disponible para recibir la caja.'}</p>
+                </fieldset>}
 
                 {/* SECCIÓN GASTOS */}
                 <div className="bg-[#f5f5f7] p-4 rounded-[20px] border border-slate-100 mb-4">
                   <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2.5">Registrar Gasto (Retiro)</label>
                   <div className="flex gap-2">
-                    <input type="text" placeholder="Ej. Garrafón de agua..." className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-semibold outline-none focus:border-[#0071e3]/30 transition-all" value={newExpense.desc} onChange={e => setNewExpense({...newExpense, desc: e.target.value})} />
-                    <input type="number" placeholder="$0.00" className="w-24 flex-shrink-0 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-semibold outline-none focus:border-[#0071e3]/30 text-right transition-all" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} />
-                    <button onClick={handleAddExpense} disabled={savingExpense || isClosingShift || !!expenseError} className="bg-[#1d1d1f] flex-shrink-0 text-white w-10 flex items-center justify-center rounded-lg hover:bg-slate-800 transition-colors"><Plus size={16}/></button>
+                    <input type="text" aria-label="Concepto del gasto" placeholder="Ej. Garrafón de agua..." disabled={isClosingShift} className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-semibold outline-none focus:border-[#0071e3]/30 transition-all" value={newExpense.desc} onChange={e => setNewExpense({...newExpense, desc: e.target.value})} />
+                    <input type="number" inputMode="decimal" aria-label="Importe del gasto" placeholder="$0.00" disabled={isClosingShift} className="w-24 flex-shrink-0 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-semibold outline-none focus:border-[#0071e3]/30 text-right transition-all" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} />
+                    <button aria-label="Registrar gasto" onClick={handleAddExpense} disabled={savingExpense || isClosingShift || !!expenseError} className="bg-[#1d1d1f] flex-shrink-0 text-white w-14 flex items-center justify-center rounded-lg hover:bg-slate-800 transition-colors"><Plus size={20}/></button>
                   </div>
 
                   {expenseError && <p role="alert" className="text-sm text-red-600 mt-2">{expenseError} <button className="underline" onClick={() => { setShowCierre(false); void fetchData(); }}>Reintentar conexión</button></p>}
@@ -836,7 +887,7 @@ const handleSaveAndClose = async () => {
                         <div key={i} className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-md border border-slate-200 shadow-sm">
                           <span className="text-[11px] font-semibold text-slate-600">{exp.desc}</span>
                           <span className="text-[11px] font-black text-red-500">-${exp.amount.toFixed(2)}</span>
-                          <button onClick={() => { void handleRemoveExpense(i); }} disabled={savingExpense || isClosingShift || !!expenseError} className="text-slate-300 hover:text-red-500 transition-colors ml-1"><X size={12}/></button>
+                          <button aria-label={`Quitar gasto: ${exp.desc}`} onClick={() => { void handleRemoveExpense(i); }} disabled={savingExpense || isClosingShift || !!expenseError} className="text-slate-500 hover:text-red-500 transition-colors ml-1"><X size={20}/></button>
                         </div>
                       ))}
                     </div>
@@ -852,11 +903,14 @@ const handleSaveAndClose = async () => {
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400 group-focus-within:text-[#0071e3] transition-colors">${den}</span>
                         <input
                           type="number"
+                          inputMode="numeric"
+                          aria-label={`Piezas de ${den} pesos al cierre`}
+                          disabled={isClosingShift}
                           min="0"
                           placeholder="0"
                           className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 pl-10 pr-3 text-right text-base font-black outline-none focus:border-[#0071e3]/30 transition-all shadow-sm"
                           value={breakdown[den] === 0 ? '' : breakdown[den]}
-                          onChange={(e) => setBreakdown({ ...breakdown, [den]: e.target.value === '' ? 0 : Number(e.target.value) })}
+                          onChange={(e) => { setBreakdown({ ...breakdown, [den]: e.target.value === '' ? 0 : Number(e.target.value) }); setCountConfirmed(false); }}
                         />
                       </div>
                     ))}
@@ -871,10 +925,13 @@ const handleSaveAndClose = async () => {
                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                         <input
                           type="number"
+                          inputMode="decimal"
+                          aria-label="Dólares finales"
+                          disabled={isClosingShift}
                           placeholder="0"
                           className="w-full bg-white border border-slate-200 focus:border-[#0071e3]/40 rounded-xl py-2 pl-9 pr-3 text-right text-sm font-black outline-none transition-all shadow-sm"
                           value={dollarsInBox}
-                          onChange={(e) => setDollarsInBox(e.target.value === '' ? '' : Number(e.target.value))}
+                          onChange={(e) => { setDollarsInBox(e.target.value === '' ? '' : Number(e.target.value)); setCountConfirmed(false); }}
                         />
                       </div>
                    </div>
@@ -890,10 +947,11 @@ const handleSaveAndClose = async () => {
                    </div>
                 </div>
 
-                <label className="block mb-3">Operación<select aria-label="Operación de cierre" disabled={isClosingShift} value={closeAction} onChange={e=>setCloseAction(e.target.value as 'close'|'handoff')} className="w-full border rounded p-3"><option value="close">Cerrar caja al terminar</option><option value="handoff">Entregar al siguiente cajero</option></select></label>
-                {closeAction==='handoff'&&<label className="block mb-3">Recibirá la caja<select aria-label="Cajero que recibe" disabled={isClosingShift} value={handoffTarget} onChange={e=>setHandoffTarget(e.target.value)} className="w-full border rounded p-3"><option value="">Selecciona otro cajero</option>{drawer?.cashiers.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select><span>Se guarda tu corte. El siguiente cajero debe iniciar sesión y confirmar el efectivo recibido.</span></label>}
-                <label className="flex gap-3 items-center mb-4"><input type="checkbox" checked={countConfirmed} disabled={isClosingShift} onChange={e=>setCountConfirmed(e.target.checked)}/>Terminé de contar todo el efectivo; confirmo el importe mostrado (también si es cero).</label>
-                <div className="flex gap-4">
+             </div>
+          </div>
+          <footer className="pos-closing-footer">
+                <label className="pos-closing-confirm"><input type="checkbox" checked={countConfirmed} disabled={isClosingShift} onChange={e=>setCountConfirmed(e.target.checked)}/><span>Terminé de contar. Confirmo <strong>${countedCash.toFixed(2)} MXN</strong>{countedCash===0 ? ' (caja en cero)' : ''}.</span></label>
+                <div className="pos-closing-actions">
                   <button disabled={isClosingShift} onClick={() => setShowCierre(false)} className="flex-1 bg-slate-100 text-slate-600 h-14 rounded-[20px] font-bold hover:bg-slate-200 transition-all disabled:opacity-50">
                     Volver a caja
                   </button>
@@ -901,20 +959,21 @@ const handleSaveAndClose = async () => {
                     <Printer size={20} /> {isClosingShift ? 'Guardando…' : closeAction==='handoff' ? 'Guardar corte y entregar caja' : 'Guardar e Imprimir Z'}
                   </button>
                 </div>
-             </div>
-          </div>
-        </div>
+          </footer>
+        </WorkspaceDialog>
       )}
 
       {appearance!=='owner' ? <RegisterView products={products} items={items} total={getTotal()} search={searchTerm} onSearch={setSearchTerm}
         favoriteProductIds={favoriteProductIds} favoritesError={favoritesError} favoritesLoading={favoritesLoading} onRetryFavorites={()=>{setFavoritesLoading(true);setFavoritesError('');setFavoritesAttempt(value=>value+1);}}
         recentTicketsContent={<RecentTickets key={drawerActor} onReprint={ticket=>void reprintHistoricalTicket(ticket)} disabled={isProcessingCheckout || isClosingShift}/>}
         userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout}
+        {...(appearance === 'workspace' ? { catalogLoading: loading } : {})}
         onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={updateQuantity} onRemove={removeItem} onClear={handleClearOrder} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
         onHandoff={()=>void handleOpenCierre('handoff')}
         customerSearchError={customerSearchError} customerSearching={customerSearching} onRetryCustomerSearch={()=>void handleCustomerSearchInput(customerSearch)} customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
         onNewCustomer={handleOpenCustomerModal} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
         orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
+        {catalogNotice}
         {!showPostSaleModal && printStatus}
         {loadError && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
@@ -950,6 +1009,7 @@ const handleSaveAndClose = async () => {
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p className="font-bold">Venta pendiente de revisión{checkoutReview.ticketNumber != null ? ` · Folio ${checkoutReview.ticketNumber}` : ''}</p>
             <p>No vuelvas a cobrar. Importe: ${checkoutReview.total.toFixed(2)} · Inicio: {checkoutReview.startedAt}</p>
+            {checkoutReview.provider==='clip' && checkoutReview.requestId && <ClipPaymentStatus requestId={checkoutReview.requestId} onReady={() => void processCheckout()}/>}
             <div className="mt-2 flex gap-4">
               <a href="/admin/ventas" target="_blank" rel="noopener noreferrer" className="font-semibold underline">Revisar historial</a>
               {checkoutReview.requestId && checkoutReview.payload && <button className="font-semibold underline" onClick={processCheckout}>Recuperar la misma venta</button>}
@@ -970,6 +1030,7 @@ const handleSaveAndClose = async () => {
         </>}/> : <>
       {/* POS PRINCIPAL */}
       <div className="flex-1 flex flex-col p-8 overflow-hidden">
+        {catalogNotice}
         {!showPostSaleModal && printStatus}
         {loadError && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
@@ -1201,12 +1262,13 @@ const handleSaveAndClose = async () => {
 
       </>}
       {showCheckoutModal&&appearance!=='owner'&&<CheckoutView total={getTotal()} method={paymentMethod} mxn={amountReceivedMXN} usd={amountReceivedUSD} exchangeRate={parseAmount(exchangeRate)}
+        pagerNumber={pagerNumber} onPagerNumber={setPagerNumber} clipEnabled={clipEnabled}
         orderType={orderType} note={orderNote} busy={isProcessingCheckout} insufficient={isPaymentInsufficient} onMethod={method=>{setPaymentMethod(method);setAmountReceivedMXN('');setAmountReceivedUSD('');}}
         onMXN={setAmountReceivedMXN} onUSD={setAmountReceivedUSD} onOrderType={setOrderType} onNote={setOrderNote} onConfirm={()=>void processCheckout()} onClose={()=>setShowCheckoutModal(false)}/>}
       {selectedProduct&&dynamicSteps.length>0&&appearance!=='owner'&&<CustomizationView product={selectedProduct} steps={dynamicSteps} index={customizationStep} extras={activeExtras} dbExtras={dbExtras}
         note={productNote} onNote={setProductNote} onStep={setCustomizationStep}
-        quantity={editingItemId?items.find(item=>item.id===editingItemId)?.quantity:undefined}
-        onQuantity={quantity=>{if(editingItemId)updateQuantity(editingItemId,quantity);}}
+        quantity={editingItemId?editingQuantity:undefined}
+        onQuantity={setEditingQuantity}
         onRemove={editingItemId?()=>{removeItem(editingItemId);setSelectedProduct(null);setEditingItemId(null);setActiveExtras([]);setProductNote('');}:undefined}
         onOption={(optName:string,stepIndex:number=customizationStep)=>{
           const step=dynamicSteps[stepIndex],matches=(extra:CartExtra)=>extra.name===optName&&(!extra.phase||extra.phase===step.id);
@@ -1237,6 +1299,7 @@ const handleSaveAndClose = async () => {
              {/* 🟢 PASO 1: TIPO DE ORDEN Y NOTAS */}
              {checkoutStep === 1 && (
                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                 <label>Control de entrega (1–30)<input aria-label="Control de entrega" type="number" min="1" max="30" inputMode="numeric" value={pagerNumber??''} onChange={e=>setPagerNumber(e.target.value===''?null:Number(e.target.value))}/></label>
                  <div className="mb-6 space-y-6">
                     <div>
                       <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-3">Tipo de Orden</label>
@@ -1338,6 +1401,7 @@ const handleSaveAndClose = async () => {
 
       {showPostSaleModal && appearance==='workspace' && <WorkspaceDialog title="Venta guardada" onClose={handleNextOrder} className="workspace-sale">
         <div className="workspace-dialog-content"><p className="workspace-caption">Folio #{savedSale?.ticket_number ?? lastOrderId}</p><p className="workspace-sale-total">${(savedSale?.total ?? getTotal()).toFixed(2)} MXN</p>
+          {savedSale?.pager_number != null && <p className="font-bold">Entregar control #{savedSale.pager_number}</p>}
           <p>Cliente → USB · Barra → Bluetooth. La venta no se vuelve a cobrar al reintentar impresión.</p>
           {printStatus}
         </div><footer><button className="workspace-primary" onClick={handleNextOrder}>Nueva venta</button></footer>

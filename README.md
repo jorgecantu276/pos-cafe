@@ -1,64 +1,93 @@
 # Cariñito Mío POS
 
-Next.js 16.4.3, React 19, Supabase, TypeScript, Tailwind and Zustand. Build and test on this development Windows PC; distribute reviewed releases to the café PC through GitHub. The default is an iOS-inspired light touch workspace with plain Spanish copy, visible cashier identity and the original catalog-left/order-right workflow. Retain the owner and Juniper layouts with `POS_REGISTER_UI=owner` or `POS_REGISTER_UI=prototype`. See [workspace design and rollback](docs/workspace.md).
+[![Windows verification](https://github.com/jorgecantu276/pos-cafe/actions/workflows/windows-verification.yml/badge.svg?branch=main)](https://github.com/jorgecantu276/pos-cafe/actions/workflows/windows-verification.yml)
 
-## Development
+Punto de venta para una cafetería con una sola caja física. Next.js 16.4.3, React 19, TypeScript, Supabase y Zustand. La interfaz touch mantiene el menú a la izquierda, la orden a la derecha y el cobro visible, con textos en español.
 
-Use Node.js 24.22.2 on Windows x64 for the verified candidate, then `npm ci`. The cafe PC reports an i5-8250U, 7.92 GB RAM and Windows 11 x64; its existing Node 24.15.0 embeds patched SQLite 3.51.3 but differs from our tested pin. App performance and display scaling still need measurement. The replacement is not installed there yet; the old POS remains separate.
+## Estado de integración — 2 de noviembre de 2026
 
-Keep `.env.local` untracked with `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Account creation also requires the server-only `SUPABASE_SERVICE_ROLE_KEY`. Never expose it through a `NEXT_PUBLIC_` variable. Use a separate Supabase project and synthetic data for development writes.
+| Área | Estado |
+| --- | --- |
+| Ventas, Caja, Catálogo y Clientes | Conectados al backend; pruebas con datos sintéticos y Auth/PostgREST local. |
+| Backend del cliente | Las 15 migraciones retenidas, incluidas 013–016, están aplicadas. |
+| Receptor CLIP | `clip-webhook` v1 desplegado y verificado. Recibir un aviso no crea ni aprueba un cobro. |
+| Cobro automático CLIP | **Apagado. Token como placeholder.** Pendiente de habilitación de PinPad, token real y aceptación con la terminal. |
+| Controles de entrega 1–30 | Selección manual, guardado con la venta y número en ticket del cliente y etiquetas del barista. |
+| App en la PC del café | Instalación/configuración de esta versión y aceptación operativa pendientes. Publicar código en GitHub no instala la app. |
+| Inventario | Fuera de esta versión; el desarrollo separado está en [PR #2](https://github.com/jorgecantu276/pos-cafe/pull/2). |
 
-`npm run dev` starts the app at http://127.0.0.1:3000. This is a cloud-dependent POS; installation as a PWA does not provide offline sales. New screens require the versioned database migration. If RPCs/columns are absent, financial operations fail closed; there is no fallback to unsafe legacy writes. Do not apply the migration to production simply to make a preview work.
+La [revisión de integración y preparación](docs/integration-readiness.md) documenta conexiones UI/backend, evidencias, pendientes y condiciones para instalar o activar cada función. Pasar pruebas locales no equivale a aceptar toda la operación del café.
 
-## Verification
+## Qué incluye
 
-- `npm test`: synthetic cart, actual POS component/cashier flow, async loading/abort, service-worker cache retirement, event-handler, user-route, recovery, cancellation and printing regressions. No live business writes or physical print jobs.
-- `npm run test:db`: starts isolated PostgreSQL 17.6 on loopback port 55439, reconstructs the captured schema with minimal Auth-role fixtures, reproduces the original anonymous escalation, applies the migration, and checks authorization, rollback, authoritative pricing, idempotency, concurrent sales/closing races, and recovery. Needs that port free. Synthetic clusters are created in a new per-user OS temporary directory and stopped in `finally`; no manually created sibling folder is required. Windows uses `pg_ctl` for restricted-token startup in elevated runners and retains bounded native startup diagnostics.
-- `npm run typecheck`: TypeScript.
-- `npm run test:recovery`: encrypted local backup, fresh-cluster restore, atomic restore failure and compatible production-app rollback after a synthetic sale. Requires local staging; see [recovery drill](supabase/staging/RECOVERY.md).
-- `npm run lint`: full rules, with zero warnings permitted. No rule suppression for legacy pages.
-- `npm run build:verify`: production webpack build in ignored `.build-check-*`, separate from active dev output. Local environment files are copied to ignored scratch; never share that directory. Dependencies are linked locally, and scratch is retained for inspection.
-- `node scripts/smoke-production.mjs http://127.0.0.1:3100`: against an isolated production server, checks login redirects, unauthorized API rejection, manifest and uncached service-worker delivery.
+- **Caja:** apertura, gastos, tipo de cambio guardado, arqueo, corte y entrega a otro cajero. El entrante inicia sesión y confirma el efectivo recibido. Solo puede existir un turno abierto.
+- **Ventas:** cantidades, extras y notas; efectivo MXN/USD, tarjeta y otro medio; historial, cancelación administrativa y reimpresión. Cancelar una venta **no devuelve dinero** en CLIP ni en otra terminal.
+- **Catálogo:** productos, extras y favoritos; búsqueda/filtros; guardados recuperables y desactivación que conserva el historial. Caja detecta cambios de menú y exige revisar precios antes de un nuevo cobro.
+- **Clientes:** alta por nombre/teléfono, corrección, compras y puntos según la regla existente. El canje sigue pendiente de la política del negocio.
+- **Configuración:** equipo, respaldos cifrados, impresión y revisión de pagos CLIP pendientes.
 
-The legacy PWA plugin, its duplicate older Next.js dependency, and the unused Supabase auth helper were removed. The replacement worker retains `/sw.js` so installed clients can update, retires known legacy caches, and does not intercept network requests. It provides no offline sale queue. Verify updates on an existing installed café client in staging.
+El borrador conserva cantidades, extras, notas, cliente, tipo de pedido y control. Editar un artículo aplica sus cambios al guardar. Una identidad por venta permite recuperar la misma solicitud después de una interrupción. La administración tiene cuatro áreas principales; los antiguos accesos duplicados/cupones redirigen a las acciones vigentes. Ver [interfaz y navegación](docs/workspace.md).
 
-The lockfile installs without audit findings in both full and runtime-only audits at verification time. Re-run `npm audit` and `npm audit --omit=dev` before a release; do not use forced downgrades to satisfy an audit.
+## CLIP y controles de entrega
 
-The PostgreSQL tests prove SQL behavior, not complete Supabase Auth/PostgREST deployment behavior. `npm run staging:start` and `npm run staging:test` exercise real local Auth/PostgREST and the Next.js cookie/API boundary with synthetic data. See [local staging instructions](supabase/staging/README.md). `npm run staging:app` runs the default workspace UI against that local stack on port 3101 without changing `.env.local`. `npm run test:lifecycle` is a browser-assisted drill for production startup, lost-response recovery after process restart and replacement of an installed legacy-worker fixture; see [procedure and limitations](supabase/staging/LIFECYCLE.md). Hosted configuration, Windows boot/watchdog setup and the exact installed café PWA remain separate acceptance checks.
+La terminal identificada es una **Clip Total 3, modelo K1352**. Tarjeta funciona inicialmente de forma manual: cobrar en la terminal y confirmar su aprobación en el POS.
 
-## Checkout and closing recovery
+La integración automática guarda una cotización validada por el servidor antes de enviar un único intento a CLIP. Verifica el resultado mediante consulta autenticada y completa una sola venta. Un timeout conserva el pago original y bloquea otro cobro/cierre hasta resolverlo. Los avisos recibidos son pistas que deben verificarse; un webhook por sí solo nunca aprueba la venta.
 
-Unpaid carts now survive refresh and app-process restart in the same browser profile. Drafts are scoped to the authenticated cashier and open shift; quantities, extras, preparation/order notes, order type and customer selection restore against the current catalog. Storage errors and conflicting tabs block new payment, and completed sales retire their unpaid draft before clearing recovery protection. See [draft behavior and limits](docs/cart-drafts.md).
+**Mantener `POS_CLIP_ENABLED=0` / `ClipEnabled: false`.** El token real pertenece a un archivo privado fuera de la versión instalada; no va en Git ni en variables `NEXT_PUBLIC_`. Los ejemplos solo contienen un placeholder. Ver [configuración, despliegue y recuperación](docs/clip-payments.md) y [ejemplo de entorno](config/clip.env.example).
 
-The browser persists a per-user checkout UUID and exact request before calling `pos_checkout`. PostgreSQL derives the cashier, checks staff status, owned open shift, prices, extras, quantities and tender; it commits the complete sale and customer changes atomically. Duplicate requests return the same receipt; different payloads cannot reuse its identity. Receipts save product/modifier/preparation and tender snapshots.
+El cajero elige un control **1–30** o **Sin control**. Su número se conserva al recargar, se guarda en el comprobante y aparece en el ticket del cliente y cada etiqueta/página del barista. La siguiente orden empieza sin control. El barista activa el localizador desde su base física; el POS no se comunica por radio con esa base.
 
-A lost response retains that request. `Recuperar la misma venta` retries the same transaction, not a second charge. `Descartar solicitud sin venta` succeeds only after the server proves no sale exists under its serialized key and records an abandonment tombstone. Delayed requests with that key then fail. A committed sale cannot be abandoned. Recovery of an already cancelled sale clears the pending marker without claiming another sale. Legacy uncertain markers still require responsible-person reconciliation.
+## Impresión y recuperación
 
-The café has one POS/drawer: only one open shift is permitted. Cashier handoff records the outgoing count, then requires the named incoming cashier to sign in and confirm receipt. The owner saves the USD/MXN rate once; cashiers do not re-enter it per shift. See [one drawer, rates and quick loyalty signup](docs/single-drawer.md). Shift opening is persistent and owned. Expense additions/deletions now save into a durable, revision-checked server journal with an audit trail. Logout does not discard them. Closing preview and final closing use one server summary over all completed sales, without API row-cap truncation. Closing rejects a changed preview and returns the same stored report on retries; uncertain expense/close requests recover after refresh/login. Printing uses the confirmed report. This requires the second versioned migration; see [expense and closing contract](docs/shift-expenses.md).
+Las ventas confirmadas generan dos trabajos independientes: cliente a **POS80 Printer** por USB y etiquetas a **Y813BT Sticker** por Bluetooth. El servidor usa el comprobante guardado y un diario SQLite por copia. No reenvía automáticamente una entrega incierta a Windows. Reimpresiones históricas y cortes usan el diálogo de Windows.
 
-Cancellation is administrator-only. Physical refunds remain manual. For new sales it reverses recorded loyalty awards and spending once. Historical rows without those snapshots receive no guessed reversal. Closed-shift cancellation requires a separate reconciliation workflow.
+Los recibos nuevos conservan logo, importes, QR de Instagram y datos del emisor; omiten el nombre individual y las líneas de CFDI retiradas. Las etiquetas nuevas usan el diseño negro `reference-v2`. Los documentos y diarios anteriores no se reescriben. La aceptación física anterior y las comprobaciones pendientes se distinguen en el [registro de impresoras](docs/printer-acceptance-2026-10-31.md).
 
-## Customer and barista printing
+Ver [contrato del comprobante](docs/receipt-data-contract.md), [borradores](docs/cart-drafts.md), [caja única](docs/single-drawer.md) y [gastos/cortes](docs/shift-expenses.md).
 
-Confirmed sales save a cashier-scoped print intent and automatically dispatch two independent jobs: customer receipt to `POS80 Printer` (USB CP001) and preparation labels to `Y813BT Sticker` (Bluetooth COM3). The server reads the immutable receipt snapshot and keeps a durable per-copy SQLite journal. See [configuration, recovery and physical testing](docs/printing.md). Physical printing is opt-in and remains disabled until local configuration is provided. Historical reprints and closing reports retain the Windows print dialog.
+## Desarrollo
 
-Customer tickets use Mexican receipt references with a separate local issuer profile. The client's supplied constancia has been transcribed into local configuration outside versioned source; examples and fixtures retain fictitious details. Set server-only `POS_RECEIPT_ISSUER_FILE` for real customer dispatch. The isolated hardware kit accepts the same profile and always prints a marked test. Barista labels prioritize name, drink and modifiers on the selected Hybsk 57.15 × 31.75 mm stock. CFDI stamping and global invoicing are separate from ticket printing.
+Usar **Node.js 24.22.2 x64** y Windows para preparar el paquete verificado. Instalar con `npm ci` y ejecutar `npm run dev`.
 
-- USB `POS80 Printer`, driver POS80 5.1.1.43, CP001, VID4B43/PID3830, 203 dpi: dispatch explicitly selects the advertised 72 × 210 mm form instead of inheriting the observed 3276 mm default. Actual roll and physical output remain unverified.
-- Bluetooth `Y813BT Sticker`, driver Y813BT Label 1.1.3.1, device Y813BT-E08D, SPP COM3, 203 dpi: discovered paired but disconnected. Confirm loaded stock; each cup has its own section and overflow continues on identified labels. The job selects the confirmed form explicitly.
-- Retries never charge or resubmit an accepted copy. Uncertain spool outcomes require queue/paper reconciliation. Windows acceptance is not proof of physical output.
-- `npm run test:printing` builds an isolated production app with its own loopback Auth/PostgREST fixtures and mock printers, exercises parallel submissions/retries/restarts/cancellation and never reads live café data or sends physical jobs. Windows CI also supplies six actual disposable-SQL receipts to check every financial/preparation field through the production endpoints. See [receipt data sources and client-target verification](docs/receipt-data-contract.md).
+Mantener `.env.local` fuera de Git:
 
-The café subsequently accepted the physical receipt/label tests and reported the remote dual reference-label test worked. Current new receipts omit the individual issuer name and CFDI lines; new labels use the black-only reference-v2 design on colored stock. Saved documents and the existing journal retain their original identities and submission guards. Earlier device-discovery uncertainty above is historical; see [the dated acceptance record](docs/printer-acceptance-2026-10-31.md).
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_TEST_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_TEST_PUBLIC_KEY
+SUPABASE_SERVICE_ROLE_KEY=YOUR_TEST_SERVER_KEY
+POS_CLIP_ENABLED=0
+POS_CLIP_TOKEN=REPLACE_WITH_CLIP_BASIC_TOKEN
+```
 
-## Release status
+La clave de servicio es solo del servidor: cuentas, respaldos y CLIP cuando se active. Usar datos sintéticos y un proyecto separado para desarrollo. El `.env.local` histórico corresponde a un backend legado distinto del cliente; **no migrarlo para hacer funcionar una vista previa**. Construir releases con el destino privado del cliente verificado.
 
-The October 31 hardware-test candidate and acceptance steps are recorded in [the test plan](docs/test-plan-2026-10-31.md). Windows CI verifies clean installation, lint, TypeScript, unit/UI/layout tests, disposable PostgreSQL, dependency audits, an isolated production build and production printer recovery using synthetic loopback fixtures.
+El POS requiere conexión al backend. La PWA no habilita ventas offline: el service worker retira cachés antiguos y no intercepta solicitudes ni guarda ventas para enviarlas después.
 
-See `supabase/README.md` and [Windows deployment](docs/windows-deployment.md). The client owns its configured Supabase project. Its menu and initial 18 MXN/USD rate are set; the matching Windows package still requires café-PC installation and physical acceptance. The owner authorized merging the full app after the employee fixes pass.
+## Verificación
 
-November 2 integration verified the linked client backend and existing private release target agree: all 11 retained migrations and receipt columns are present, and deployed checkout SQL matches the repository. The historical development `.env.local` points to a separate legacy project; its missing columns are not a missing migration in the client's database. Build releases with the explicit private client target and preserve the old POS, private runtime configuration and current print journal. Read-only verification made no business changes.
+| Comando | Cobertura |
+| --- | --- |
+| `npm test` | Carrito, UI real, permisos, recuperación, CLIP simulado, controles y diseño Windows sin papel. |
+| `npm run test:db` | PostgreSQL 17.6 aislado: precios, transacciones, concurrencia, puntos, cortes, CLIP/pagers y permisos. Puerto 55439. |
+| `npm run test:admin-http` | Auth/PostgREST y app de producción: cuatro áreas, cookies por rol, control guardado y CLIP apagado. API/DB 55481/55482 y app 3111. Requiere Docker. |
+| `npm run test:printing` | Endpoints de impresión/reimpresión y diario con backend/impresoras simulados; app 3112. |
+| `npm run typecheck` / `npm run lint` | TypeScript y reglas sin advertencias. |
+| `npm run build:verify` | Compilación de producción aislada de la vista previa en ejecución. |
+| `npm audit` / `npm audit --omit=dev` | Dependencias completas y de ejecución. |
 
-Keep the app and database migration in one planned release. Build here, verify a compatible Windows runtime artifact and actual café Node/runtime, then sync the reviewed source/migrations and release artifact. Do not require the café PC to become the build machine. Local Auth/PostgREST acceptance, encrypted backup/cold-restore/compatible-app rollback, production process restart and legacy-worker fixture upgrade drills pass. Hosted restore, off-device backup operations, Windows boot/watchdog setup and physical acceptance remain release work. Do not roll back to the old unrestricted checkout after tightening the database.
+La integración pasó localmente **193 pruebas y 2,394 comprobaciones de PostgreSQL**, además del paquete Windows trasladado a otra carpeta. GitHub Actions repite los checks Windows y el ensayo Auth/PostgREST en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
 
-Touch workspace, sales and shift controls, dashboard metrics and reporting pagination/aggregates are implemented. Inventory, supplies, recipes, costing and the CSV importer were removed at the user's explicit request; checkout never checks/deducts quantities. See [report contracts and limits](docs/reporting.md). Promotions and general settings persistence remain incomplete. Staff password edits, phone corrections, manager drawer recovery, cross-cashier print recovery and saved closing-slip reprints are implemented. Loyalty redemption awaits the owner's selected rule. Café-PC deployment and operational acceptance remain outstanding. Passing local verification is not full operational acceptance.
+Para enlazar los seis comprobantes SQL con la prueba HTTP de impresión, usar la misma ruta temporal en `POS_RECEIPT_CONTRACT_EVIDENCE` para `test:db` y `test:printing`. CI ya lo hace. Las pruebas no deben tocar ventas del negocio, cobrar tarjetas ni enviar papel.
+
+Más procedimientos: [staging](supabase/staging/README.md), [restauración/rollback](supabase/staging/RECOVERY.md) y [reinicio/PWA](supabase/staging/LIFECYCLE.md).
+
+## Publicación e instalación
+
+La PC de desarrollo prepara el paquete; la del café recibe una versión revisada desde GitHub. El paquete incluye Node, servidor, assets, migraciones y recuperación. El launcher valida el backend, mantiene una única instancia y lee la configuración privada fuera de la carpeta de versión.
+
+Las migraciones 013–016 y el receptor CLIP ya están desplegados. Un respaldo cifrado previo y las huellas de las 28 tablas existentes confirmaron datos conservados. **No reinstalar estas migraciones ni activar CLIP para probar el despliegue.**
+
+La instalación debe conservar el POS anterior, configuración privada, respaldos y diario de impresión. El inventario no participa en ventas ni descuenta existencias en esta versión. Integrar su rama y preparar su activación requiere otro cambio revisado cuando el negocio entregue sus datos. Los pendientes de UI están declarados en la revisión de preparación.
+
+Ver [contrato de base de datos](supabase/README.md), [instalación Windows](docs/windows-deployment.md), [respaldos](docs/business-backups.md) y [revisión de preparación](docs/integration-readiness.md).

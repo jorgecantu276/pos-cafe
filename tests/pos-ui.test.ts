@@ -1,3 +1,5 @@
+import ClipPaymentStatus from '../app/register/ClipPaymentStatus';
+import * as catalogManagement from '../lib/catalog-management';
 import * as drawer from '../lib/drawer';
 import DrawerGate from '../app/register/DrawerGate';
 import * as deadline from '../lib/request-deadline';
@@ -27,7 +29,7 @@ import * as shiftState from '../lib/shift-state';
 import PrototypeRegister, {PrototypeCheckout,PrototypeCustomization} from '../app/register/PrototypeRegister';
 import WorkspaceRegister, {WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog} from '../app/register/WorkspaceRegister';
 
-for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['workspace','cashier'],['workspace','admin']] as const) test(`the actual ${appearance} ${role} POS preserves recovery and automatically dispatches both synthetic copies`, async () => {
+for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['prototype','cashier',false],['workspace','cashier',false],['workspace','admin',false],['workspace','admin',true]] as const) test(`the actual ${appearance} ${role} POS ${clipEnabled?'with CLIP ':''}preserves recovery and automatically dispatches both synthetic copies`, async () => {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://127.0.0.1' });
   Object.defineProperty(dom.window.navigator,'locks',{value:{request:async (_key:string,_options:unknown,action:(lock:object)=>Promise<unknown>)=>action({})}});
   const saved = new Map<string, PropertyDescriptor | undefined>();
@@ -38,6 +40,13 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     navigator: dom.window.navigator, localStorage: dom.window.localStorage,
     alert: (message: string) => alerts.push(message), IS_REACT_ACT_ENVIRONMENT: true,
     fetch: async (url:string, options:RequestInit) => {
+      if(url.startsWith('/api/payments/clip?')) return Response.json({error:'No encontrado'},{status:404});
+      if(url==='/api/payments/clip') {
+        assert.equal(clipEnabled,true);assert.equal(options.method,'POST');const body=JSON.parse(options.body as string);
+        assert.equal(body.payload.payment_method,'tarjeta');
+        const result=await client.rpc('pos_checkout',{p_payload:body.payload});
+        return Response.json({state:'completed',requestId:body.requestId,order:result.data});
+      }
       assert.equal(url, '/api/printing');
       if(options.method==='POST') {
         const body=JSON.parse(options.body as string);assert.equal(body.orderId,'fixture-order');dispatches.push(body.orderId);
@@ -75,14 +84,14 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     },
     rpc: (name: string, args: { p_payload: checkout.CheckoutPayload }) => {
       if(name==='get_register_shortcuts'){favoriteReads++;const result=Promise.resolve(favoriteReads===1?{error:{message:'Synthetic favorites connection failure'},data:null}:{error:null,data:{product_ids:[fixtureProduct.id],revision:1}});return Object.assign(result,{abortSignal:()=>result});}
-      if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:authenticatedUser,cashier_name:'Prueba'},handoff:null,cashiers:[]}});return Object.assign(result,{abortSignal:()=>result});}
+      if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:authenticatedUser,cashier_name:'Prueba'},handoff:null,cashiers:role==='admin'?[{id:'next-cashier',name:'Ana'},{id:'other-cashier',name:'Luis'}]:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_shift_summary') {
         const result=Promise.resolve({error:null,data:{register_id:'local-shift',status:'open',opened_at:'2026-10-27T12:00:00Z',
           starting_cash:100,exchange_rate:20,total_sales:0,cash_sales:0,expected_cash:100,expenses:[],expenses_revision:0,payments:{}}});
         return Object.assign(result,{abortSignal:()=>result});
       }
       assert.equal(name, 'pos_checkout'); submitted = args.p_payload;
-      return { error: null, data: { id: 'fixture-order', ticket_number: 1234, status: 'completed', total: 80,
+      return { error: null, data: { id: 'fixture-order', ticket_number: 1234, status: 'completed', total: fixtureProduct.price,
         items: [{ id: 'fixture-line', quantity: 1, product: { ...fixtureProduct, category: 'Bebidas', image_url: undefined } }],
         customer_name: 'Invitado', created_at: '2026-10-27T12:10:00Z', order_type: 'En Local', order_note: '',
         payment_method: 'tarjeta', tender_mxn: 0, tender_usd: 0, exchange_rate: 20, change_mxn: 0 } };
@@ -97,8 +106,9 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
   const source = readFileSync(new URL('../app/register/Register.tsx', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020,
     module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
-  const exports: { default?: ComponentType<{appearance:'owner'|'prototype'|'workspace'}> } = {};
-  imports['@/lib/register-shortcuts'] = shortcuts;
+  const exports: { default?: ComponentType<{appearance:'owner'|'prototype'|'workspace';clipEnabled?:boolean}> } = {};
+  imports['@/lib/register-shortcuts'] = shortcuts; imports['@/lib/catalog-management'] = catalogManagement;
+  imports['./ClipPaymentStatus'] = { default: ClipPaymentStatus, __esModule: true };
   imports['./RecentTickets'] = { default: RecentTickets, __esModule: true };
   new Function('require', 'exports', compiled)((name: string) => name === '@/components/ProductPhoto' ? { default: ProductPhoto, __esModule: true } : imports[name] ?? nodeRequire(name), exports);
   const button = (text: string) => {
@@ -107,7 +117,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
   };
   const click = async (element: Element) => { await act(async () => element.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))); };
   try {
-    await act(async () => root.render(createElement(exports.default!,{appearance})));
+    await act(async () => root.render(createElement(exports.default!,{appearance,clipEnabled})));
     assert.equal(button(appearance==='owner'?'Pagar Ahora':'Cobrar').disabled, true);
     await act(async () => { release(); });
     assert.equal(dom.window.document.querySelector('[role="alert"]'), null);
@@ -133,13 +143,30 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
       assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user')), cartBeforeFavorites);
       assert.equal(screen.querySelectorAll('.workspace-favorites-group .workspace-product').length, 1);
       assert.doesNotMatch(screen.textContent!, /No se pudieron cargar los favoritos/);
-      assert.equal(screen.querySelector('.workspace-categories'), null);
+      assert.ok(screen.querySelector('[aria-label="Categorías del menú"]'));
       assert.equal(screen.querySelector('[aria-label="Aumentar cantidad"]'), null);
       await click(button('Editar Cappuccino'));
+      const draftBeforeEdit = dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user'));
       await click(button('Aumentar cantidad'));
+      await click(button('Nota de preparación'));
+      await click(button('a'));
+      assert.equal(cart.useCartStore.getState().getTotal(), 80);
+      assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user')), draftBeforeEdit);
+      await click(button('Cerrar Cappuccino'));
+      assert.equal(cart.useCartStore.getState().getTotal(), 80);
+      assert.equal(cart.useCartStore.getState().items[0].product.note ?? '', '');
+      await click(button('Editar Cappuccino'));
+      await click(button('Aumentar cantidad'));
+      await click(button('Nota de preparación'));
+      await click(button('a'));
+      await click(button('Guardar cambios'));
       assert.equal(cart.useCartStore.getState().getTotal(), 160);
+      assert.equal(cart.useCartStore.getState().items[0].product.note, 'a');
+      const savedEdit = JSON.parse(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user'))!);
+      assert.notEqual(JSON.stringify(savedEdit), draftBeforeEdit);
+      await click(button('Editar Cappuccino'));
       await click(button('Reducir cantidad'));
-      await click(button('Listo'));
+      await click(button('Guardar cambios'));
       assert.equal(cart.useCartStore.getState().getTotal(), 80);
       await click(button('Editar Cappuccino'));
       await click(button('Quitar'));
@@ -156,7 +183,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     await act(async () => root.unmount());
     assert.equal(cart.useCartStore.getState().items.length, 0);
     root = createRoot(dom.window.document.getElementById('root')!);
-    await act(async () => root.render(createElement(exports.default!,{appearance})));
+    await act(async () => root.render(createElement(exports.default!,{appearance,clipEnabled})));
     screen = dom.window.document.getElementById('root')!.firstElementChild!;
     assert.equal(cart.useCartStore.getState().getTotal(), 80);
     assert.equal(cart.useCartStore.getState().orderNote, 'Entrega en puerta');
@@ -168,19 +195,41 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user')),beforeSwitch);
     authenticatedUser='fixture-user';
     await act(async()=>root.unmount()); root=createRoot(dom.window.document.getElementById('root')!);
-    await act(async()=>root.render(createElement(exports.default!,{appearance})));
+    await act(async()=>root.render(createElement(exports.default!,{appearance,clipEnabled})));
     screen=dom.window.document.getElementById('root')!.firstElementChild!;
     assert.equal(cart.useCartStore.getState().getTotal(),80);
     assert.equal(Boolean(submitted),false, 'Restoring a draft must never submit a payment');
+    let expectedTotal=80;
+    if (appearance==='workspace') {
+      const unchangedDraft=dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user'));
+      await click(button('Editar Cappuccino'));
+      fixtureProduct.price=85;
+      await act(async()=>{dom.window.dispatchEvent(new dom.window.Event('focus'));});
+      assert.match(screen.textContent!,/El menú cambió/);
+      assert.equal(button('Actualizar menú').disabled,true,'Catalog replacement waits for the open editor');
+      assert.equal(cart.useCartStore.getState().getTotal(),80);
+      assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user')),unchangedDraft);
+      await click(button('Cerrar Cappuccino'));
+      await click(button('Cobrar'));
+      assert.equal(screen.querySelector('dialog[aria-label="Cobrar"]'),null,'Known changed catalog cannot open a new checkout');
+      await click(button('Actualizar menú'));
+      expectedTotal=85;
+      assert.equal(cart.useCartStore.getState().getTotal(),85);
+      assert.equal(cart.useCartStore.getState().customerId,'local-member');
+      assert.equal(cart.useCartStore.getState().orderNote,'Entrega en puerta');
+      assert.equal(cart.useCartStore.getState().orderType,'Para Llevar');
+      assert.doesNotMatch(screen.textContent!,/El menú cambió/);
+      assert.ok(alerts.some(message=>/precios del borrador/.test(message))); alerts.length=0;
+    }
     if (process.env.POS_UI_PREVIEW) writeFileSync(process.env.POS_UI_PREVIEW, screen.outerHTML);
     await click(button(appearance==='owner'?'Pagar Ahora':'Cobrar'));
     if(appearance==='owner'){assert.match(screen.textContent!,/Detalles de Orden/);await click(button('Continuar'));assert.match(screen.textContent!,/Finalizar Venta/);}
     else if(appearance==='prototype') assert.match(screen.textContent!,/Cobrar orden/);
     else assert.ok(screen.querySelector('dialog[aria-label="Cobrar"]'));
     await click(button('Tarjeta'));
-    if(appearance!=='owner'){assert.equal(button('Confirmar Pago').disabled,true);await click(screen.querySelector(appearance==='workspace'?'.workspace-card-confirm input':'.prototype-card-confirm input')!);}
-    await click(button('Confirmar Pago'));
-    assert.equal(submitted?.payment_method, 'tarjeta'); assert.equal(submitted?.expected_total, 80);
+    if(appearance!=='owner'&&!clipEnabled){assert.equal(button('Confirmar Pago').disabled,true);await click(screen.querySelector(appearance==='workspace'?'.workspace-card-confirm input':'.prototype-card-confirm input')!);}
+    await click(button(clipEnabled?'Enviar a CLIP':'Confirmar Pago'));
+    assert.equal(submitted?.payment_method, 'tarjeta'); assert.equal(submitted?.expected_total, expectedTotal);
     assert.equal(submitted?.order_type, 'Para Llevar'); assert.equal(submitted?.order_note, 'Entrega en puerta');
     assert.equal(submitted?.customer_id, 'local-member');
     assert.match(dom.window.document.body.textContent!, appearance==='workspace'?/Venta guardada/:/Venta guardada/);
@@ -190,6 +239,37 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     assert.match(dom.window.document.body.textContent!,/Cliente · USB/);assert.match(dom.window.document.body.textContent!,/Barra · Bluetooth/);
     assert.equal(salePrinting.pendingSalePrints(dom.window.localStorage,'mi_cafe_checkout_review:fixture-user').length,0);
     assert.equal(alerts.length, 0);
+    if(appearance==='workspace') {
+      await click(button('Nueva venta'));
+      await click(button('Terminar turno'));
+      const closing = screen.querySelector<HTMLDialogElement>('dialog[aria-label="Cierre de caja"]')!;
+      assert.ok(closing?.open);
+      const content = closing.querySelector('.pos-closing-content')!;
+      assert.equal(content.firstElementChild?.tagName,'FIELDSET','The first step precedes expenses and counting');
+      assert.equal(closing.querySelectorAll('select').length,0,'Touch choices do not use small select menus');
+      const confirm = closing.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+      assert.ok(closing.querySelector('footer')?.contains(confirm),'Count confirmation stays with the fixed actions');
+      assert.equal(button('Guardar e Imprimir Z').disabled,true);
+      await click(confirm);
+      assert.equal(button('Guardar e Imprimir Z').disabled,false,'Zero counts still require explicit confirmation');
+      await click(button('Entregar a otro cajero'));
+      assert.equal(confirm.checked,false,'Changing the operation requires a fresh confirmation');
+      await click(confirm);
+      assert.equal(button('Guardar corte y entregar caja').disabled,true,'A handoff requires a recipient');
+      if(role==='admin') {
+        await click(button('Ana'));
+        assert.equal(confirm.checked,false);
+        await click(confirm);
+        assert.equal(button('Guardar corte y entregar caja').disabled,false);
+        await click(button('Luis'));
+        assert.equal(button('Ana').getAttribute('aria-pressed'),'false');
+        assert.equal(button('Luis').getAttribute('aria-pressed'),'true');
+        assert.equal(button('Guardar corte y entregar caja').disabled,true,'Changing recipients resets the confirmation');
+      } else assert.match(closing.textContent!,/No hay otro cajero disponible/);
+      await click(button('Volver a caja'));
+      assert.equal(screen.querySelector('dialog[aria-label="Cierre de caja"]'),null);
+      assert.equal(alerts.length,0);
+    }
     // Only the simulated dispatch endpoint was called; no physical printer or live service.
   } finally {
     await act(async () => root.unmount()); cart.useCartStore.getState().clearCart(); dom.window.close();

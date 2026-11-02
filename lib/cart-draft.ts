@@ -11,6 +11,7 @@ interface Draft {
   items: { id: string; productId: string; quantity: number; extraIds: string[]; note: string; unitPrice: number }[];
   orderType: string;
   orderNote: string;
+  pagerNumber?: number | null;
   customerId: string | null;
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -25,6 +26,7 @@ export function readCartDraft(raw: string | null, userId: string, registerId: st
   if (!value || value.version !== 1 || value.userId !== userId || !identifier(value.registerId)
     || !uuid.test(value.id) || !identifier(value.revision) || !Array.isArray(value.items) || value.items.length > 100
     || !['En Local', 'Para Llevar'].includes(value.orderType) || !text(value.orderNote, 1000)
+    || (value.pagerNumber != null && (!Number.isInteger(value.pagerNumber) || value.pagerNumber < 1 || value.pagerNumber > 30))
     || (value.customerId !== null && !identifier(value.customerId))) throw Error('El borrador local no es válido.');
   const lines = new Set<string>();
   for (const line of value.items) {
@@ -77,7 +79,7 @@ export function bindCartDraft(options: { storage: Storage; userId: string; regis
   const restored = draft ? restoreDraftItems(draft, options.products, options.extras) : { items: [], repriced: false };
   if (draft) id = draft.id;
   store.setState({ items: restored.items, orderType: draft?.orderType ?? 'En Local',
-    orderNote: draft?.orderNote ?? '', customerId: draft?.customerId ?? null });
+    orderNote: draft?.orderNote ?? '', pagerNumber: draft?.pagerNumber ?? null, customerId: draft?.customerId ?? null });
   const assertCurrent = () => {
     if (storage.getItem(key) !== expected) {
       conflicted = true;
@@ -88,20 +90,20 @@ export function bindCartDraft(options: { storage: Storage; userId: string; regis
     assertCurrent();
     if (pending()) return;
     const state = store.getState();
-    if (!state.items.length && !state.customerId && !state.orderNote && state.orderType === 'En Local') {
+    if (!state.items.length && !state.customerId && !state.orderNote && !state.pagerNumber && state.orderType === 'En Local') {
       storage.removeItem(key); expected = null; id = crypto.randomUUID(); return;
     }
     const snapshot: Draft = { version: 1, id, userId, registerId, revision: crypto.randomUUID(),
       items: state.items.map(line => ({ id: line.id, productId: line.product.id, quantity: line.quantity,
         extraIds: (line.product.displayExtras ?? []).map(e => e.id ?? ''), note: line.product.note ?? '', unitPrice: line.product.price })),
-      orderType: state.orderType, orderNote: state.orderNote, customerId: state.customerId };
+      orderType: state.orderType, orderNote: state.orderNote, pagerNumber: state.pagerNumber, customerId: state.customerId };
     const encoded = JSON.stringify(snapshot);
     readCartDraft(encoded, userId, registerId); // Validate before replacing a recoverable snapshot.
     storage.setItem(key, encoded); expected = encoded;
   };
   const unsubscribe = store.subscribe((state, previous) => {
     if (muted || (state.items === previous.items && state.orderType === previous.orderType
-      && state.orderNote === previous.orderNote && state.customerId === previous.customerId)) return;
+      && state.orderNote === previous.orderNote && state.pagerNumber === previous.pagerNumber && state.customerId === previous.customerId)) return;
     try { flush(); } catch (error) { onError(error instanceof Error ? error.message : 'No se pudo guardar el borrador local.'); }
   });
   if (restored.repriced) {

@@ -4,15 +4,17 @@ Inventory, supplies, recipes, costing and CSV import were removed on October 30
 at the user's request. Checkout checks staff, owned shift, prices, modifiers,
 quantities, tender and request identity; it never checks/deducts stock. The app
 has no inventory screens or mutation RPCs. Captured legacy stock tables/columns
-are historical schema evidence, kept inaccessible to browser writes. No hosted
-business data has been deleted or migrated.
+are historical schema evidence, kept inaccessible to browser writes. Business
+records are preserved; the November 2 forward deployment is recorded below.
 
 Retained migrations are `202610280001_secure_pos.sql`,
 `202610280002_shift_expenses.sql`, `202610280004_reports.sql`,
 `202610300005_single_drawer.sql`, `202610300006_loyalty_phone.sql` and
 `202610300007_safe_drawer_rate.sql`, `202610300008_employee_drawer_recovery.sql` and
 `202610300009_customer_correction.sql`, `202610300010_register_shortcuts.sql`,
-`202610300011_recent_tickets.sql` and `202610300012_business_backups.sql`, in that order.
+`202610300011_recent_tickets.sql`, `202610300012_business_backups.sql`,
+`202611020013_catalog_requests.sql`, `202611020014_customer_history.sql`,
+`202611020015_order_pager.sql` and `202611020016_clip_payments.sql`, in that order.
 The removed, unreleased migration 003 is not part of this candidate. Do not
 apply this revised draft to a database that already ran an earlier candidate;
 that requires a deliberate forward migration.
@@ -26,6 +28,14 @@ the confirmed milk options. No old-POS customers, sales or shifts were copied.
 The owner selected an initial rate of 18 MXN per USD. Credentials, server keys and
 the project-specific runtime configuration remain outside Git. The matching
 application still needs to be installed on the café PC.
+
+On November 2, migrations 013–016 were applied to the verified client project;
+all 15 retained versions are synchronized. The CLIP receiver is deployed, but
+automatic charging remains OFF with a placeholder token. An encrypted backup
+and fingerprints verified preservation of all 28 existing exported tables.
+Do not reapply these migrations or migrate the historical development target.
+See [integration readiness](../docs/integration-readiness.md) and
+[CLIP deployment](../docs/clip-payments.md).
 
 SQL tests reconstruct the historical schema and insecure defaults locally,
 prove access controls, pricing, replay, concurrent sales, cash reconciliation,

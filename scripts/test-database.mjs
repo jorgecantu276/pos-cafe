@@ -15,6 +15,9 @@ import { registerShortcutsDatabaseCases } from './register-shortcuts/database-ca
 import { recentTicketDatabaseCases } from './receipts/recent-database-cases.mjs';
 import { businessBackupDatabaseCases } from './backups/database-cases.mjs';
 import { receiptContractDatabaseCases } from './receipts/contract-database-cases.mjs';
+import { catalogDatabaseCases } from './catalog/database-cases.mjs';
+import { customerHistoryDatabaseCases } from './customers/history-database-cases.mjs';
+import { clipDatabaseCases } from './clip/database-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
 // User-owned TEMP survives PostgreSQL's restricted Windows token; a hosted
@@ -209,6 +212,13 @@ try {
   await db.query(await readFile(resolve(root,'supabase/migrations/202610300012_business_backups.sql'),'utf8'));
   assertions+=await businessBackupDatabaseCases(db,connection,ids);
   assertions+=await receiptContractDatabaseCases(db,connection);
+  await db.query(await readFile(resolve(root,'supabase/migrations/202611020013_catalog_requests.sql'),'utf8'));
+  assertions+=await catalogDatabaseCases(db,connection,ids);
+  await db.query(await readFile(resolve(root,'supabase/migrations/202611020014_customer_history.sql'),'utf8'));
+  assertions+=await customerHistoryDatabaseCases(db,connection,ids);
+  await db.query(await readFile(resolve(root,'supabase/migrations/202611020015_order_pager.sql'),'utf8'));
+  await db.query(await readFile(resolve(root,'supabase/migrations/202611020016_clip_payments.sql'),'utf8'));
+  assertions+=await clipDatabaseCases(db,connection,ids);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {
   await Promise.allSettled(clients.map(c=>c.end()));

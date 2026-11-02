@@ -40,8 +40,11 @@ outside the version folder. Store the print journal in a permanent local folder
 such as `D:\POS-Cafe-Test\data`, and the private issuer profile outside releases.
 The example starts with simulated printing; set `PrintMode` to `windows` only
 for a deliberate physical acceptance run. Confirm sticker stock separately.
-The service-role key, if needed for staff management, belongs only in this local
-private configuration. It is not the public build key.
+The service-role key for staff management, backups and optional CLIP belongs only
+in this local private configuration. It is not the public build key. Keep
+`ClipEnabled: false`; the real token goes in the external file referenced by
+`ClipTokenFile`, never in the release or Git. See [CLIP setup](clip-payments.md)
+and [integration readiness](integration-readiness.md).
 
 After the responsible person has prepared this machine's private configuration,
 the cashier double-clicks **Open-POS.cmd** inside the prepared release folder.

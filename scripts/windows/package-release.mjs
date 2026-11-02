@@ -44,6 +44,7 @@ stageDependencies(path.join(root, 'node_modules'), path.join(stage, 'node_module
 const env = { ...process.env, POS_RELEASE_BUILD: '1', NEXT_TELEMETRY_DISABLED: '1',
   NEXT_PUBLIC_SUPABASE_URL: url.origin, NEXT_PUBLIC_SUPABASE_ANON_KEY: key };
 delete env.SUPABASE_SERVICE_ROLE_KEY; delete env.SUPABASE_ACCESS_TOKEN; delete env.POS_RECEIPT_ISSUER_FILE;
+for (const name of Object.keys(env)) if (name.startsWith('POS_CLIP_')) delete env[name];
 const build = spawnSync(process.execPath, [path.join(stage, 'node_modules/next/dist/bin/next'), 'build', '--webpack'], { cwd: stage, env, stdio: 'inherit' });
 assert.equal(build.status, 0, 'Production build failed; no release was created.');
 const standalone = path.join(stage, '.next/standalone');
@@ -62,6 +63,10 @@ cpSync(nodeLicense, path.join(destination, 'Node-LICENSE.txt'));
 for (const file of ['Start-POS.ps1', 'Open-POS.cmd', 'Install-POS-shortcut.ps1']) cpSync(path.join(root, 'scripts/windows', file), path.join(destination, file));
 cpSync(path.join(root, 'supabase/migrations'), path.join(destination, 'database-migrations'), { recursive: true });
 cpSync(path.join(root, 'supabase/schema.snapshot.json'), path.join(destination, 'database-migrations/schema.snapshot.json'));
+mkdirSync(path.join(destination, 'clip-setup'), {recursive:true});
+cpSync(path.join(root, 'config/clip-token.example.txt'), path.join(destination, 'clip-setup/clip-token.example.txt'));
+cpSync(path.join(root, 'docs/clip-payments.md'), path.join(destination, 'clip-setup/README.md'));
+cpSync(path.join(root, 'supabase/functions/clip-webhook'), path.join(destination, 'clip-setup/clip-webhook'), {recursive:true});
 mkdirSync(path.join(destination, 'backup-tools/scripts/backups'), { recursive: true });
 mkdirSync(path.join(destination, 'backup-tools/lib'), { recursive: true });
 cpSync(path.join(root, 'scripts/backups/inspect.mjs'), path.join(destination, 'backup-tools/scripts/backups/inspect.mjs'));
@@ -76,6 +81,7 @@ writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: 
 writeFileSync(path.join(destination, 'pos-cafe-config.example.json'), JSON.stringify({ SupabaseUrl: url.origin, SupabaseAnonKey: key,
   SupabaseServiceRoleKey: '', Port: 3000, PrintMode: 'mock', PrintDataDirectory: '', ReceiptIssuerFile: '', StickerStockConfirmed: false,
   BackupDirectory: '', BackupRecoveryKeyFile: '',
+  ClipEnabled: false, ClipTokenFile: '', ClipSerial: 'AA61B2325A1302219', ClipWebhookUrl: '',
 }, null, 2));
 // Ensure release contents are ordinary copied files, with no junction back to this PC.
 function releaseFiles(folder, prefix = '') {

@@ -11,7 +11,7 @@
     "lint": "oxlint --max-warnings 0",
     "typecheck": "tsc --noEmit --incremental false",
     "test": "tsx --test tests/*.test.ts",
-    "test:db": "node scripts/test-database.mjs",
+    "test:db": "node --import tsx scripts/test-database.mjs",
     "test:printing": "node scripts/printing/http-drill.mjs",
     "staging:prepare": "node scripts/staging/local.mjs prepare",
     "staging:start": "node scripts/staging/local.mjs start",
@@ -22,7 +22,8 @@
     "test:lifecycle": "node scripts/lifecycle/drill.mjs",
     "test:cashiers": "node scripts/cashiers/drill.mjs",
     "test:shift-http": "node scripts/shift/http-drill.mjs",
-    "test:reports-http": "node scripts/reports/http-drill.mjs"
+    "test:reports-http": "node scripts/reports/http-drill.mjs",
+    "test:admin-http": "node scripts/admin/http-drill.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",

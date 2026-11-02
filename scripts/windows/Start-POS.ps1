@@ -76,10 +76,16 @@ if (-not $backupKeyFile) { $backupKeyFile = Join-Path (Split-Path -Parent $Confi
 $backupKeyFile = Get-CafeExternalLocalPath $backupKeyFile 'BackupRecoveryKeyFile'
 if ($backupKeyFile.Equals($backupDirectory, [StringComparison]::OrdinalIgnoreCase) -or $backupKeyFile.StartsWith($backupDirectory.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Guarda la clave de recuperacion fuera de la carpeta de respaldos.' }
 $node = Join-Path $PSScriptRoot 'node.exe'
+$clipToken = ''
+if ($config.ClipTokenFile) {
+  $clipTokenPath = Get-CafeExternalLocalPath ([string]$config.ClipTokenFile) 'ClipTokenFile'
+  if (-not (Test-Path -LiteralPath $clipTokenPath -PathType Leaf)) { throw 'No se encontro el archivo privado del token CLIP.' }
+  $clipToken = [IO.File]::ReadAllText($clipTokenPath).Trim()
+}
 $server = Join-Path $PSScriptRoot 'app\server.js'
 if (-not (Test-Path -LiteralPath $node -PathType Leaf) -or -not (Test-Path -LiteralPath $server -PathType Leaf)) { throw 'Esta version esta incompleta. Pide de nuevo el paquete preparado para Windows.' }
 $baseUrl = "http://127.0.0.1:$port"
-$configId = Get-CafeHash ($ConfigPath.ToLowerInvariant() + "`n" + $configText)
+$configId = Get-CafeHash ($ConfigPath.ToLowerInvariant() + "`n" + $configText + "`n" + $clipToken)
 $releaseId = Get-CafeHash ($releaseDirectory.ToLowerInvariant() + "`n" + $releaseText)
 $statePath = $ConfigPath + '.instance.json'
 $instanceToken = [Guid]::NewGuid().ToString('N')
@@ -135,6 +141,8 @@ public sealed class CafeProcessJob : IDisposable {
     NODE_ENV='production'; HOSTNAME='127.0.0.1'; PORT=[string]$port
     NEXT_PUBLIC_SUPABASE_URL=[string]$config.SupabaseUrl; NEXT_PUBLIC_SUPABASE_ANON_KEY=[string]$config.SupabaseAnonKey
     SUPABASE_SERVICE_ROLE_KEY=[string]$config.SupabaseServiceRoleKey
+    POS_CLIP_ENABLED=$(if ($config.ClipEnabled -eq $true) { '1' } else { '0' })
+    POS_CLIP_TOKEN=$clipToken; POS_CLIP_SERIAL=[string]$config.ClipSerial; POS_CLIP_WEBHOOK_URL=[string]$config.ClipWebhookUrl
     POS_PRINT_MODE=[string]$config.PrintMode; POS_PRINT_DATA_DIR=$dataDirectory
     POS_PRINT_CUSTOMER_QUEUE='POS80 Printer'; POS_PRINT_BARISTA_QUEUE='Y813BT Sticker'
     POS_PRINT_BARISTA_STOCK_CONFIRMED=$(if ($config.StickerStockConfirmed -eq $true) { '1' } else { '0' })
