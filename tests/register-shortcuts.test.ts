@@ -27,7 +27,7 @@ test('favorites retain the exact ordered request after a lost response and recov
   try{
     await assert.rejects(saveRegisterShortcuts(client,h.storage,'owner',{product_ids:[second,first],revision:5}),/perdida/);
     assert.deepEqual(readRegisterShortcutsRequest(h.storage,'owner')?.payload.product_ids,[second,first]);
-    await assert.rejects(saveRegisterShortcuts(client,h.storage,'owner',{product_ids:[],revision:5}),/Recupera/);assert.equal(calls.length,1);
+    await assert.rejects(saveRegisterShortcuts(client,h.storage,'owner',{product_ids:[],revision:5}),/Comprueba/);assert.equal(calls.length,1);
     fail=false;assert.deepEqual(await recoverRegisterShortcuts(client,h.storage,'owner'),{product_ids:[second,first],revision:6});
     assert.deepEqual(calls[0],calls[1]);assert.equal(h.values.size,0);
   }finally{h.restore();}
@@ -39,7 +39,7 @@ test('invalid selections never write; confirmed rejection clears only that reque
     for(const product_ids of [[first,first],Array(9).fill(first),['bad']])await assert.rejects(saveRegisterShortcuts(api(async()=>{calls++;}),h.storage,'owner',{product_ids,revision:0}),/hasta 8/);
     await assert.rejects(saveRegisterShortcuts(api(async()=>{calls++;}),{...h.storage,setItem(){throw Error('Almacenamiento lleno');}},'owner',{product_ids:[first],revision:0}),/lleno/);assert.equal(calls,0);
     await assert.rejects(saveRegisterShortcuts(api(async()=>({error:{code:'P0001',message:'Producto inactivo'}})),h.storage,'owner',{product_ids:[first],revision:0}),/inactivo/);assert.equal(h.values.size,0);
-    await assert.rejects(saveRegisterShortcuts(api(async(_name,args)=>({error:null,data:{request_id:args.p_request,product_ids:[second],revision:1}})),h.storage,'owner',{product_ids:[first],revision:0}),/no confirmada/);assert.ok(readRegisterShortcutsRequest(h.storage,'owner'));
+    await assert.rejects(saveRegisterShortcuts(api(async(_name,args)=>({error:null,data:{request_id:args.p_request,product_ids:[second],revision:1}})),h.storage,'owner',{product_ids:[first],revision:0}),/No se confirmó el guardado/);assert.ok(readRegisterShortcutsRequest(h.storage,'owner'));
     await assert.rejects(recoverRegisterShortcuts(api(async()=>assert.fail()),h.storage,'another-owner'),/No hay/);
   }finally{h.restore();}
 });

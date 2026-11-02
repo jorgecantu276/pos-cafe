@@ -59,8 +59,8 @@ try {
   assert.equal(ok(await cashier.from('products').select('price').eq('id', product.id).single()).price, 60);
   pass('Catálogo: real saves/edits, exact create replay, staff denial and cashier-visible price/favorites');
 
-  ok(await admin.rpc('pos_set_drawer_rate', { p_request: randomUUID(), p_payload: { rate: 20 } }));
-  const register = ok(await cashier.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 100, p_rate: 20 }));
+  ok(await admin.rpc('pos_set_drawer_rate', { p_request: randomUUID(), p_payload: { rate: 16 } }));
+  const register = ok(await cashier.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 100, p_rate: 16 }));
   const drawer = ok(await admin.rpc('pos_drawer_status'));
   assert.equal(drawer.active.cashier_id, actors.cashier.id); assert.equal(drawer.active.id, register.id);
   assert.equal(ok(await admin.from('cash_registers').select('id').eq('opened_by', actors.admin.id).eq('status', 'open')).length, 0);
@@ -145,7 +145,7 @@ try {
   assert.equal((await db.query('select count(*)::int n from cafe_private.clip_payments')).rows[0].n,0);
   pass('CLIP stays off through real cookie/API boundaries: owner status, cashier/anonymous denial and blocked dispatch with no payment journal writes');
   assert.equal((await db.query('select count(*)::int n from orders')).rows[0].n, 1);
-  if(process.env.POS_BROWSER_QUALITY==='1') await browserQualityReview({url:'http://127.0.0.1:3111',actors,db});
+  if(process.env.POS_BROWSER_QUALITY==='1') await browserQualityReview({url:'http://127.0.0.1:3111',actors,db,appDirectory:app.app});
   if(process.env.POS_KEEP_ADMIN_PREVIEW==='1') {
     const target=path.join(app.app,'inventory-preview.private.json');
     await writeFile(target,JSON.stringify({url:'http://127.0.0.1:3111',admin:actors.admin,cashier:actors.cashier,config},null,2));

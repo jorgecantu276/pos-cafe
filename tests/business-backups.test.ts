@@ -142,7 +142,12 @@ test('backup API authorizes the active owner before status/run/download and reje
     assert.equal(checkpoint.status, 202); assert.deepEqual(await checkpoint.json(), { accepted: true });
   }
   assert.equal(calls, 6);
+  const normalized = new Request('http://localhost:3111/api/backups', {method:'POST',headers:{Host:'127.0.0.1:3111',Origin:'http://127.0.0.1:3111','X-Pos-Backup':'1'}});
+  assert.equal((await handleBusinessBackupRequest(normalized,caller(),operations)).status,200);
+  const foreign = new Request('http://localhost:3111/api/backups', {method:'POST',headers:{Host:'127.0.0.1:3111',Origin:'http://other.invalid','X-Pos-Backup':'1'}});
+  await assert.rejects(handleBusinessBackupRequest(foreign,caller(),operations),/inválida/);
+  assert.equal(calls, 7);
   for (const denied of [caller('outsider'), caller('cashier', false), caller('cashier', true, false)])
     await assert.rejects(handleBusinessBackupRequest(request('', 'POST', { 'X-Pos-Backup': 'checkpoint' }), denied, operations));
-  assert.equal(calls, 6);
+  assert.equal(calls, 7);
 });

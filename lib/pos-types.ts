@@ -105,6 +105,12 @@ export function productStockLabel(product: Product) {
 }
 
 export function errorMessage(error: unknown): string {
-  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') return error.message;
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    const message=error.message;
+    if (/failed to fetch|fetch failed|networkerror|network request failed|load failed|econnrefused|enotfound/i.test(message)) return 'No hay conexión. Vuelve a intentar.';
+    if (/jwt expired|invalid refresh token|refresh token not found|auth session missing/i.test(message)) return 'Tu sesión terminó. Inicia sesión de nuevo.';
+    if (/permission denied|administrator required|staff required/i.test(message)) return 'No tienes permiso para hacer este cambio.';
+    return message;
+  }
   return 'No se pudo completar la operación.';
 }

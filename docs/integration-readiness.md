@@ -33,7 +33,7 @@ Código: [checkout](../lib/checkout.ts), [CLIP](../lib/clip-server.ts), [RPC fin
 
 | Verificación | Resultado registrado |
 | --- | --- |
-| `npm test` | 202 pruebas: UI real, recuperación, inventario, CLIP, controles y render Windows. |
+| `npm test` | 212 pruebas: UI real, recuperación, inventario, CLIP, controles y render Windows. |
 | `npm run test:db` | 2,539 comprobaciones; incluye inventario apagado/activo, reservas CLIP y gateway con proveedor simulado. |
 | TypeScript y lint | Sin errores ni advertencias. |
 | Producción / paquete Windows | Build aislado y paquete reubicado; 2,276 hashes de archivos verificados. |
@@ -73,10 +73,7 @@ Ver [registro de despliegue](clip-payments.md#authorized-cloud-deployment--novem
 No se presentan como terminados:
 
 - Vista y reactivación de productos, extras y empleados desactivados. Se conservan los registros; las pantallas actuales muestran activos.
-- Actualizar el editor de Equipo al diálogo accesible de Catálogo/Ventas y pasar el avatar a una opción secundaria.
-- Mostrar recuperación de Caja solo cuando exista una solicitud pendiente; los botones actuales siguen visibles aunque no haya una.
 - Debounce de búsquedas en Ventas/Clientes. Evitar respuestas obsoletas no implica que ya esté aplicado.
-- Simplificar la presentación de respaldos/impresión conservando sus controles de resultados inciertos.
 - Desplegar 017 y registrar los conteos reales al activar inventario. Compartir existencias entre paquetes/sueltos, ingredientes y convertir pasteles a rebanadas requieren reglas posteriores del negocio.
 - Definir el canje de puntos con el dueño. No se inventó una regla ni se implementó el módulo de cupones retirado.
 

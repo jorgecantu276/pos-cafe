@@ -38,7 +38,7 @@ test('catalog failed storage sends nothing; malformed success remains recoverabl
   try {
     await assert.rejects(saveCatalogChange(api(async () => { calls++; }), { ...h.storage, setItem() { throw Error('Disco lleno'); } }, 'owner', change), /lleno/);
     assert.equal(calls, 0);
-    await assert.rejects(saveCatalogChange(api(async () => ({ error: null, data: {} })), h.storage, 'owner', change), /no confirmada/);
+    await assert.rejects(saveCatalogChange(api(async () => ({ error: null, data: {} })), h.storage, 'owner', change), /No se confirmó el guardado/);
     assert.ok(readCatalogRequest(h.storage, 'owner'));
     await assert.rejects(saveCatalogChange(api(async () => ({ error: { code: 'P0001', message: 'Precio inválido' } })), h.storage, 'owner'), /inválido/);
     assert.equal(h.values.size, 0);

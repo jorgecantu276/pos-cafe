@@ -27,7 +27,7 @@ function FavoritesEditor({ data, reload, confirmed, onSaved }: { data: Favorites
       if (recover) await recoverRegisterShortcuts(supabase, localStorage, data.actor);
       else await saveRegisterShortcuts(supabase, localStorage, data.actor, { product_ids: chosen, revision: data.config.revision });
       announceCatalogChange();
-      setPending(false); onSaved('Favoritos guardados. La caja avisará para actualizar el menú.');
+      setPending(false); onSaved('Favoritos guardados.');
       await reload();
     } catch (error) {
       setMessage(errorMessage(error));
@@ -35,10 +35,10 @@ function FavoritesEditor({ data, reload, confirmed, onSaved }: { data: Favorites
     } finally { setBusy(false); }
   };
   const disabled = busy || pending;
-  return <div className="workspace-favorites space-y-6"><div><h1>Favoritos de caja</h1><p>Elige hasta 8 productos. Todos los cajeros verán esta misma selección, en el orden que guardes.</p></div>
+  return <div className="workspace-favorites space-y-6"><div><h1>Favoritos de caja</h1><p>Elige hasta 8 productos para el acceso rápido de caja.</p></div>
     <section className="bg-white border p-5"><h2>Orden en caja · {chosen.length}/8</h2>
-      <p>Una selección de 6 a 8 productos facilita los pedidos habituales. Puedes empezar con menos.</p>
-      {!chosen.length && <p>No hay favoritos elegidos. El menú completo seguirá disponible.</p>}
+
+      {!chosen.length && <p>Todavía no has elegido favoritos.</p>}
       <ol className="workspace-favorites-selected">{chosen.map((id, index) => {
         const product = products.get(id);
         return <li key={id}><span><strong>{index + 1}. {product?.name ?? 'Producto no disponible'}</strong>{!product?.is_active && <small>Inactivo: quítalo antes de guardar.</small>}</span>
@@ -48,8 +48,8 @@ function FavoritesEditor({ data, reload, confirmed, onSaved }: { data: Favorites
       })}</ol>
       {confirmed && <p role="status" className="rounded-xl border border-blue-100 bg-blue-50 p-4 mb-4">{confirmed}</p>}
       <div className="workspace-favorites-actions"><button type="button" className="bg-blue-600 text-white px-5" disabled={disabled || chosen.some(id => !products.get(id)?.is_active)} onClick={() => void save()}>{busy ? 'Guardando…' : 'Guardar favoritos'}</button>
-        <button type="button" className="border px-4" disabled={busy} onClick={() => void reload()}>Actualizar selección guardada</button></div>
-      {pending && <div role="alert" className="p-4 mt-4"><p>El guardado no está confirmado. Conservamos la misma solicitud para recuperarla sin reemplazarla.</p><button type="button" className="border px-4" disabled={busy} onClick={() => void save(true)}>Recuperar guardado pendiente</button></div>}
+        <button type="button" className="border px-4" disabled={busy} onClick={() => void reload()}>Actualizar</button></div>
+      {pending && <div role="alert" className="p-4 mt-4"><p>No se confirmó el guardado. Compruébalo antes de cambiar la selección.</p><button type="button" className="border px-4" disabled={busy} onClick={() => void save(true)}>Comprobar guardado</button></div>}
       {message && <p role="status">{message}</p>}
     </section>
     <section className="bg-white border p-5"><h2>Productos activos</h2><label>Buscar producto<input className="block w-full mt-2" aria-label="Buscar producto favorito" value={search} disabled={disabled} onChange={event => setSearch(event.target.value)}/></label>

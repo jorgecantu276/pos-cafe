@@ -1,42 +1,51 @@
 'use client';
-import {useState} from 'react';
-import {supabase} from '@/lib/supabase';
-import {drawerWrite,recoverDrawerRequest,hasDrawerRequest,type DrawerStatus} from '@/lib/drawer';
-import {loadShiftSummary,type ShiftSummary} from '@/lib/shift-state';
-import {errorMessage} from '@/lib/pos-types';
+import { useCallback, useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { drawerWrite, recoverDrawerRequest, hasDrawerRequest, type DrawerStatus } from '@/lib/drawer';
+import { loadShiftSummary, type ShiftSummary } from '@/lib/shift-state';
+import { errorMessage } from '@/lib/pos-types';
+import { SettingsGroup, SettingsRow, SettingsNotice } from '../Settings';
 
 export default function ManagerRecovery({actor,status,reload}:{actor:string;status:DrawerStatus;reload:()=>Promise<unknown>}) {
   const [summary,setSummary]=useState<ShiftSummary|null>(null),[count,setCount]=useState(''),[usd,setUSD]=useState(''),[reason,setReason]=useState('');
-  const [confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+  const [confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[pending,setPending]=useState(false),[storageError,setStorageError]=useState(false);
+  const checkPending=useCallback(()=>{try{setPending(hasDrawerRequest(localStorage,actor,'manager_close'));setStorageError(false);}catch{setPending(true);setStorageError(true);}},[actor]);
+  useEffect(()=>{void Promise.resolve().then(checkPending);},[checkPending]);
   const total=Math.round((Number(count)+Number(usd||0)*(summary?.exchange_rate??0))*100)/100;
   const inspect=async()=>{if(!status.active)return;setBusy(true);setMessage('');try{setSummary(await loadShiftSummary(supabase,status.active.id));setConfirmed(false);}catch(error){setMessage(errorMessage(error));}finally{setBusy(false);}};
   const save=async(recover=false)=>{
     if(busy)return;setBusy(true);setMessage('');
     try{
-      if(recover||hasDrawerRequest(localStorage,actor,'manager_close')){
-        const result=await recoverDrawerRequest(supabase,localStorage,actor,'manager_close');if(!result)throw new Error('No hay un cierre pendiente de recuperar.');
+      const existing=hasDrawerRequest(localStorage,actor,'manager_close');
+      if(recover){
+        if(!existing)throw new Error('No hay un cierre pendiente.');
+        await recoverDrawerRequest(supabase,localStorage,actor,'manager_close');
       }else{
+        if(existing)throw new Error('Revisa el cierre pendiente antes de iniciar otro.');
         if(!summary||!confirmed||!count.trim()||!Number.isFinite(total)||total<0||Number(count)<0||Number(usd)<0
           ||Math.round(Number(count)*100)/100!==Number(count)||Math.round(Number(usd||0)*100)/100!==Number(usd||0)
-          ||reason.trim().length<3)throw new Error('Cuenta el efectivo con máximo dos decimales y escribe el motivo.');
-        if(!confirm(`Cerrar definitivamente el turno de ${status.active?.cashier_name} con $${total.toFixed(2)} MXN contados. Diferencia $${(total-summary.expected_cash).toFixed(2)}. Revisa cualquier orden sin cobrar o impresión pendiente. ¿Confirmar?`))return;
+          ||reason.trim().length<3)throw new Error('Revisa el efectivo contado y escribe el motivo.');
+        if(!confirm(`¿Cerrar el turno de ${status.active?.cashier_name} con $${total.toFixed(2)} MXN? Diferencia: $${(total-summary.expected_cash).toFixed(2)}.`))return;
         await drawerWrite(supabase,localStorage,actor,'manager_close',{register:summary.register_id,counted:total,count_confirmed:true,reason:reason.trim(),preview:{cash_sales:summary.cash_sales,total_sales:summary.total_sales,expenses_revision:summary.expenses_revision}});
       }
-      setSummary(null);setMessage('Cierre guardado. El cajero original conserva su historial y el responsable queda registrado. Reimprime desde Cortes de caja.');await reload();
-    }catch(error){setMessage(errorMessage(error));}finally{setBusy(false);}
+      setSummary(null);setMessage('Turno cerrado.');checkPending();await reload();
+    }catch(error){setMessage(errorMessage(error));checkPending();}finally{setBusy(false);}
   };
-  return <section className="border rounded-xl bg-white p-5 space-y-3"><h2>Recuperar caja si el cajero no está disponible</h2>
-    <p>Se conserva el turno a nombre del cajero original y se registra quién realizó el cierre y por qué. Cuenta el dinero y revisa ventas e impresión antes de liberar la caja.</p>
-    <a href="/admin/impresion">Revisar impresión de todos los cajeros</a>
-    {status.active?<><p>Turno abierto: {status.active.cashier_name}</p><button disabled={busy} className="border rounded p-3" onClick={()=>void inspect()}>Consultar turno para cierre del responsable</button></>:<p>No hay un turno abierto.</p>}
-    {summary&&status.active?.id===summary.register_id&&<><p>Efectivo esperado: ${summary.expected_cash.toFixed(2)} MXN. Tipo de cambio del turno: {summary.exchange_rate}.</p>
-      <label className="block">Efectivo contado MXN<input aria-label="Conteo del responsable MXN" className="border p-3 block" inputMode="decimal" disabled={busy} value={count} onChange={e=>{setCount(e.target.value);setConfirmed(false);}}/></label>
-      <label className="block">Dólares contados<input className="border p-3 block" inputMode="decimal" disabled={busy} value={usd} onChange={e=>{setUSD(e.target.value);setConfirmed(false);}}/></label>
-      <p>Total contado: ${Number.isFinite(total)?total.toFixed(2):'—'} MXN.</p>
-      <label className="block">Motivo del cierre por responsable<input className="border p-3 block w-full" value={reason} maxLength={300} disabled={busy} onChange={e=>setReason(e.target.value)}/></label>
-      <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> Terminé de contar y revisé órdenes e impresión pendientes.</label>
-      <button disabled={busy||!confirmed||!count.trim()||reason.trim().length<3} className="border rounded p-3" onClick={()=>void save()}>Cerrar turno y liberar caja</button></>}
-    <button disabled={busy} className="border rounded p-3" onClick={()=>void save(true)}>Recuperar cierre del responsable pendiente</button>
-    {message&&<p role="status">{message}</p>}
-  </section>;
+  if(!status.active&&!pending&&!storageError&&!message)return null;
+  return <SettingsGroup title="Turno">
+    {status.active&&<SettingsRow label="Cajero"><span className="settings-value">{status.active.cashier_name}</span></SettingsRow>}
+    {pending&&<div className="settings-editor"><SettingsNotice error={storageError}>{storageError?'No se pudo leer el cierre pendiente. Vuelve a abrir esta pantalla.':'Hay un cierre sin confirmar.'}</SettingsNotice><div><button disabled={busy} onClick={()=>void save(true)}>Revisar cierre pendiente</button></div></div>}
+    {status.active&&!pending&&<details className="settings-disclosure"><summary>Cerrar turno de otro cajero</summary><div>
+      {!summary||status.active.id!==summary.register_id?<><p>Úsalo si el cajero no puede terminar su turno.</p><button disabled={busy} onClick={()=>void inspect()}>{busy?'Cargando…':'Revisar turno'}</button></>:<div className="settings-editor">
+        <div className="settings-row"><div className="settings-row-copy"><strong>Efectivo esperado</strong></div><span className="settings-value">${summary.expected_cash.toFixed(2)} MXN</span></div>
+        <div className="settings-fields"><label>Efectivo contado MXN<input aria-label="Conteo del responsable MXN" inputMode="decimal" disabled={busy} value={count} onChange={e=>{setCount(e.target.value);setConfirmed(false);}}/></label><label>Dólares contados<input inputMode="decimal" disabled={busy} value={usd} onChange={e=>{setUSD(e.target.value);setConfirmed(false);}}/></label></div>
+        <div className="settings-row"><div className="settings-row-copy"><strong>Total contado</strong><span>1 USD = {summary.exchange_rate} MXN</span></div><span className="settings-value">${Number.isFinite(total)?total.toFixed(2):'—'} MXN</span></div>
+        <label>Motivo del cierre<input value={reason} maxLength={300} disabled={busy} onChange={e=>setReason(e.target.value)}/></label>
+        <a className="settings-button" href="/admin/impresion">Comprobar impresión</a>
+        <label className="settings-confirm"><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Conté el dinero y revisé pedidos e impresiones pendientes.</label>
+        <div className="settings-actions"><button className="is-danger" disabled={busy||!confirmed||!count.trim()||reason.trim().length<3} onClick={()=>void save()}>Cerrar turno</button><button disabled={busy} onClick={()=>setSummary(null)}>Cancelar</button></div>
+      </div>}
+    </div></details>}
+    {message&&<div className="settings-editor"><SettingsNotice>{message}</SettingsNotice></div>}
+  </SettingsGroup>;
 }

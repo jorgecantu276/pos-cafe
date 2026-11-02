@@ -35,7 +35,7 @@ export function readRegisterShortcutsRequest(storage: Memory, actor: string): Pe
   if (!raw) return null;
   const value = JSON.parse(raw) as PendingRegisterShortcuts;
   if (!value || value.actor !== actor || typeof value.request !== 'string' || !uuid.test(value.request)
-    || value.payload?.actor_id !== actor) throw new Error('El guardado pendiente no se puede leer. Conserva los datos para revisión.');
+    || value.payload?.actor_id !== actor) throw new Error('No se pudieron abrir los favoritos pendientes. Pide ayuda al responsable.');
   validated(value.payload);
   return value;
 }
@@ -62,7 +62,7 @@ async function submit(client: Client, storage: Memory, pending: PendingRegisterS
     const result = validated(data as RegisterShortcuts);
     if (data?.request_id !== pending.request || result.revision !== pending.payload.revision + 1
       || JSON.stringify(result.product_ids) !== JSON.stringify(pending.payload.product_ids)) {
-      throw new Error('Respuesta no confirmada. Recupera el mismo guardado de favoritos.');
+      throw new Error('No se confirmó el guardado. Pulsa Comprobar guardado.');
     }
     if (storage.getItem(key) !== raw) throw new Error('El guardado cambió en otra ventana. Actualiza antes de continuar.');
     storage.removeItem(key);
@@ -73,7 +73,7 @@ async function submit(client: Client, storage: Memory, pending: PendingRegisterS
 export async function saveRegisterShortcuts(client: Client, storage: Memory, actor: string, choices: RegisterShortcuts): Promise<RegisterShortcuts> {
   return locked(actor, async () => {
     const key = registerShortcutsKey(actor);
-    if (storage.getItem(key)) throw new Error('Hay favoritos sin confirmar. Recupera el mismo guardado antes de cambiar la selección.');
+    if (storage.getItem(key)) throw new Error('Comprueba los favoritos pendientes antes de cambiar la selección.');
     const pending: PendingRegisterShortcuts = { actor, request: crypto.randomUUID(), payload: { ...validated(choices), actor_id: actor } };
     storage.setItem(key, JSON.stringify(pending));
     return submit(client, storage, pending);
@@ -83,7 +83,7 @@ export async function saveRegisterShortcuts(client: Client, storage: Memory, act
 export async function recoverRegisterShortcuts(client: Client, storage: Memory, actor: string): Promise<RegisterShortcuts> {
   return locked(actor, async () => {
     const pending = readRegisterShortcutsRequest(storage, actor);
-    if (!pending) throw new Error('No hay favoritos pendientes para esta sesión.');
+    if (!pending) throw new Error('No hay favoritos pendientes.');
     return submit(client, storage, pending);
   });
 }

@@ -225,3 +225,86 @@
 .customer-card-total { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #e2e7ee; margin-top: 18px; padding-top: 14px; }
 @media(max-width:800px) { .catalog-toolbar { top: 64px; grid-template-columns: 1fr; } }
 @media(max-width:600px) { .catalog-filters { grid-template-columns: 1fr; gap: 12px; }.catalog-row { grid-template-columns: minmax(0,1fr) auto; gap: 8px; }.catalog-actions { grid-column: 2; grid-row: 1 / 3; }.catalog-price { grid-column: 1; }.catalog-fields { grid-template-columns: 1fr; }.catalog-preparation,.catalog-photo { grid-column: 1; }.workspace-admin .admin-inline-field { flex-wrap: wrap; }.workspace-admin .admin-inline-field button { width: 100%; }.workspace-admin .ticket-actions { grid-template-columns: 1fr; } }
+
+/* Settings use grouped rows: label, value and one action. */
+.settings-page{max-width:960px;display:grid;gap:28px}
+.settings-page>h1,.settings-page>.settings-page-heading{margin:0}
+.settings-page-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.settings-group>h2{font-size:14px!important;font-weight:600!important;letter-spacing:0!important;color:#59687c!important;margin:0 0 9px 16px}
+.workspace-admin main .settings-surface{background:#fff;border:1px solid #dde4ed;border-radius:18px;overflow:hidden;box-shadow:none}
+.settings-row{display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:80px;padding:16px 20px}
+.settings-surface>.settings-row+.settings-row,.settings-surface>.settings-disclosure,.settings-surface>.settings-details{border-top:1px solid #e6ebf2}
+.settings-row-copy{min-width:0;display:grid;gap:5px}
+.settings-row-copy>strong{font-size:16px;font-weight:600;color:#172033}
+.settings-row-copy>span{font-size:14px;line-height:1.4;color:#59687c;overflow-wrap:anywhere}
+.settings-row-control{flex-shrink:0;display:flex;align-items:center;gap:10px;font-size:15px;color:#52627a}
+.workspace-admin main .settings-button,.workspace-admin main .settings-surface button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border:1px solid #dbe3ed;border-radius:12px;background:#f7f9fc;color:#005ab8;padding:11px 16px;font:inherit;font-weight:600;text-decoration:none;cursor:pointer}
+.workspace-admin main .settings-button.is-primary,.workspace-admin main .settings-surface button.is-primary{background:#0066cc;color:#fff;border-color:#0066cc}
+.workspace-admin main .settings-button.is-danger,.workspace-admin main .settings-surface button.is-danger{color:#ad3030;background:#fff7f7;border-color:#eed5d5}
+.workspace-admin main .settings-surface button:disabled{opacity:.5;cursor:default}
+.workspace-admin main .settings-surface input:not([type=checkbox]),.workspace-admin main .settings-surface select,.workspace-admin main .settings-surface textarea{font:inherit;min-height:48px;border:1px solid #d6dfeb;border-radius:11px;background:#f7f9fc;color:#172033;padding:11px 13px;max-width:100%;min-width:0}
+.settings-value{font-weight:600;font-variant-numeric:tabular-nums;color:#172033}
+.settings-badge{display:inline-flex;align-items:center;gap:7px;color:#59687c;background:#f1f4f8;border-radius:9px;padding:7px 10px;font-size:14px;font-weight:550}
+.settings-badge.is-on{color:#18744b;background:#edf8f2}
+.settings-editor{padding:0 20px 20px;display:grid;gap:16px}
+.settings-editor label{display:grid;gap:7px;font-size:14px;color:#52627a}
+.settings-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.settings-rate-editor{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.settings-rate-source,.settings-rate-target{display:flex;align-items:center;gap:12px;border:1px solid #d6dfeb;border-radius:12px;background:#f7f9fc;padding:0 14px;min-height:56px}
+.settings-rate-source strong{font-size:22px;color:#172033}
+.settings-rate-source span,.settings-rate-target span{font-size:14px;font-weight:550;color:#59687c}
+.workspace-admin main .settings-rate-target input{width:90px;border:0;background:transparent;font-size:22px;font-weight:600;padding:10px 0}
+.settings-disclosure>summary,.settings-details>summary{display:flex;align-items:center;min-height:56px;gap:12px;padding:16px 20px;color:#52627a;cursor:pointer;font-size:15px;font-weight:550}
+.settings-disclosure>summary::before,.settings-details>summary::before{content:'›';font-size:23px;line-height:1;color:#68788c}
+.settings-disclosure[open]>summary::before,.settings-details[open]>summary::before{transform:rotate(90deg)}
+.settings-disclosure>summary::marker,.settings-details>summary::marker{content:''}
+.settings-disclosure>div,.settings-details>div{padding:0 20px 20px}
+.settings-disclosure p,.settings-details p{font-size:14px;line-height:1.5;color:#59687c;margin:0 0 14px}
+.settings-notice{margin:0;padding:14px 18px;background:#edf5ff;border:1px solid #d9e7f8;border-radius:12px;color:#245d95;font-size:14px;line-height:1.45}
+.settings-notice.is-error{background:#fff5f4;border-color:#f0d4d0;color:#a32e29}
+.settings-confirm{display:flex!important;align-items:center;gap:12px;min-height:56px;padding:12px 0;font-size:14px;color:#26354d!important}
+.settings-confirm input{flex-shrink:0;width:24px;height:24px;min-height:24px!important;accent-color:#0066cc}
+.settings-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.settings-empty{padding:22px 20px;margin:0;font-size:14px;color:#657084}
+.settings-table-scroll{overflow:auto}
+.settings-table{width:100%;border-collapse:collapse;white-space:nowrap;font-size:14px}
+.settings-table th{text-align:left;font-weight:550;color:#59687c;background:#f8fafd}
+.settings-table th,.settings-table td{padding:14px 20px;border-bottom:1px solid #e6ebf2}
+.settings-table tr:last-child td{border-bottom:0}
+.settings-link-row{display:flex;align-items:center;gap:14px;min-height:80px;padding:16px 20px;color:#172033!important;text-decoration:none!important}
+.settings-link-row+ .settings-link-row{border-top:1px solid #e6ebf2}
+.settings-link-row>svg:first-child{color:#0066cc;flex-shrink:0}
+.settings-link-row>span{flex:1;display:grid;gap:4px}
+.settings-link-row strong{font-size:16px;font-weight:600}
+.settings-link-row small{font-size:14px;color:#59687c;font-weight:400}
+.settings-link-row>svg:last-child{color:#748095}
+.settings-page a:focus-visible,.settings-page button:focus-visible,.settings-page input:focus-visible,.settings-page select:focus-visible,.settings-page textarea:focus-visible,.settings-page summary:focus-visible{outline:3px solid #0071e3;outline-offset:3px}
+.settings-job{padding:18px 20px}
+.settings-job+.settings-job{border-top:1px solid #e6ebf2}
+.settings-job-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.settings-job h3{margin:0;font-size:16px;font-weight:600}
+.settings-job>p{font-size:14px;color:#59687c;margin:8px 0 14px}
+.settings-job .settings-details{margin-top:14px;border:1px solid #e6ebf2;border-radius:12px}
+.settings-job .settings-details>summary{padding:12px 14px}
+.settings-job .settings-details>div{padding:0 14px 14px}
+.settings-page .settings-history{display:grid;gap:4px}
+.settings-page .settings-history p{margin:0}
+.settings-page .settings-help{font-size:14px;color:#59687c;line-height:1.5;margin:0 16px}
+.settings-status-dot{height:8px;width:8px;border-radius:50%;background:currentColor}
+@media(max-width:600px){.settings-row{align-items:flex-start;gap:12px;flex-wrap:wrap;padding:16px}
+.settings-row-control{max-width:100%;flex-wrap:wrap}
+.settings-editor{padding:0 16px 16px}
+.settings-fields{grid-template-columns:minmax(0,1fr)}
+.settings-page-heading{align-items:flex-start;flex-wrap:wrap}
+.settings-rate-editor{gap:8px}
+.settings-rate-source,.settings-rate-target{padding-inline:11px;gap:8px}
+.settings-disclosure>summary,.settings-details>summary{padding:16px}
+.settings-disclosure>div,.settings-details>div{padding:0 16px 16px}
+.settings-job{padding:16px}
+.settings-link-row{padding:16px}
+.settings-rate-editor>button{flex:1}}
+.workspace-admin main .settings-group{border:0;border-radius:0;box-shadow:none;padding:0}
+.settings-page>.inventory-heading{margin-bottom:0}
+.settings-page .inventory-return{max-width:100%}
+.workspace-admin main .settings-surface .settings-rate-target input{border:0;background:transparent;font-size:22px;padding:10px 0}
+.settings-editor small{color:#59687c;font-size:13px;line-height:1.4}

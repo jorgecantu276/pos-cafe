@@ -262,8 +262,9 @@ export async function handleBusinessBackupRequest(request: Request, caller: Supa
       'Content-Disposition': `attachment; filename="${result.filename}"`, 'X-Content-Type-Options': 'nosniff' } });
   }
   const action = request.headers.get('X-Pos-Backup');
+  const authority = new URL(`${url.protocol}//${request.headers.get('host') || url.host}`);
   if (request.method !== 'POST' || url.searchParams.size || !['1', 'checkpoint'].includes(action ?? '')
-    || (request.headers.has('origin') && request.headers.get('origin') !== url.origin)) throw new AccessError('Solicitud de respaldo inválida.', 400);
+    || (request.headers.has('origin') && request.headers.get('origin') !== authority.origin)) throw new AccessError('Solicitud de respaldo inválida.', 400);
   if (action === 'checkpoint') {
     await requireBackupStaff(caller);
     void (operations.checkpoint ?? operations.run)().catch(() => { state.lastError = unavailable; });

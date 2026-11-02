@@ -81,7 +81,7 @@ export default function CortesPage() {
             {/* WIDGETS TURNO ACTIVO */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-slate-100/50 flex flex-col justify-between">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Fondo Inicial</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Fondo inicial</p>
                   <h3 className="text-2xl font-black text-[#1d1d1f] tracking-tighter">${startingCash.toFixed(2)}</h3>
               </div>
               <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-slate-100/50 flex flex-col justify-between">
@@ -93,7 +93,7 @@ export default function CortesPage() {
                   <h3 className="text-2xl font-black text-red-500 tracking-tighter">${totalExpenses.toFixed(2)}</h3>
               </div>
               <div className="bg-[#1d1d1f] p-6 rounded-[24px] shadow-lg shadow-slate-200 flex flex-col justify-between">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Efectivo Esperado</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Efectivo esperado</p>
                   <h3 className="text-3xl font-black text-white tracking-tighter">${expectedCash.toFixed(2)}</h3>
               </div>
             </div>

@@ -151,7 +151,7 @@ test('actual checkout handler releases a stalled confirmation and keeps its pers
   const first = h.fn(); assert.equal(h.calls, 1);
   const pending = h.storage.get('test-user'); await first;
   assert.equal(h.storage.get('test-user'), pending); assert.equal(h.successful, false);
-  assert.match(h.alerts[0], /tardó demasiado.*\nNo vuelvas a cobrar/);
+  assert.match(h.alerts[0], /conexión no respondió.*\nNo vuelvas a cobrar/);
   h.settle({ data: { id: 'one-sale', ticket_number: 12, total: 60, items: [], status: 'completed' }, error: null });
   await h.fn(); assert.equal(h.successful, true); assert.equal(h.storage.has('test-user'), false);
 });

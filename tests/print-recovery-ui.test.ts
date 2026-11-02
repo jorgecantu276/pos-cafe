@@ -31,18 +31,18 @@ test('manager recovery page retries outgoing copy, persists lost response identi
   try{
     await act(async()=>root.render(createElement(PrintRecoveryPage)));
     assert.match(dom.window.document.body.textContent!,/Caja saliente/);
-    await click('Reintentar solo esta copia');
+    await click('Reintentar esta copia');
     assert.match(dom.window.document.body.textContent!,/Respuesta perdida/);assert.ok(dom.window.localStorage.getItem(bodyKey));
-    await click('Recuperar revisión pendiente');
+    await click('Revisar cambio pendiente');
     assert.deepEqual(calls[0],calls[1]);assert.equal(submitted,1);assert.equal(dom.window.localStorage.getItem(bodyKey),null);
-    state='uncertain';await click('Actualizar impresión');await click('Revisar resultado incierto');
-    assert.equal(button('Registrar papel confirmado sin reenviar').disabled,true);
+    state='uncertain';await click('Actualizar');await click('Comprobar impresión');
+    assert.equal(button('Marcar como impresa').disabled,true);
     const select=dom.window.document.querySelector<HTMLSelectElement>('[aria-label="Resultado de revisión"]')!;
     await act(async()=>{select.value='replace_missing';select.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
-    assert.match(dom.window.document.body.textContent!,/RIESGO DE DUPLICADO/);
-    assert.equal(button('Autorizar UNA reposición de esta copia').disabled,true);
+    assert.match(dom.window.document.body.textContent!,/podría salir dos veces/);
+    assert.equal(button('Reponer esta copia').disabled,true);
     await act(async()=>dom.window.document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
-    assert.equal(button('Autorizar UNA reposición de esta copia').disabled,true,'A checked box without a written reason is insufficient');
+    assert.equal(button('Reponer esta copia').disabled,true,'A checked box without a written reason is insufficient');
   }finally{
     await act(async()=>root.unmount());dom.window.close();
     for(const [name,descriptor]of saved){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else Reflect.deleteProperty(globalThis,name);}

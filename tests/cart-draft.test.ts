@@ -44,7 +44,7 @@ test('cashier switches and closed shifts never inherit another user or shift dra
   assert.equal(f.values.get(cartDraftKey('alice')),original);
   b=f.bind('alice','another-shift'); assert.equal(useCartStore.getState().items.length,0); b.disconnect();
   b=f.bind(); assert.equal(useCartStore.getState().getTotal(),50); b.disconnect();
-  assert.throws(()=>readCartDraft(original!,'bob','shift'),/no es válido/);
+  assert.throws(()=>readCartDraft(original!,'bob','shift'),/No se pudo abrir el pedido/);
 });
 
 test('corrupt drafts, invalid quantities and missing catalog choices are blocked without overwriting the saved draft',()=>{
@@ -54,7 +54,7 @@ test('corrupt drafts, invalid quantities and missing catalog choices are blocked
   assert.throws(()=>f.bind('alice','shift',[coffee],[]),/extra/);
   for (const quantity of [0,-1,1.5,Infinity,1001]) {
     const damaged=JSON.parse(raw); damaged.items[0].quantity=quantity;
-    assert.throws(()=>readCartDraft(JSON.stringify(damaged),'alice','shift'),/inválida/);
+    assert.throws(()=>readCartDraft(JSON.stringify(damaged),'alice','shift'),/necesita revisión/);
   }
   f.values.set(cartDraftKey('alice'),'{broken'); assert.throws(()=>f.bind());
   assert.equal(f.values.get(cartDraftKey('alice')),'{broken');

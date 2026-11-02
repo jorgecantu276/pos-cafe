@@ -7,6 +7,7 @@ import { withDeadline } from '@/lib/request-deadline';
 import { errorMessage } from '@/lib/pos-types';
 import LoadFailure from '@/app/LoadFailure';
 import { announceCatalogChange } from '@/lib/catalog-management';
+import { SettingsGroup, SettingsRow } from '../Settings';
 import { readInventoryRequest, saveInventoryRequest,
   type InventoryChange, type InventoryItem, type InventoryMovement, type InventoryRequest } from '@/lib/inventory';
 import { InventoryWorkspace } from './InventoryWorkspace';
@@ -39,7 +40,12 @@ export default function InventoryPage() {
     try {
       const { data: { user }, error } = await withDeadline(() => supabase.auth.getUser());
       if (error || user?.id !== data.actor) throw new Error('La sesión cambió. Actualiza la página.');
-      const pending = readInventoryRequest(localStorage, data.actor) || (toggle !== undefined ? {
+      const existing = readInventoryRequest(localStorage, data.actor);
+      if (existing && (changes !== undefined || toggle !== undefined)) {
+        setData(current => ({ ...current, pending: existing }));
+        throw new Error('Hay un cambio pendiente. Revísalo antes de guardar otro.');
+      }
+      const pending = existing || (toggle !== undefined ? {
         actor:data.actor,request:crypto.randomUUID(),rpc:'pos_inventory_set_enabled' as const,args:{p_enabled:toggle,p_revision:data.state.revision},
       } : changes ? {
         actor: data.actor, request: crypto.randomUUID(), rpc: 'pos_inventory_write' as const, args: { p_changes: changes },
@@ -51,23 +57,25 @@ export default function InventoryPage() {
     } catch (error) {
       setFailure(errorMessage(error));
       try { setData(current => ({ ...current, pending: readInventoryRequest(localStorage, data.actor) })); }
-      catch { setFailure('No se pudo leer la operación pendiente. Conserva esta ventana y solicita revisión.'); }
+      catch { setFailure('No se pudo leer el cambio pendiente. No guardes otro todavía.'); }
       return false;
     } finally { inFlight.current = false; setBusy(false); }
   };
   if (error) return <LoadFailure message={error} retry={reload} />;
   if (!data.actor) return <p role="status">Cargando inventario…</p>;
-  return <div className="inventory-page">
-    <section className="inventory-activation" aria-label="Activación del inventario"><strong>{data.state.enabled ? 'Inventario activo' : 'Inventario apagado'}</strong><p>{data.state.enabled ? 'Las ventas verifican y descuentan las existencias contadas.' : 'La caja vende sin consultar ni descontar existencias. Puedes preparar productos y unidades.'}</p>
-      <details><summary>{data.state.enabled ? 'Pausar inventario' : 'Activar inventario'}</summary><p>Al activarlo, los conteos anteriores quedan sin contar: registra o importa un conteo físico actualizado después de activar. Las ventas realizadas mientras está apagado no se descuentan después.</p>
-        <label className="inventory-confirm"><input type="checkbox" checked={confirmed} disabled={busy || loading || Boolean(data.pending)} onChange={e=>setConfirmed(e.target.checked)}/>Confirmo {data.state.enabled ? 'pausar' : 'activar'} el control de inventario.</label>
-        <button className="inventory-primary" disabled={!confirmed || busy || loading || Boolean(data.pending)} onClick={()=>void save(undefined,!data.state.enabled)}>{data.state.enabled ? 'Pausar inventario' : 'Activar inventario'}</button>
-      </details>
-    </section>
-    {data.pending && <div className="inventory-recovery" role="status"><strong>Hay una operación pendiente de confirmar.</strong><p>Recupérala antes de hacer otro cambio.</p><button disabled={busy || loading} onClick={() => void save()}>Recuperar operación</button></div>}
+  return <div className="inventory-page settings-page"><h1>Inventario</h1>
+    <SettingsGroup title="Control de existencias">
+      <SettingsRow label="Inventario" detail={data.state.enabled ? 'Las ventas descuentan las existencias contadas.' : 'Las ventas no descuentan existencias.'}><span className={`settings-badge${data.state.enabled ? ' is-on' : ''}`}>{data.state.enabled ? 'Activado' : 'Desactivado'}</span></SettingsRow>
+      <details className="settings-disclosure"><summary>{data.state.enabled ? 'Pausar inventario' : 'Activar inventario'}</summary><div>
+        <p>{data.state.enabled ? 'Las ventas seguirán disponibles sin descontar productos.' : 'Al activarlo, vuelve a contar o importa las existencias actuales. Los conteos anteriores dejan de usarse.'}</p>
+        <label className="settings-confirm"><input type="checkbox" checked={confirmed} disabled={busy || loading || Boolean(data.pending)} onChange={e=>setConfirmed(e.target.checked)}/>{data.state.enabled ? 'Pausar el descuento de existencias.' : 'Voy a registrar las existencias actuales.'}</label>
+        <button className="is-primary" disabled={!confirmed || busy || loading || Boolean(data.pending)} onClick={()=>void save(undefined,!data.state.enabled)}>{data.state.enabled ? 'Pausar inventario' : 'Activar inventario'}</button>
+      </div></details>
+    </SettingsGroup>
+    {data.pending && <div className="inventory-recovery" role="status"><strong>Hay un cambio sin confirmar.</strong><button disabled={busy || loading} onClick={() => void save()}>Revisar cambio pendiente</button></div>}
     {failure && <p className="inventory-error" role="alert">{failure}</p>}
     {notice && <p role="status">{notice}</p>}
-    <InventoryWorkspace items={data.items} history={data.history} disabled={busy || loading || Boolean(data.pending)} onSave={save}
+    <InventoryWorkspace hideTitle items={data.items} history={data.history} disabled={busy || loading || Boolean(data.pending)} onSave={save}
       onRefresh={() => void reload()} before={before} onHistoryPage={setBefore} />
   </div>;
 }

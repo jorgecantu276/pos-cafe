@@ -84,7 +84,7 @@ test('staff recovery distinguishes rejected writes from an unconfirmed password 
   assert.deepEqual(readStaffPending(h.storage), edit);
   acknowledgeStaffPending(h.storage);
   // A stale API that silently ignores passwords must not produce a success UI.
-  await assert.rejects(saveStaffChange(h.storage, edit, person, { fetch: async () => Response.json({ success: true }) }), /no confirmó/);
+  await assert.rejects(saveStaffChange(h.storage, edit, person, { fetch: async () => Response.json({ success: true }) }), /No se confirmaron los cambios/);
   assert.deepEqual(readStaffPending(h.storage), edit);
 });
 

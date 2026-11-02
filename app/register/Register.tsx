@@ -233,14 +233,14 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       try {
         const binding = bindCartDraft({ storage: localStorage, userId: data.user.id, registerId: data.shift.id,
           products: data.products, extras: data.extras, onError: setDraftError,
-          onRepriced: () => alert('Se actualizaron los precios del borrador con el catálogo actual. Revisa el total antes de cobrar.') });
+          onRepriced: () => alert('Los precios cambiaron. Revisa el total antes de cobrar.') });
         cartDraft.current = binding;
         if (binding.customerId) {
           setCustomerRestoring(true);
           void supabase.from('customers').select('*').eq('id', binding.customerId).abortSignal(AbortSignal.timeout(12_000)).maybeSingle().then(({ data: customer, error }) => {
             if (cartDraft.current !== binding || useCartStore.getState().customerId !== binding.customerId) return;
             setCustomerRestoring(false);
-            if (error || !customer) setCustomerError('No se pudo recuperar el cliente del borrador. Reintenta la conexión o selecciona el cliente antes de cobrar.');
+            if (error || !customer) setCustomerError('No se pudo cargar el cliente. Vuelve a seleccionarlo antes de cobrar.');
             else setActiveCustomer(customer);
           });
         }
@@ -312,7 +312,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       }
       const { data, error } = await withDeadline(() => supabase.rpc('pos_open_shift', pending));
       if (error) throw error;
-      if (!data?.id) throw new Error('No se recibió la apertura. Reintenta la misma solicitud.');
+      if (!data?.id) throw new Error('No se confirmó la apertura. Pulsa de nuevo para comprobarla.');
       if (data.status !== 'open') { localStorage.removeItem(openingKey); await fetchData(); return; }
       localStorage.removeItem(openingKey);
       localStorage.setItem(shiftMemoryKey.current, JSON.stringify({ registerId: data.id, expenses: [] }));
@@ -327,11 +327,11 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     } catch (error) {
       if (error && typeof error==='object' && 'code' in error && /^[0-9A-Z]{5}$/.test(String(error.code))) {
         localStorage.removeItem(`${shiftMemoryKey.current}:opening`);
-        alert('La apertura fue rechazada sin guardar cambios. Revisa los importes y recupera cualquier turno abierto.');
+        alert('No se abrió la caja. Revisa los importes y vuelve a intentar.');
         await fetchData();
         return;
       }
-      alert('No se confirmó la apertura. Se conserva la misma solicitud para recuperarla. ' + (error instanceof Error ? errorMessage(error) : 'Revisa la conexión.'));
+      alert('No se confirmó la apertura. Comprueba el estado de la caja. ' + (error instanceof Error ? errorMessage(error) : 'Revisa la conexión.'));
     } finally { openingInFlight.current = false; setOpeningShift(false); }
   };
 
@@ -345,7 +345,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       shiftSummary.current = next; setExpenses(next.expenses); setCashSales(next.cash_sales);
       return true;
     } catch (failure) {
-      if (draftOwner.current === owner) setExpenseError('No se confirmó el gasto. Reintenta la conexión para recuperar la misma solicitud. ' + errorMessage(failure));
+      if (draftOwner.current === owner) setExpenseError('No se confirmó el gasto. Vuelve a comprobarlo antes de agregar otro. ' + errorMessage(failure));
       return false;
     } finally { expenseInFlight.current = false; if (draftOwner.current === owner) setSavingExpense(false); }
   };
@@ -366,7 +366,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     try {
       const summary = await loadShiftSummary(supabase, registerId);
       if (draftOwner.current !== owner || summary.status !== 'open') return;
-      if (localStorage.getItem(expenseRequestKey(owner))) throw new Error('Hay un gasto pendiente de recuperar.');
+      if (localStorage.getItem(expenseRequestKey(owner))) throw new Error('Hay un gasto sin confirmar. Compruébalo antes de agregar otro.');
       shiftSummary.current = summary; setExpenses(summary.expenses); setCashSales(summary.cash_sales);
       setCloseAction(action); setHandoffTarget(''); setCountConfirmed(false);
       setBreakdown(DENOMINATIONS.reduce((acc, den) => ({ ...acc, [den]: 0 }), {})); setDollarsInBox('');
@@ -427,7 +427,7 @@ const handleSaveAndClose = async () => {
       });
     } catch (error) {
       printWindow?.close();
-      alert('No se confirmó el guardado del corte. Conservamos el turno. Revisa el historial antes de intentar nuevamente. ' + (error instanceof Error ? errorMessage(error) : ''));
+      alert('No se confirmó el corte. Revisa el historial antes de volver a cerrar. ' + (error instanceof Error ? errorMessage(error) : ''));
     } finally {
       closingShift.current = false;
       if (draftOwner.current === owner) setIsClosingShift(false);
@@ -444,7 +444,7 @@ const handleSaveAndClose = async () => {
   const [customerRegisterError, setCustomerRegisterError] = useState('');
   const [customerForm, setCustomerForm] = useState({ firstName: '', lastName: '', birthDate: '', whatsapp: '', acceptPromos: false });
   const handleOpenCustomerModal = () => {
-    try { setCustomerRegisterError(hasDrawerRequest(localStorage,draftOwner.current,'customer') ? 'Hay un alta sin confirmar. Reintentar recupera los datos originales y evita duplicar al cliente.' : ''); }
+    try { setCustomerRegisterError(hasDrawerRequest(localStorage,draftOwner.current,'customer') ? 'El cliente todavía no se ha confirmado. Pulsa de nuevo para comprobarlo.' : ''); }
     catch(error) { setCustomerRegisterError(errorMessage(error)); }
     setShowCustomerModal(true);
   };
@@ -629,7 +629,7 @@ const handleSaveAndClose = async () => {
         if (!review) {
           if (catalogStale) throw new Error('El menú cambió. Cierra el cobro, actualiza y revisa el pedido.');
           if (!binding || draftError || customerRestoring || (activeCustomer?.id ?? null) !== customerId)
-            throw new Error('Revisa la recuperación del borrador y su cliente antes de cobrar.');
+            throw new Error('Revisa el pedido y el cliente antes de cobrar.');
           const orderTotal = getTotal();
           if (!registerId || !items.length || !Number.isFinite(orderTotal) || orderTotal <= 0 || isPaymentInsufficient) throw new Error('Revisa la orden, el turno y el importe recibido.');
           const cash = ['Efectivo','Mixto'].includes(paymentMethod);
@@ -678,7 +678,7 @@ const handleSaveAndClose = async () => {
       try { needsReview = Boolean(checkoutKey && localStorage.getItem(checkoutKey)); }
       catch { /* Storage failure must not hide the original save error. */ }
       if (needsReview) setShowCheckoutModal(false);
-      if (!(error instanceof ClipPaymentPending)) alert((error instanceof Error ? errorMessage(error) : 'No se confirmó la venta.') + (needsReview ? '\nNo vuelvas a cobrar. Usa recuperar venta para consultar o completar la misma transacción.' : ''));
+      if (!(error instanceof ClipPaymentPending)) alert((error instanceof Error ? errorMessage(error) : 'No se confirmó la venta.') + (needsReview ? '\nNo vuelvas a cobrar. Pulsa Comprobar venta para revisar el cobro pendiente.' : ''));
     } finally {
       if (stillCurrent()) { checkoutInFlight.current = false; setIsProcessingCheckout(false); }
     }
@@ -686,7 +686,7 @@ const handleSaveAndClose = async () => {
 
   const handleDiscardCheckout = async () => {
     if (checkoutInFlight.current || !checkoutReviewKey.current || !checkoutReview?.requestId) return;
-    if (!confirm('Se descartará solamente si la base de datos confirma que no existe la venta. Revisa el efectivo recibido con el responsable.')) return;
+    if (!confirm('¿Quitar este pedido pendiente? Solo se quitará si no se registró la venta. Revisa antes el dinero recibido.')) return;
     const checkoutKey = checkoutReviewKey.current, binding = cartDraft.current;
     const stillCurrent = () => checkoutKey === checkoutReviewKey.current && binding === cartDraft.current;
     checkoutInFlight.current = true;
@@ -701,7 +701,7 @@ const handleSaveAndClose = async () => {
         if (!stillCurrent()) return;
         setCheckoutReview(null); clearCart(); setShowCheckoutModal(false);
       });
-    } catch (error) { if (stillCurrent()) alert(error instanceof Error ? errorMessage(error) : 'No se confirmó el descarte. Conservamos el registro pendiente.'); }
+    } catch (error) { if (stillCurrent()) alert(error instanceof Error ? errorMessage(error) : 'No se pudo quitar el pedido. Revisa la venta pendiente.'); }
     finally { if (stillCurrent()) { checkoutInFlight.current = false; setIsProcessingCheckout(false); } }
   };
 
@@ -849,7 +849,7 @@ const handleSaveAndClose = async () => {
 
                   <div className="space-y-2.5">
                     <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl">
-                      <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Fondo Inicial</span>
+                      <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Fondo inicial</span>
                       <span className="text-sm font-bold">${startingCash.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl">
@@ -862,14 +862,14 @@ const handleSaveAndClose = async () => {
                     </div>
 
                     <div className="mt-4 pt-4 border-t border-white/10">
-                      <p className="text-[10px] uppercase font-black tracking-widest mb-1 text-slate-500">Efectivo Esperado</p>
+                      <p className="text-[10px] uppercase font-black tracking-widest mb-1 text-slate-500">Efectivo esperado</p>
                       <p className="text-3xl font-black text-white tracking-tighter">${expectedCash.toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                   <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">T. Cambio Aplicado: <span className="text-white">${exchangeRate}</span></p>
+                   <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">1 USD = <span className="text-white">{exchangeRate} MXN</span></p>
                    <button onClick={handleLogout} disabled={savingExpense || isClosingShift} className="flex items-center gap-2 text-red-400 font-bold hover:text-red-300 transition-colors text-sm">
                      <LogOut size={18}/> Salir y dejar mi turno abierto
                    </button>
@@ -889,12 +889,12 @@ const handleSaveAndClose = async () => {
                 {closeAction==='handoff' && <fieldset className="pos-closing-recipients" disabled={isClosingShift}>
                   <legend>Recibirá la caja</legend>
                   <div className="pos-closing-options">{drawer?.cashiers.map(c => <button type="button" key={c.id} aria-pressed={handoffTarget===c.id} onClick={() => { setHandoffTarget(c.id); setCountConfirmed(false); }}>{c.name}</button>)}</div>
-                  <p>{drawer?.cashiers.length ? 'El cajero elegido iniciará sesión y confirmará el efectivo recibido.' : 'No hay otro cajero disponible para recibir la caja.'}</p>
+                  <p>{drawer?.cashiers.length ? 'El cajero elegido deberá iniciar sesión para recibir la caja.' : 'No hay otro cajero disponible para recibir la caja.'}</p>
                 </fieldset>}
 
                 {/* SECCIÓN GASTOS */}
                 <div className="bg-[#f5f5f7] p-4 rounded-[20px] border border-slate-100 mb-4">
-                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2.5">Registrar Gasto (Retiro)</label>
+                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2.5">Retiro de efectivo</label>
                   <div className="flex gap-2">
                     <input type="text" aria-label="Concepto del gasto" placeholder="Ej. Garrafón de agua..." disabled={isClosingShift} className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-semibold outline-none focus:border-[#0071e3]/30 transition-all" value={newExpense.desc} onChange={e => setNewExpense({...newExpense, desc: e.target.value})} />
                     <input type="number" inputMode="decimal" aria-label="Importe del gasto" placeholder="$0.00" disabled={isClosingShift} className="w-24 flex-shrink-0 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-semibold outline-none focus:border-[#0071e3]/30 text-right transition-all" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} />
@@ -918,7 +918,7 @@ const handleSaveAndClose = async () => {
 
                 {/* ARQUEO DE EFECTIVO */}
                 <div className="mb-4">
-                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest px-1 block mb-2">Arqueo Final de Efectivo</label>
+                  <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest px-1 block mb-2">Efectivo contado</label>
                   <div className="grid grid-cols-3 gap-3">
                     {DENOMINATIONS.map((den) => (
                       <div key={den} className="relative group">
@@ -942,7 +942,7 @@ const handleSaveAndClose = async () => {
                 {/* TOTALES */}
                 <div className="p-4 bg-[#f5f5f7] rounded-[24px] border border-slate-100 mb-5 mt-auto">
                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dólares Finales (USD)</span>
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dólares en caja</span>
                       <div className="relative w-32">
                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                         <input
@@ -959,7 +959,7 @@ const handleSaveAndClose = async () => {
                    </div>
 
                    <div className="flex justify-between items-center border-t border-slate-200 pt-3">
-                      <span className="text-[11px] font-black tracking-widest uppercase text-[#86868b]">Total Contado</span>
+                      <span className="text-[11px] font-black tracking-widest uppercase text-[#86868b]">Total contado</span>
                       <div className="flex items-center gap-3">
                          <span className={`text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider ${difference === 0 ? 'bg-green-100 text-green-700' : difference > 0 ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
                            {difference === 0 ? 'Caja Cuadrada' : difference > 0 ? `Sobrante +$${difference.toFixed(2)}` : `Faltante -$${Math.abs(difference).toFixed(2)}`}
@@ -978,7 +978,7 @@ const handleSaveAndClose = async () => {
                     Volver a caja
                   </button>
                   <button onClick={handleSaveAndClose} disabled={!countConfirmed || items.length>0 || isClosingShift || savingExpense || !!expenseError || (closeAction==='handoff'&&(!handoffTarget||items.length>0))} className="flex-1 bg-[#1d1d1f] text-white h-14 rounded-[20px] font-bold shadow-xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">
-                    <Printer size={20} /> {isClosingShift ? 'Guardando…' : closeAction==='handoff' ? 'Guardar corte y entregar caja' : 'Guardar e Imprimir Z'}
+                    <Printer size={20} /> {isClosingShift ? 'Guardando…' : closeAction==='handoff' ? 'Confirmar entrega' : 'Confirmar cierre'}
                   </button>
                 </div>
           </footer>
@@ -1005,46 +1005,46 @@ const handleSaveAndClose = async () => {
         )}
         {(draftError || customerError) && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-            <p>No se pudo recuperar o guardar el borrador. {draftError || customerError}</p>
+            <p>No se pudo cargar o guardar el pedido. {draftError || customerError}</p>
             <div className="mt-2 flex gap-4">
               <button className="font-semibold underline" onClick={async () => {
                 try {
                   if (cartDraft.current && !cartDraft.current.conflicted && !customerError) { cartDraft.current.flush(); setDraftError(null); }
                   else await fetchData();
                 } catch (error) { setDraftError(errorMessage(error)); }
-              }}>Reintentar borrador</button>
+              }}>Revisar pedido</button>
               {customerError && <button className="font-semibold underline" onClick={() => {
                 setCustomerId(null); setActiveCustomer(null); setCustomerRestoring(false); setCustomerError(null);
-              }}>Quitar cliente del borrador</button>}
+              }}>Quitar cliente</button>}
               <button className="font-semibold underline" onClick={async () => {
-                if (!draftStorageKey.current || !confirm('Se eliminará el borrador de carrito de este usuario. Una venta pendiente de revisión seguirá bloqueada hasta recuperarse.')) return;
+                if (!draftStorageKey.current || !confirm('¿Vaciar este pedido? Si hay un cobro sin confirmar, tendrás que revisarlo antes de cobrar de nuevo.')) return;
                 try {
                   localStorage.removeItem(draftStorageKey.current);
                   cartDraft.current?.disconnect(); cartDraft.current = null;
                   clearCart(); await fetchData();
                 } catch (error) { setDraftError(errorMessage(error)); }
-              }}>Descartar borrador</button>
+              }}>Vaciar pedido</button>
             </div>
           </div>
         )}
         {checkoutReview && !isProcessingCheckout && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-            <p className="font-bold">Venta pendiente de revisión{checkoutReview.ticketNumber != null ? ` · Folio ${checkoutReview.ticketNumber}` : ''}</p>
+            <p className="font-bold">Venta sin confirmar{checkoutReview.ticketNumber != null ? ` · Folio ${checkoutReview.ticketNumber}` : ''}</p>
             <p>No vuelvas a cobrar. Importe: ${checkoutReview.total.toFixed(2)} · Inicio: {checkoutReview.startedAt}</p>
             {checkoutReview.provider==='clip' && checkoutReview.requestId && <ClipPaymentStatus requestId={checkoutReview.requestId} onReady={() => void processCheckout()}/>}
             <div className="mt-2 flex gap-4">
               <a href="/admin/ventas" target="_blank" rel="noopener noreferrer" className="font-semibold underline">Revisar historial</a>
-              {checkoutReview.requestId && checkoutReview.payload && <button className="font-semibold underline" onClick={processCheckout}>Recuperar la misma venta</button>}
-              {checkoutReview.requestId && <button className="font-semibold underline" onClick={handleDiscardCheckout}>Descartar solicitud sin venta</button>}
+              {checkoutReview.requestId && checkoutReview.payload && <button className="font-semibold underline" onClick={processCheckout}>Comprobar venta</button>}
+              {checkoutReview.requestId && <button className="font-semibold underline" onClick={handleDiscardCheckout}>Quitar pedido pendiente</button>}
               {!checkoutReview.requestId && <button className="font-semibold underline" onClick={() => {
-                if (!confirm('Confirma que el responsable revisó el historial y resolvió esta venta. Se descartará la orden del carrito para evitar volver a cobrarla.')) return;
+                if (!confirm('¿El responsable ya revisó esta venta? Se vaciará el pedido para evitar cobrarlo de nuevo.')) return;
                 try {
                   cartDraft.current?.complete();
                   localStorage.removeItem(checkoutReviewKey.current);
                   clearCart();
                   setShowCheckoutModal(false);
                   setCheckoutReview(null);
-                } catch { alert('No se pudo actualizar el registro local. Conservamos el bloqueo de cobro.'); }
+                } catch { alert('No se pudo guardar la revisión. El cobro sigue pendiente.'); }
               }}>El responsable ya la revisó</button>}
             </div>
           </div>
@@ -1062,45 +1062,45 @@ const handleSaveAndClose = async () => {
         )}
         {(draftError || customerError) && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-            <p>No se pudo recuperar o guardar el borrador. {draftError || customerError}</p>
+            <p>No se pudo cargar o guardar el pedido. {draftError || customerError}</p>
             <div className="mt-2 flex gap-4">
               <button className="font-semibold underline" onClick={async () => {
                 try {
                   if (cartDraft.current && !cartDraft.current.conflicted && !customerError) { cartDraft.current.flush(); setDraftError(null); }
                   else await fetchData();
                 } catch (error) { setDraftError(errorMessage(error)); }
-              }}>Reintentar borrador</button>
+              }}>Revisar pedido</button>
               {customerError && <button className="font-semibold underline" onClick={() => {
                 setCustomerId(null); setActiveCustomer(null); setCustomerRestoring(false); setCustomerError(null);
-              }}>Quitar cliente del borrador</button>}
+              }}>Quitar cliente</button>}
               <button className="font-semibold underline" onClick={async () => {
-                if (!draftStorageKey.current || !confirm('Se eliminará el borrador de carrito de este usuario. Una venta pendiente de revisión seguirá bloqueada hasta recuperarse.')) return;
+                if (!draftStorageKey.current || !confirm('¿Vaciar este pedido? Si hay un cobro sin confirmar, tendrás que revisarlo antes de cobrar de nuevo.')) return;
                 try {
                   localStorage.removeItem(draftStorageKey.current);
                   cartDraft.current?.disconnect(); cartDraft.current = null;
                   clearCart(); await fetchData();
                 } catch (error) { setDraftError(errorMessage(error)); }
-              }}>Descartar borrador</button>
+              }}>Vaciar pedido</button>
             </div>
           </div>
         )}
         {checkoutReview && !isProcessingCheckout && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-            <p className="font-bold">Venta pendiente de revisión{checkoutReview.ticketNumber != null ? ` · Folio ${checkoutReview.ticketNumber}` : ''}</p>
+            <p className="font-bold">Venta sin confirmar{checkoutReview.ticketNumber != null ? ` · Folio ${checkoutReview.ticketNumber}` : ''}</p>
             <p>No vuelvas a cobrar. Importe: ${checkoutReview.total.toFixed(2)} · Inicio: {checkoutReview.startedAt}</p>
             <div className="mt-2 flex gap-4">
               <a href="/admin/ventas" target="_blank" rel="noopener noreferrer" className="font-semibold underline">Revisar historial</a>
-              {checkoutReview.requestId && checkoutReview.payload && <button className="font-semibold underline" onClick={processCheckout}>Recuperar la misma venta</button>}
-              {checkoutReview.requestId && <button className="font-semibold underline" onClick={handleDiscardCheckout}>Descartar solicitud sin venta</button>}
+              {checkoutReview.requestId && checkoutReview.payload && <button className="font-semibold underline" onClick={processCheckout}>Comprobar venta</button>}
+              {checkoutReview.requestId && <button className="font-semibold underline" onClick={handleDiscardCheckout}>Quitar pedido pendiente</button>}
               {!checkoutReview.requestId && <button className="font-semibold underline" onClick={() => {
-                if (!confirm('Confirma que el responsable revisó el historial y resolvió esta venta. Se descartará la orden del carrito para evitar volver a cobrarla.')) return;
+                if (!confirm('¿El responsable ya revisó esta venta? Se vaciará el pedido para evitar cobrarlo de nuevo.')) return;
                 try {
                   cartDraft.current?.complete();
                   localStorage.removeItem(checkoutReviewKey.current);
                   clearCart();
                   setShowCheckoutModal(false);
                   setCheckoutReview(null);
-                } catch { alert('No se pudo actualizar el registro local. Conservamos el bloqueo de cobro.'); }
+                } catch { alert('No se pudo guardar la revisión. El cobro sigue pendiente.'); }
               }}>El responsable ya la revisó</button>}
             </div>
           </div>
@@ -1413,7 +1413,7 @@ const handleSaveAndClose = async () => {
                  </div>
 
                  <button onClick={processCheckout} disabled={isProcessingCheckout || isPaymentInsufficient} className="w-full bg-[#1d1d1f] text-white h-16 rounded-[20px] font-bold text-lg flex justify-center items-center gap-2 shadow-xl hover:bg-black active:scale-95 transition-all">
-                    {isProcessingCheckout ? <Loader2 className="animate-spin" /> : <><CheckCircle2 size={22}/> Confirmar Pago</>}
+                    {isProcessingCheckout ? <Loader2 className="animate-spin" /> : <><CheckCircle2 size={22}/> Confirmar pago</>}
                  </button>
                </div>
              )}
@@ -1424,7 +1424,7 @@ const handleSaveAndClose = async () => {
       {showPostSaleModal && appearance==='workspace' && <WorkspaceDialog title="Venta guardada" onClose={handleNextOrder} className="workspace-sale">
         <div className="workspace-dialog-content"><p className="workspace-caption">Folio #{savedSale?.ticket_number ?? lastOrderId}</p><p className="workspace-sale-total">${(savedSale?.total ?? getTotal()).toFixed(2)} MXN</p>
           {savedSale?.pager_number != null && <p className="font-bold">Entregar control #{savedSale.pager_number}</p>}
-          <p>Cliente → USB · Barra → Bluetooth. La venta no se vuelve a cobrar al reintentar impresión.</p>
+          <p>El ticket y las etiquetas se envían a sus impresoras.</p>
           {printStatus}
         </div><footer><button className="workspace-primary" onClick={handleNextOrder}>Nueva venta</button></footer>
       </WorkspaceDialog>}
@@ -1440,7 +1440,7 @@ const handleSaveAndClose = async () => {
 
              <h2 className="text-[32px] font-semibold tracking-tight text-[#1d1d1f] mb-2">Venta guardada</h2>
              <p className="text-[#86868b] text-[17px] mb-10 font-medium leading-relaxed">
-               La venta está guardada. Las copias de cliente y barra se envían a sus impresoras.
+               El ticket y las etiquetas se envían a sus impresoras.
              </p>
 
              {printStatus}
@@ -1548,7 +1548,7 @@ const handleSaveAndClose = async () => {
                   onClick={handleConfirmAdd}
                   className="flex-1 bg-[#1d1d1f] text-white h-14 rounded-2xl font-bold text-lg hover:bg-black active:scale-[0.98] transition-all shadow-xl"
                 >
-                  Confirmar Producto
+                  Confirmar producto
                 </button>
               )}
             </div>
@@ -1565,16 +1565,16 @@ const handleSaveAndClose = async () => {
             </div>
             <form onSubmit={handleRegisterCustomer} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <input type="text" required placeholder="Nombre" className="p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.firstName} onChange={e => setCustomerForm({...customerForm, firstName: e.target.value})} />
-                <input type="text" placeholder="Apellido (opcional)" className="p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.lastName} onChange={e => setCustomerForm({...customerForm, lastName: e.target.value})} />
+                <input type="text" required aria-label="Nombre" placeholder="Nombre" className="p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.firstName} onChange={e => setCustomerForm({...customerForm, firstName: e.target.value})} />
+                <input type="text" aria-label="Apellido" placeholder="Apellido (opcional)" className="p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.lastName} onChange={e => setCustomerForm({...customerForm, lastName: e.target.value})} />
               </div>
               <label className="block">Cumpleaños (opcional)<input type="date" aria-label="Cumpleaños opcional" className="w-full p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.birthDate} onChange={e => setCustomerForm({...customerForm, birthDate: e.target.value})} /></label>
               <label className="block">Teléfono / WhatsApp (obligatorio)<input type="tel" inputMode="tel" autoComplete="tel" required maxLength={60} aria-label="Teléfono obligatorio" placeholder="10 dígitos MX o número internacional" className="w-full p-3 rounded-xl bg-slate-50 outline-none text-sm" value={customerForm.whatsapp} onChange={e => setCustomerForm({...customerForm, whatsapp: e.target.value})} /></label>
-              <p>Nombre y teléfono obligatorios. Buscarás al cliente por su teléfono. Se seleccionará para esta compra. Puntos iniciales: 50.</p>
+              <p>50 puntos de bienvenida.</p>
               {customerRegisterError&&<p role="alert">{customerRegisterError}</p>}
-              {customerRegisterError&&<button type="button" disabled={isRegistering} onClick={()=>void handleRegisterCustomer({preventDefault(){}} as React.FormEvent)}>Reintentar la misma alta</button>}
+              {customerRegisterError&&<button type="button" disabled={isRegistering} onClick={()=>void handleRegisterCustomer({preventDefault(){}} as React.FormEvent)}>Comprobar cliente</button>}
               <button type="submit" disabled={isRegistering} className="w-full bg-[#0071e3] text-white py-4 rounded-2xl font-bold flex justify-center items-center gap-2">
-                {isRegistering ? <Loader2 className="animate-spin" /> : 'Registrar Cliente'}
+                {isRegistering ? <Loader2 className="animate-spin" /> : 'Guardar cliente'}
               </button>
             </form>
           </div>

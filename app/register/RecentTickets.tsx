@@ -8,7 +8,7 @@ async function loadRecentTickets(signal: AbortSignal) {
   return readRecentTickets(supabase, signal);
 }
 
-const date = new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+const date = new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Matamoros', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
 export default function RecentTickets({ onReprint, disabled = false, loadTickets = loadRecentTickets }: {
@@ -30,10 +30,10 @@ export default function RecentTickets({ onReprint, disabled = false, loadTickets
     return () => controller.abort();
   }, [attempt, loadTickets]);
   return <section className="workspace-recent-tickets" aria-label="Tickets recientes" aria-busy={loading}>
-    <div className="workspace-recent-heading"><h3>Tickets recientes</h3><span>Últimos 10 disponibles</span></div>
+    <div className="workspace-recent-heading"><h3>Tickets recientes</h3><span>Últimos 10 tickets</span></div>
     {loading ? <p role="status">Cargando tickets…</p> : error ? <div role="alert"><p>{error}</p>
-      <button type="button" onClick={() => { setLoading(true); setError(''); setAttempt(value => value + 1); }}>Reintentar tickets</button></div>
-      : !tickets.length ? <p>No hay tickets disponibles para esta cuenta.</p>
+      <button type="button" onClick={() => { setLoading(true); setError(''); setAttempt(value => value + 1); }}>Volver a intentar</button></div>
+      : !tickets.length ? <p>Todavía no hay tickets.</p>
       : <ul className="workspace-recent-list">{tickets.map(ticket => <li key={ticket.id}>
         <div className="workspace-recent-copy"><strong>#{ticket.ticket_number} <span>{money.format(ticket.total)} MXN</span></strong>
           <span>{ticket.created_at ? <time dateTime={ticket.created_at}>{date.format(new Date(ticket.created_at))}</time> : 'Fecha no registrada'} · {ticket.cashier_name}</span>

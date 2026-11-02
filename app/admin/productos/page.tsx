@@ -74,13 +74,13 @@ export default function ProductosPage() {
     try {
       await saveCatalogChange(supabase, localStorage, actor, change);
       announceCatalogChange();
-      setPending(false); setMessage('Catálogo guardado. La caja avisará para actualizar el menú.');
+      setPending(false); setMessage('Cambios guardados.');
       setShowForm(false);
       setEditingId(null);
       setFormData(initialFormState);
       await fetchData();
     } catch (error: unknown) {
-      setMessage(`No se pudo confirmar el guardado: ${errorMessage(error)}`);
+      setMessage(`No se confirmó el guardado. ${errorMessage(error)}`);
       try { setPending(Boolean(readCatalogRequest(localStorage, actor))); } catch { setPending(true); }
     } finally { saving.current = false; setBusy(false); }
   };
@@ -124,9 +124,9 @@ export default function ProductosPage() {
 
   return <div className="workspace-catalog-admin">
     {!showForm && message && <p role="status" className="admin-form-message">{message}</p>}
-    {pending && <div role="alert" className="admin-recovery"><p>Hay un guardado sin confirmar. Recupéralo antes de hacer otro cambio.</p><button type="button" disabled={busy} onClick={() => void commitChange()}>{busy ? 'Confirmando…' : 'Recuperar guardado pendiente'}</button></div>}
+    {pending && <div role="alert" className="admin-recovery"><p>Hay cambios sin confirmar. Comprueba el guardado antes de continuar.</p><button type="button" disabled={busy} onClick={() => void commitChange()}>{busy ? 'Confirmando…' : 'Comprobar guardado'}</button></div>}
     <fieldset disabled={busy || pending} className="catalog-workspace">
-      <header className="workspace-admin-heading-row"><h1>Catálogo</h1><button type="button" onClick={handleToggleForm} className="admin-primary-button"><PlusCircle size={20}/>{`Nuevo ${activeTab === 'items' ? 'Producto' : 'Extra'}`}</button></header>
+      <header className="workspace-admin-heading-row"><h1>Catálogo</h1><button type="button" onClick={handleToggleForm} className="admin-primary-button"><PlusCircle size={20}/>{`Nuevo ${activeTab === 'items' ? 'producto' : 'extra'}`}</button></header>
       <div className="catalog-toolbar">
         <div className="admin-segmented" role="group" aria-label="Tipo de catálogo"><button type="button" aria-pressed={activeTab === 'items'} onClick={() => selectTab('items')}>Productos</button><button type="button" aria-pressed={activeTab === 'extras'} onClick={() => selectTab('extras')}>Extras</button></div>
         <div className="catalog-filters"><label className="admin-field">{activeTab === 'items' ? 'Buscar producto' : 'Buscar extra'}<input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Escribe el nombre"/></label><label className="admin-field">{activeTab === 'items' ? 'Categoría' : 'Grupo'}<select value={groupFilter} onChange={e => setGroupFilter(e.target.value)}><option value="">{activeTab === 'items' ? 'Todas las categorías' : 'Todos los grupos'}</option>{filterGroups.map(group => <option key={group}>{group}</option>)}</select></label></div>

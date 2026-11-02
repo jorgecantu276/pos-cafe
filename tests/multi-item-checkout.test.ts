@@ -114,7 +114,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     await act(async()=>{orderType.value='Para Llevar';orderType.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
     await click(button('Nota de la orden'));await typeNote('entregar juntos','.workspace-checkout fieldset[aria-label="Teclado en pantalla"]');
     const confirmation=dom.window.document.querySelector('.workspace-card-confirm input')!;assert.ok(confirmation);await click(confirmation);
-    await click(button('Confirmar Pago'));
+    await click(button('Confirmar pago'));
     assert.equal(calls,1);assert.ok(payload);assert.equal(payload.expected_total,425);assert.deepEqual(payload.items,fixture.expectedLines);
     assert.equal(payload.order_type,'Para Llevar');assert.equal(payload.order_note,'entregar juntos');
     assert.ok(receipt);const documents=salePrinting.saleDocuments(receipt,{testOnly:true});

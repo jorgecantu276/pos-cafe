@@ -49,7 +49,7 @@ export function readCatalogRequest(storage: Memory, actor: string): Pending | nu
   const pending = JSON.parse(raw) as Pending;
   if (!pending || pending.actor !== actor || pending.payload?.actor_id !== actor || !uuid.test(pending.request)
     || !['product', 'extra'].includes(pending.payload.kind) || !['save', 'deactivate'].includes(pending.payload.action)) {
-    throw Error('El guardado pendiente no se puede leer. Conserva los datos para revisión.');
+    throw Error('No se pudieron abrir los cambios pendientes. Pide ayuda al responsable.');
   }
   return pending;
 }
@@ -66,7 +66,7 @@ async function submit(client: Client, storage: Memory, pending: Pending) {
     }
     if (data?.request_id !== pending.request || data.kind !== pending.payload.kind || data.action !== pending.payload.action
       || typeof data.id !== 'string' || !uuid.test(data.id) || (pending.payload.id && data.id !== pending.payload.id)) {
-      throw Error('Respuesta no confirmada. Recupera el mismo guardado de catálogo.');
+      throw Error('No se confirmó el guardado. Pulsa Comprobar guardado.');
     }
     if (storage.getItem(key) !== raw) throw Error('El guardado cambió en otra ventana. Actualiza antes de continuar.');
     storage.removeItem(key);
@@ -81,11 +81,11 @@ export async function saveCatalogChange(client: Client, storage: Memory, actor: 
     if (!lock) throw Error('Otra ventana está guardando el catálogo.');
     let pending = readCatalogRequest(storage, actor);
     if (change) {
-      if (pending) throw Error('Recupera el guardado pendiente antes de hacer otro cambio.');
+      if (pending) throw Error('Comprueba los cambios pendientes antes de seguir.');
       pending = { actor, request: crypto.randomUUID(), payload: { ...change, actor_id: actor } };
       storage.setItem(catalogRequestKey(actor), JSON.stringify(pending));
     }
-    if (!pending) throw Error('No hay un guardado pendiente para esta sesión.');
+    if (!pending) throw Error('No hay cambios pendientes.');
     return submit(client, storage, pending);
   });
 }

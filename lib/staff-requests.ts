@@ -31,7 +31,7 @@ export async function saveStaffChange(storage: Storage, pending: StaffPending, p
         throw new Error(result.error || 'No se pudo guardar.');
       }
       if (result.success !== true || (pending.operation !== 'create' && payload.password && result.password_changed !== true)) {
-        throw new StaffRequestUncertain('El servidor no confirmó todos los cambios. Revisa la lista y el acceso antes de repetirlos.');
+        throw new StaffRequestUncertain('No se confirmaron los cambios. Comprueba el usuario y su acceso.');
       }
       storage.removeItem(staffPendingKey);
       return result as { success: true; password_changed?: boolean };
@@ -39,7 +39,7 @@ export async function saveStaffChange(storage: Storage, pending: StaffPending, p
     return await Promise.race([request, expired]);
   } catch (error) {
     if (error instanceof StaffRequestUncertain) throw error;
-    if (storage.getItem(staffPendingKey)) throw new StaffRequestUncertain('No se recibió una confirmación. Revisa la lista de usuarios y, si cambiaste contraseña, verifica el acceso antes de repetirlo.');
+    if (storage.getItem(staffPendingKey)) throw new StaffRequestUncertain('No se confirmó el cambio. Comprueba el usuario y su acceso antes de volver a editarlo.');
     throw error;
   } finally { clearTimeout(timeout); }
 }

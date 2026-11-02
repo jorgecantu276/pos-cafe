@@ -43,7 +43,7 @@ export default function ClientesPage() {
     const started = revision;
     void withDeadline(() => supabase.auth.getUser()).then(({ data, error }) => {
       if (!active || started !== revision) return;
-      if (error || !data.user) { setCorrectionError('No se pudo verificar tu sesión. Recarga antes de corregir clientes.'); return; }
+      if (error || !data.user) { setCorrectionError('La sesión no está disponible. Vuelve a iniciar sesión.'); return; }
       accept(data.user.id);
     }).catch(failure => { if (active && started === revision) setCorrectionError(errorMessage(failure)); });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { revision++; accept(session?.user.id ?? ''); });
@@ -65,7 +65,7 @@ export default function ClientesPage() {
         : await saveCustomerCorrection(supabase, localStorage, owner, editing!);
       if (actorRef.current !== owner) return;
       setEditing(null); setPending(null);
-      setCorrectionMessage(`Datos guardados: ${customer.name} · ${customer.phone}. Conserva sus puntos y compras.`);
+      setCorrectionMessage(`Datos guardados: ${customer.name} · ${customer.phone}.`);
       setQuery(current => ({ ...current }));
     } catch (failure) {
       if (actorRef.current === owner) setCorrectionError(errorMessage(failure));
@@ -100,29 +100,29 @@ export default function ClientesPage() {
         </span></label>
         <button className="admin-secondary-button" onClick={() => setQuery({ ...query, page: 0 })}>Actualizar clientes</button>
       </div>
-      <p className="text-sm text-slate-500">Las compras mostradas excluyen ventas canceladas y pendientes. Los puntos se muestran por separado.</p>
+      <p className="text-sm text-slate-500">Compras pagadas; no incluye ventas canceladas.</p>
       {correctionError && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4">{correctionError}</p>}
       {correctionMessage && <p role="status" className="rounded-xl bg-emerald-50 p-4">{correctionMessage}</p>}
       {historyCustomer && <CustomerHistory key={historyCustomer.id} customer={historyCustomer} onClose={() => setHistoryCustomer(null)}/>}
       {pending && <section aria-label="Corrección pendiente" className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
-        <p>Corrección sin confirmar: {pending.payload.name} · {pending.payload.phone}. Recupera la misma solicitud antes de modificar otros datos.</p>
-        <button type="button" disabled={saving} className="rounded-xl border bg-white p-3 font-bold" onClick={() => void correctCustomer(true)}>{saving ? 'Verificando corrección…' : 'Recuperar la misma corrección'}</button>
+        <p>Corrección sin confirmar: {pending.payload.name} · {pending.payload.phone}. Comprueba el guardado antes de seguir.</p>
+        <button type="button" disabled={saving} className="rounded-xl border bg-white p-3 font-bold" onClick={() => void correctCustomer(true)}>{saving ? 'Verificando corrección…' : 'Comprobar cambios'}</button>
       </section>}
       {editing && <section aria-label="Corregir cliente" className="rounded-2xl border bg-white p-6">
         <h3 className="text-xl font-bold">Corregir nombre y teléfono</h3>
-        <p className="mt-2 text-sm text-slate-500">Se corrigen los datos del cliente y se conservan sus puntos e historial de compras.</p>
+        <p className="mt-2 text-sm text-slate-500">Sus compras y puntos se conservan.</p>
         <form className="mt-4 space-y-4" onSubmit={event => { event.preventDefault(); void correctCustomer(false); }}>
           <fieldset disabled={saving || !!pending || pendingUnreadable} className="space-y-4">
             <label className="block">Nombre<input required maxLength={150} aria-label="Nombre del cliente" className="mt-1 block w-full rounded-xl border p-3" value={editing.name} onChange={event => setEditing({ ...editing, name: event.target.value })} /></label>
             <label className="block">Teléfono / WhatsApp<input required type="tel" inputMode="tel" maxLength={60} aria-label="Teléfono del cliente" className="mt-1 block w-full rounded-xl border p-3" value={editing.phone} onChange={event => setEditing({ ...editing, phone: event.target.value })} /></label>
-            <p className="text-sm text-slate-500">10 dígitos para México o de 10 a 15 para un número internacional. El teléfono debe pertenecer a este cliente.</p>
+            <p className="text-sm text-slate-500">10 dígitos en México. Para otros países, incluye la lada.</p>
             <button type="submit" className="rounded-xl bg-blue-600 p-3 font-bold text-white">{saving ? 'Guardando…' : 'Guardar corrección'}</button>
           </fieldset>
           <button type="button" disabled={saving} className="rounded-xl border p-3" onClick={() => setEditing(null)}>Cerrar edición</button>
         </form>
       </section>}
-      {error ? <LoadFailure message={error} retry={reload} /> : loading ? <p role="status">Verificando clientes…</p> : report && <>
-      <p className="text-sm">{report.summary.rows} clientes · Compras completadas {reportMoney(report.summary.sales)} · Actualizado {reportDate(report.captured_at)}</p>
+      {error ? <LoadFailure message={error} retry={reload} /> : loading ? <p role="status">Cargando clientes…</p> : report && <>
+      <p className="text-sm">{report.summary.rows} clientes · Compras pagadas {reportMoney(report.summary.sales)} · Actualizado {reportDate(report.captured_at)}</p>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map(customer => (
           <div key={customer.id} className="customer-card">
@@ -139,7 +139,7 @@ export default function ClientesPage() {
             </div>
             <div className="customer-card-total">
                <div>
-                 <p className="admin-description">Compras completadas</p>
+                 <p className="admin-description">Compras pagadas</p>
                  <p className="text-xl font-black text-slate-900">{reportMoney(customer.completed_spent)}</p>
                </div>
                <button type="button" className="rounded-xl border px-3 py-2 text-sm font-bold" onClick={() => setHistoryCustomer({ id: customer.id, name: customer.name })}>Ver compras</button>

@@ -73,10 +73,10 @@ export default function VentasPage() {
       await cancelLegacySale(supabase, selectedOrder.id);
       setQuery(previous => ({ ...previous, page: 0, asOf: null }));
       setSelectedOrder(null);
-      alert('Venta marcada como cancelada. No se ejecutó devolución de dinero.');
+      alert('Venta cancelada. El dinero no se ha devuelto.');
 
     } catch (error: unknown) {
-      alert('Hubo un error al cancelar la orden: ' + errorMessage(error));
+      alert('No se pudo cancelar la venta. ' + errorMessage(error));
     } finally {
       setIsCanceling(false);
     }
@@ -96,7 +96,7 @@ export default function VentasPage() {
     <div className="workspace-sales">
       <header><div className="workspace-admin-heading-row"><h1>Ventas</h1><Link className="workspace-admin-text-action" href="/tv" target="_blank" rel="noopener noreferrer">Abrir pantalla de ventas</Link></div><div className="workspace-sales-filters"><div className="workspace-sales-search"><input type="search" aria-label="Buscar ticket o producto" placeholder="Buscar ticket o producto" maxLength={100} value={searchTerm} onChange={event => changeSearch(event.target.value)} /><button type="button" aria-label="Teclado de búsqueda" aria-pressed={isKeyboardOpen} onClick={() => setIsKeyboardOpen(!isKeyboardOpen)}><Keyboard size={22}/></button></div><ReportFilters query={query} onChange={setQuery}/></div></header>
       {loading ? <p role="status">Verificando reporte…</p> : <>
-        <div className="workspace-sales-total"><span>Ventas completadas <strong>{reportMoney(report.summary.sales)}</strong></span><span>{report.summary.completed} tickets · {reportPeriod(query, report.day)}</span></div>
+        <div className="workspace-sales-total"><span>Ventas pagadas <strong>{reportMoney(report.summary.sales)}</strong></span><span>{report.summary.completed} tickets · {reportPeriod(query, report.day)}</span></div>
         <div className="workspace-sales-list" aria-label="Tickets">{filteredOrders.map(order => <button type="button" key={order.id} onClick={() => setSelectedOrder(order)}>
           <span><strong>#{String(order.ticket_number ?? order.id.split('-')[0]).padStart(4, '0')}</strong><small>{reportDate(order.created_at, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</small></span>
           <span className="workspace-sales-items">{order.order_items.map(item => { const info=item.product_snapshot || (Array.isArray(item.products) ? item.products[0] : item.products); return item.quantity+' × '+(info?.name || 'Producto'); }).join(', ')}{isCanceled(order.status) && <small>Cancelado</small>}{order.status === 'pending' && <small>Pendiente de revisión</small>}</span>
@@ -104,7 +104,7 @@ export default function VentasPage() {
         </button>)}</div>
         {!filteredOrders.length && <p className="workspace-sales-empty">No hay ventas en este periodo.</p>}
         <ReportPagination page={report.page} pageSize={report.page_size} rows={report.summary.rows} onPage={page => setQuery({ ...query, page, asOf: report.as_of })}/>
-        <details className="workspace-sales-details"><summary>Desglose</summary><p>{report.summary.pending} pendientes · {report.summary.cancelled} canceladas · Ticket promedio {reportMoney(report.summary.average)}</p><div>{report.payments.map(payment => <p key={payment.name}>{payment.name}: {reportMoney(payment.total)}</p>)}</div><p>Ventas completadas en MXN. Excluye pendientes y cancelaciones. No equivale al efectivo en caja.</p><p>Actualizado {reportDate(report.captured_at)} · Matamoros</p></details>
+        <details className="workspace-sales-details"><summary>Desglose</summary><p>{report.summary.pending} pendientes · {report.summary.cancelled} canceladas · Ticket promedio {reportMoney(report.summary.average)}</p><div>{report.payments.map(payment => <p key={payment.name}>{payment.name}: {reportMoney(payment.total)}</p>)}</div><p>Ventas pagadas en MXN; no incluye cancelaciones.</p><p>Actualizado {reportDate(report.captured_at)} · Matamoros</p></details>
       </>}
       {selectedOrder && <AdminDialog title={`Ticket #${String(selectedOrder.ticket_number ?? selectedOrder.id.split('-')[0]).padStart(4, '0')}`} onClose={() => setSelectedOrder(null)} busy={isCanceling} footer={<div className="ticket-actions">
         <button type="button" disabled={isCanceling} onClick={() => void handleReprintTicket(selectedOrder)} className="admin-primary-button"><Printer size={20}/>Reimprimir ticket</button>
@@ -115,7 +115,7 @@ export default function VentasPage() {
             {isCanceled(selectedOrder.status) && (
               <div className="bg-red-50 text-red-600 border border-red-200 p-4 rounded-xl flex items-center gap-3 mb-6">
                 <AlertCircle size={20} />
-                <p className="text-sm font-bold">Esta venta está marcada como cancelada. La cancelación no devuelve dinero.</p>
+                <p className="text-sm font-bold">Venta cancelada. El dinero no se ha devuelto.</p>
               </div>
             )}
 

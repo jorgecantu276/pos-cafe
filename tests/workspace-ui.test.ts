@@ -44,7 +44,7 @@ for(const isAdmin of [false,true]) test(`workspace ${isAdmin?'admin':'cashier'} 
     assert.equal(dollars, 1.5);
     assert.equal((screen.querySelector('[aria-label="Dólares iniciales"]') as HTMLInputElement).value, '1.5');
     assert.match(screen.body.textContent!, /\$130\.00/);
-    await click('Listo'); await click('Abrir Turno'); assert.equal(opened, true);
+    await click('Listo'); await click('Abrir caja'); assert.equal(opened, true);
   }, createElement(Opening));
 });
 
@@ -70,16 +70,16 @@ test('workspace cash keypad, exact payment and terminal confirmation preserve ch
       onMethod: value => { onMethod(value); onMXN(''); onUSD(''); }, onMXN, onUSD, onOrderType: () => {}, onNote: () => {}, onConfirm: () => { confirms++; }, onClose: () => {} });
   }
   await render(async (screen, click) => {
-    const confirm = () => [...screen.querySelectorAll('button')].find(button => button.textContent === 'Confirmar Pago')!;
+    const confirm = () => [...screen.querySelectorAll('button')].find(button => button.textContent === 'Confirmar pago')!;
     assert.equal(confirm().disabled, true);
     await click('1'); await click('0'); await click('0');
     assert.equal((screen.querySelector('[aria-label="Recibido MXN"]') as HTMLInputElement).value, '100');
     assert.match(screen.body.textContent!, /Faltan MXN\$65\.00/); assert.equal(confirm().disabled, true);
-    await click('Importe exacto'); assert.equal(confirm().disabled, false); await click('Confirmar Pago'); assert.equal(confirms, 1);
+    await click('Importe exacto'); assert.equal(confirm().disabled, false); await click('Confirmar pago'); assert.equal(confirms, 1);
     await click('Tarjeta'); assert.equal(confirm().disabled, true);
     const checkbox = screen.querySelector('input[type="checkbox"]')!;
     await act(async () => { checkbox.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
-    assert.equal(confirm().disabled, false); await click('Confirmar Pago'); assert.equal(confirms, 2);
+    assert.equal(confirm().disabled, false); await click('Confirmar pago'); assert.equal(confirms, 2);
     await click('MXN + USD'); assert.equal(confirm().disabled, true);
   }, createElement(Checkout));
 });

@@ -25,7 +25,7 @@ test('an uncertain handoff acceptance survives reload and replays the exact acto
   const client=api(async(name,args)=>{assert.ok(h.storage.getItem(drawerRequestKey('b','accept')));calls.push([name,args]);return fail?{data:null,error:{message:'Lost response',code:''}}:{error:null,data:{request_id:args.p_request,register:{id:'incoming',opened_by:'b',initial_balance:145,status:'open'}}};});
   try{
     await assert.rejects(drawerWrite(client,h.storage,'b','accept',{handoff:'h',counted:145,note:''}));
-    await assert.rejects(drawerWrite(client,h.storage,'b','accept',{handoff:'other',counted:0,note:''}),/Recupera/);assert.equal(calls.length,1);
+    await assert.rejects(drawerWrite(client,h.storage,'b','accept',{handoff:'other',counted:0,note:''}),/cambio pendiente/);assert.equal(calls.length,1);
     fail=false;await recoverDrawerRequest(client,h.storage,'b','accept');assert.deepEqual(calls[0],calls[1]);assert.equal(h.values.size,0);
   }finally{h.restore();}
 });

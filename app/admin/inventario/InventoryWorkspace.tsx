@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { errorMessage } from '@/lib/pos-types';
 import { inventoryCsv, inventoryStatus, inventoryUnits, previewInventoryCsv, type InventoryChange, type InventoryCsvPreview, type InventoryItem, type InventoryMovement } from '@/lib/inventory';
 
-export function InventoryWorkspace({ items, history, disabled, onSave, onRefresh, before, onHistoryPage }: {
+export function InventoryWorkspace({ items, history, disabled, onSave, onRefresh, before, onHistoryPage, hideTitle = false }: {
   items: InventoryItem[]; history: InventoryMovement[]; disabled: boolean;
   onSave: (changes: InventoryChange[]) => Promise<boolean>; onRefresh: () => void;
   before: number | null; onHistoryPage: (before: number | null) => void;
+  hideTitle?: boolean;
 }) {
   const [tab, setTab] = useState<'products' | 'history'>('products');
   const [search, setSearch] = useState(''), [filter, setFilter] = useState('active'), [selected, setSelected] = useState('');
@@ -24,7 +25,7 @@ export function InventoryWorkspace({ items, history, disabled, onSave, onRefresh
     anchor.href = url; anchor.download = 'inventario-carinito-mio.csv'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <>
-    <header className="inventory-heading"><div><h1>Inventario</h1><p>Existencias y disponibilidad</p></div><div className="inventory-buttons">
+    <header className="inventory-heading"><div>{!hideTitle && <h1>Inventario</h1>}</div><div className="inventory-buttons">
       <button disabled={disabled} onClick={onRefresh}>Actualizar</button><button disabled={disabled} onClick={download}>Descargar CSV</button>
       <label className="inventory-file">Importar CSV<input aria-label="Importar CSV" type="file" accept=".csv,text/csv" disabled={disabled} onChange={async event => {
         const file = event.target.files?.[0]; event.target.value = ''; setCsvError(''); setPreview(null);
@@ -40,7 +41,7 @@ export function InventoryWorkspace({ items, history, disabled, onSave, onRefresh
         const item = preview.items[n];
         return <tr key={c.product_id}><td>{item.name}<small>{item.code}</small></td><td>{c.mode === 'counted' ? 'Conteo' : 'Disponibilidad'}</td><td>{c.mode !== 'counted' ? c.available ? 'Disponible' : 'Agotado'
           : c.quantity ?? (item.mode === 'counted' && item.unit === c.unit ? item.quantity ?? 'Sin contar' : 'Sin contar')} {c.mode === 'counted' ? c.unit : ''}</td></tr>;
-      })}</tbody></table></div><p>Las cantidades son conteos totales. Una cantidad vacía conserva el conteo existente; al activar conteo por primera vez queda sin contar.</p>
+      })}</tbody></table></div><p>Las cantidades reemplazan el conteo actual. Deja una celda vacía para conservarlo.</p>
       <div className="inventory-buttons"><button className="inventory-primary" disabled={disabled || preview.errors.length > 0 || !preview.changes.length} onClick={async () => { if (await onSave(preview.changes)) setPreview(null); }}>Guardar importación</button><button disabled={disabled} onClick={() => setPreview(null)}>Cerrar</button></div>
     </section>}
     <div className="inventory-tabs" role="tablist" aria-label="Inventario" onKeyDown={event=>{
@@ -89,12 +90,12 @@ function InventoryDetail({ item, disabled, onSave, onClose }: { item: InventoryI
       {action === 'waste' && <label>Motivo<select disabled={disabled} value={reason} onChange={e => setReason(e.target.value)}><option>Caducado</option><option>Dañado</option><option>Consumo del personal</option><option>Otro</option></select></label>}
       {quantity && Number.isInteger(after) && <p>Quedarán {after} {item.unit}.</p>}{error && <p role="alert" className="inventory-error">{error}</p>}<button className="inventory-primary" disabled={disabled} type="submit">Guardar {action === 'count' ? 'conteo' : action === 'receive' ? 'entrada' : 'merma'}</button>
     </form>}
-    {item.mode === 'counted' && <small>{item.last_counted_at ? `Último conteo: ${new Date(item.last_counted_at).toLocaleString('es-MX', { timeZone: 'America/Matamoros' })}` : 'Registra el primer conteo para activar el control de existencias.'}</small>}
+    {item.mode === 'counted' && <small>{item.last_counted_at ? `Último conteo: ${new Date(item.last_counted_at).toLocaleString('es-MX', { timeZone: 'America/Matamoros' })}` : 'Todavía no se ha contado este producto.'}</small>}
     <details><summary>Configurar producto</summary><form onSubmit={async e => { e.preventDefault(); setError(''); if (minimum && (!/^\d+$/.test(minimum) || Number(minimum) > 1_000_000)) { setError('Revisa el mínimo.'); return; } await change({ action: 'configure', mode, unit, minimum: minimum ? Number(minimum) : null }); }}>
       <label>Control<select aria-label="Control" value={mode} disabled={disabled} onChange={e => setMode(e.target.value as InventoryItem['mode'])}><option value="availability">Disponible / agotado</option><option value="counted">Conteo de existencias</option></select></label>
       <label>Unidad<select aria-label="Unidad" value={unit} disabled={disabled} onChange={e => setUnit(e.target.value as InventoryItem['unit'])}>{inventoryUnits.map(u => <option key={u}>{u}</option>)}</select></label>
       <label>Avisar cuando queden<input type="number" inputMode="numeric" min="0" max="1000000" step="1" placeholder="Opcional" value={minimum} disabled={disabled} onChange={e => setMinimum(e.target.value)} /></label>
-      {(mode !== item.mode || unit !== item.unit) && <p>Al cambiar el control o la unidad se necesitará un nuevo conteo físico.</p>}{error && <p role="alert" className="inventory-error">{error}</p>}<button disabled={disabled} type="submit">Guardar configuración</button>
+      {(mode !== item.mode || unit !== item.unit) && <p>Después de cambiarlo, vuelve a contar este producto.</p>}{error && <p role="alert" className="inventory-error">{error}</p>}<button disabled={disabled} type="submit">Guardar configuración</button>
     </form></details>
   </aside>;
 }

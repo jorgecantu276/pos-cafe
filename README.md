@@ -15,10 +15,13 @@ Punto de venta para una cafetería con una sola caja física. Next.js 16.4.3, Re
 | Controles de entrega 1–30 | Selección manual, guardado con la venta y número en ticket del cliente y etiquetas del barista. |
 | App en la PC del café | Instalación/configuración de esta versión y aceptación operativa pendientes. Publicar código en GitHub no instala la app. |
 | Inventario | Integrado en Catálogo y probado localmente; **apagado al inicio**. La migración 017 sigue pendiente en el backend alojado. |
+| Tipo de cambio del negocio | **1 USD = 16 MXN** guardado para la próxima apertura. El turno abierto anterior conserva 18; sus ventas no se recalculan. |
 
 La [revisión de integración y preparación](docs/integration-readiness.md) documenta conexiones UI/backend, evidencias, pendientes y condiciones para instalar o activar cada función. Pasar pruebas locales no equivale a aceptar toda la operación del café.
 
 La [revisión de calidad](docs/quality-review.md) compara las comprobaciones funcionales, accesibilidad, pantalla touch y tickets con criterios verificables. No presenta una puntuación inventada ni confunde un navegador de desarrollo con la PC del café.
+
+La revisión sigue un [flujo coordinado](docs/quality-workflow.md) con responsables de interfaz, textos, integración y calidad independiente. Los ajustes comparten grupos/filas y las opciones de recuperación se muestran solo cuando hay algo pendiente.
 
 ## Qué incluye
 
@@ -79,7 +82,7 @@ El POS requiere conexión al backend. La PWA no habilita ventas offline: el serv
 | `npm run build:verify` | Compilación de producción aislada de la vista previa en ejecución. |
 | `npm audit` / `npm audit --omit=dev` | Dependencias completas y de ejecución. |
 
-La integración pasó localmente **202 pruebas y 2,539 comprobaciones de PostgreSQL**. GitHub Actions repite los checks Windows y el ensayo Auth/PostgREST en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
+La integración pasó localmente **212 pruebas y 2,539 comprobaciones de PostgreSQL**. GitHub Actions repite los checks Windows y el ensayo Auth/PostgREST en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
 
 Con `POS_BROWSER_QUALITY=1`, el ensayo HTTP también abre Chromium/Edge aislado y ejecuta axe WCAG 2.2 AA, navegación real, conteo cero por UI y revisión de desbordamiento sobre 82 productos de referencia. CI ejecuta este modo. Necesita un navegador Chromium instalado; no usa un perfil personal ni envía papel. Las mediciones locales de carga/eventos se registran como laboratorio, sin atribuirles cumplimiento de Core Web Vitals en campo.
 

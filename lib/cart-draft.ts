@@ -21,20 +21,20 @@ export const cartDraftKey = (userId: string) => `mi_cafe_cart_draft:v1:${userId}
 
 export function readCartDraft(raw: string | null, userId: string, registerId: string): Draft | null {
   if (!raw) return null;
-  if (raw.length > 500_000) throw Error('El borrador local es demasiado grande.');
+  if (raw.length > 500_000) throw Error('El pedido tiene demasiados artículos. Pide ayuda al responsable.');
   const value = JSON.parse(raw) as Draft;
   if (!value || value.version !== 1 || value.userId !== userId || !identifier(value.registerId)
     || !uuid.test(value.id) || !identifier(value.revision) || !Array.isArray(value.items) || value.items.length > 100
     || !['En Local', 'Para Llevar'].includes(value.orderType) || !text(value.orderNote, 1000)
     || (value.pagerNumber != null && (!Number.isInteger(value.pagerNumber) || value.pagerNumber < 1 || value.pagerNumber > 30))
-    || (value.customerId !== null && !identifier(value.customerId))) throw Error('El borrador local no es válido.');
+    || (value.customerId !== null && !identifier(value.customerId))) throw Error('No se pudo abrir el pedido. Pide ayuda al responsable.');
   const lines = new Set<string>();
   for (const line of value.items) {
     if (!line || !identifier(line.id) || lines.has(line.id) || !identifier(line.productId)
       || !Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 1000
       || !text(line.note, 1000) || !Number.isFinite(line.unitPrice) || line.unitPrice < 0
       || !Array.isArray(line.extraIds) || line.extraIds.length > 30 || !line.extraIds.every(identifier)
-      || new Set(line.extraIds).size !== line.extraIds.length) throw Error('El borrador contiene una preparación inválida.');
+      || new Set(line.extraIds).size !== line.extraIds.length) throw Error('Hay un artículo que necesita revisión.');
     lines.add(line.id);
   }
   // A closed/other shift must never inherit an unpaid cart.
@@ -45,15 +45,15 @@ export function restoreDraftItems(draft: Draft, products: CatalogProduct[], extr
   let repriced = false;
   const items: CartItem[] = draft.items.map(line => {
     const product = products.find(p => p.id === line.productId && p.is_active);
-    if (!product) throw Error('Un producto del borrador ya no está disponible. Conservamos el borrador para revisión.');
+    if (!product) throw Error('Un producto del pedido ya no está disponible. Revisa el pedido antes de cobrar.');
     const selected = line.extraIds.map(id => {
       const extra = extras.find(e => e.id === id && e.active);
       if (!extra || !product.customizable || !product.wizard_steps?.includes(extra.phase))
-        throw Error('Un extra del borrador ya no está disponible. Conservamos el borrador para revisión.');
+        throw Error('Un extra del pedido ya no está disponible. Revisa el pedido antes de cobrar.');
       return { id: extra.id, name: extra.name, phase: extra.phase, price: Number(extra.price ?? 0) };
     });
     const restored = customizeProduct({ ...product, basePrice: Number(product.price) }, selected, line.note);
-    if (!Number.isFinite(restored.price) || restored.price < 0) throw Error('Precio de catálogo inválido.');
+    if (!Number.isFinite(restored.price) || restored.price < 0) throw Error('Revisa el precio del producto.');
     repriced ||= Math.round(restored.price * 100) !== Math.round(line.unitPrice * 100);
     return { id: line.id, quantity: line.quantity, product: restored };
   });
@@ -83,7 +83,7 @@ export function bindCartDraft(options: { storage: Storage; userId: string; regis
   const assertCurrent = () => {
     if (storage.getItem(key) !== expected) {
       conflicted = true;
-      throw Error('El borrador cambió en otra ventana. Recarga el borrador antes de seguir.');
+      throw Error('El pedido cambió en otra ventana. Actualízalo antes de seguir.');
     }
   };
   const flush = () => {
@@ -120,7 +120,7 @@ export function bindCartDraft(options: { storage: Storage; userId: string; regis
     complete() {
       // Only retire this sale's draft. Another window's newer draft is protected.
       const raw = storage.getItem(key);
-      if (raw && JSON.parse(raw).id !== id) throw Error('Hay otro borrador en esta ventana. Recupera la venta antes de continuar.');
+      if (raw && JSON.parse(raw).id !== id) throw Error('Hay otro pedido abierto. Revisa la venta pendiente antes de continuar.');
       storage.removeItem(key); expected = null;
       // A delayed response after logout may retire its own persisted record,
       // but must never clear the next cashier's visible store.

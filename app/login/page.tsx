@@ -39,7 +39,7 @@ export default function LoginPage() {
         setUsers(data || []);
       } catch (err) {
         console.error("Error cargando perfiles:", err);
-        setError('No se pudieron cargar los perfiles. Revisa la conexión; si continúa, avisa al responsable.');
+        setError('No se pudieron cargar los usuarios. Revisa la conexión.');
       } finally {
         setLoadingUsers(false);
       }
@@ -51,7 +51,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUsername) {
-      setError('Selecciona un perfil para continuar.');
+      setError('Elige tu usuario.');
       return;
     }
 
@@ -73,7 +73,7 @@ export default function LoginPage() {
       router.refresh();
     } catch (failure) {
       const unavailable=failure&&typeof failure==='object'&&('name' in failure&&failure.name==='AuthRetryableFetchError'||'status' in failure&&(Number(failure.status)===0||Number(failure.status)>=500));
-      setError(unavailable || failure instanceof RequestTimeout ? 'No se pudo conectar para iniciar sesión. Revisa la conexión y reintenta.' : 'Contraseña incorrecta. Verifica tu acceso.');
+      setError(unavailable || failure instanceof RequestTimeout ? 'No hay conexión. Vuelve a intentar.' : 'Contraseña incorrecta. Vuelve a intentar.');
     } finally {
       setLoading(false);
     }
@@ -88,14 +88,14 @@ export default function LoginPage() {
 
   const selectedUser = users.find(u => u.username === selectedUsername);
 
-  return <main className="workspace-login"><header><span className="workspace-login-brand"><Coffee size={22} /><strong>Cariñito Mío</strong></span><span>Caja</span></header><section className="workspace-login-panel"><div className="workspace-login-heading"><span aria-hidden="true"><Coffee size={30} /></span><h1>Iniciar sesión</h1><p>Selecciona tu perfil para abrir la caja.</p></div>
-    <form onSubmit={handleLogin}><fieldset disabled={loading} className="workspace-login-profiles"><legend>Perfil</legend>
-      {loadingUsers ? <p role="status">Cargando perfiles…</p> : users.map(user => <button type="button" key={user.id} aria-label={user.full_name} aria-pressed={selectedUsername === user.username} onClick={() => handleUserSelect(user.username || '')}>
+  return <main className="workspace-login"><header><span className="workspace-login-brand"><Coffee size={22} /><strong>Cariñito Mío</strong></span><span>Caja</span></header><section className="workspace-login-panel"><div className="workspace-login-heading"><span aria-hidden="true"><Coffee size={30} /></span><h1>Iniciar sesión</h1><p>Elige tu usuario.</p></div>
+    <form onSubmit={handleLogin}><fieldset disabled={loading} className="workspace-login-profiles"><legend>Usuario</legend>
+      {loadingUsers ? <p role="status">Cargando usuarios…</p> : users.map(user => <button type="button" key={user.id} aria-label={user.full_name} aria-pressed={selectedUsername === user.username} onClick={() => handleUserSelect(user.username || '')}>
         <StaffAvatar value={user.avatar_url} username={user.username || user.full_name} size={40} className="workspace-login-avatar"/><span className="workspace-login-profile-copy"><strong><span>{user.full_name.split(' ')[0]}</span> {user.full_name.split(' ').slice(1).join(' ')}</strong><small>{user.username}</small></span>{selectedUsername === user.username && <Check size={21} aria-hidden="true" />}
       </button>)}
-      {!loadingUsers && !users.length && <p>No hay perfiles disponibles.</p>}
+      {!loadingUsers && !users.length && <p>No hay usuarios disponibles.</p>}
     </fieldset>
-    <label className="workspace-login-password">Contraseña<div><input type={showPass ? 'text' : 'password'} autoComplete="current-password" disabled={!selectedUsername || loading} aria-label="Contraseña" placeholder={selectedUsername ? `Contraseña de ${selectedUser?.full_name.split(' ')[0]}` : 'Selecciona un perfil'} value={password} onChange={event => setPassword(event.target.value)} />
+    <label className="workspace-login-password">Contraseña<div><input type={showPass ? 'text' : 'password'} autoComplete="current-password" disabled={!selectedUsername || loading} aria-label="Contraseña" placeholder={selectedUsername ? `Contraseña de ${selectedUser?.full_name.split(' ')[0]}` : 'Elige tu usuario'} value={password} onChange={event => setPassword(event.target.value)} />
       <button type="button" aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'} disabled={!selectedUsername || loading} onClick={() => setShowPass(!showPass)}>{showPass ? <EyeOff size={21} /> : <Eye size={21} />}</button>
       <button type="button" aria-label="Teclado para contraseña" aria-pressed={keyboard} disabled={!selectedUsername || loading} onClick={() => setKeyboard(!keyboard)}><Keyboard size={23} /></button>
     </div></label>

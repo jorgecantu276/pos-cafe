@@ -81,7 +81,7 @@ export function PrototypeCustomization({product,steps,index,extras,dbExtras,note
     {step.id==='notes'?<><textarea aria-label="Notas de preparación" value={note} onChange={e=>onNote(e.target.value)} maxLength={1000}/><TouchKeyboard value={note} onChange={onNote}/></>:<div className="prototype-options">{step.options.map(name=>{
       const extra=dbExtras.find(e=>e.name===name&&e.phase===step.id);return <button key={name} aria-pressed={extras.some(e=>e.name===name&&(!e.phase||e.phase===step.id))} onClick={()=>onOption(name)}>{name}{Number(extra?.price)>0&&` +${money(Number(extra?.price))}`}</button>;
     })}</div>}
-    <div className="prototype-buttons"><button disabled={index===0} onClick={()=>onStep(index-1)}>Anterior</button>{index<steps.length-1&&<button onClick={()=>onStep(index+1)}>Siguiente</button>}<button className="prototype-primary" onClick={onConfirm}>Confirmar Producto</button></div>
+    <div className="prototype-buttons"><button disabled={index===0} onClick={()=>onStep(index-1)}>Anterior</button>{index<steps.length-1&&<button onClick={()=>onStep(index+1)}>Siguiente</button>}<button className="prototype-primary" onClick={onConfirm}>Confirmar producto</button></div>
   </Sheet>;
 }
 
@@ -106,6 +106,6 @@ export function PrototypeCheckout({total,method,mxn,usd,exchangeRate,orderType,n
         <label>Recibido MXN<input inputMode="decimal" disabled={busy} value={mxn} onFocus={()=>setCurrency('MXN')} onChange={e=>onMXN(e.target.value)}/></label><label>Recibido USD<input inputMode="decimal" disabled={busy} value={usd} onFocus={()=>setCurrency('USD')} onChange={e=>onUSD(e.target.value)}/></label>
         <p>Tipo de cambio: {exchangeRate} MXN / USD</p><p>{received>=total?`Cambio MXN: ${money(received-total)}`:`Faltan MXN: ${money(total-received)}`}</p></>}
     </section>{cash&&!notes&&<section><fieldset disabled={busy}><legend>Teclado {currency}</legend><TouchKeyboard value={String(currency==='MXN'?mxn:usd)} onChange={key} numeric/></fieldset><button disabled={busy} onClick={()=>{onMXN(String(total));onUSD('');}}>Importe exacto en MXN</button></section>}</div>
-    <button className="prototype-primary" disabled={busy||insufficient||(method==='Tarjeta'&&!clipEnabled&&!confirmed)} onClick={onConfirm}>{busy?'Confirmando…':method==='Tarjeta'&&clipEnabled?'Enviar a CLIP':'Confirmar Pago'}</button>
+    <button className="prototype-primary" disabled={busy||insufficient||(method==='Tarjeta'&&!clipEnabled&&!confirmed)} onClick={onConfirm}>{busy?'Confirmando…':method==='Tarjeta'&&clipEnabled?'Enviar a CLIP':'Confirmar pago'}</button>
   </Sheet>;
 }

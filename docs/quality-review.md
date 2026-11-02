@@ -8,7 +8,7 @@ Revisión del 2 de noviembre de 2026. El inventario pasa las mismas comprobacion
 | --- | --- | --- |
 | [WCAG 2.2: contraste](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html) | Texto normal 4.5:1; texto grande 3:1. | axe detectó textos insuficientes en menús, Equipo, Caja, Clientes, cobro y denominaciones del cierre. Se oscurecieron conservando la jerarquía visual. La prueba de navegador bloquea hallazgos serios/críticos en los estados revisados. |
 | [WCAG 2.2: objetivos mínimos](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum) y [mejorados](https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced) | AA: 24×24 CSS px, con excepciones; AAA: 44×44. | Caja e inventario apuntan a 44–56 px o más. Se ampliaron los enlaces superiores de Administración. Se mide el área de la etiqueta asociada de checkbox/archivo, además del control visual. No se declara conformidad AAA global. |
-| WCAG: teclado y foco | Contenido desplazable accesible, foco visible y nombres de controles. | Pestañas de inventario con flechas/Home/End; formularios etiquetados; región de pedido desplazable con foco. Diálogos de Catálogo/Ventas usan el diálogo nativo. El editor de Equipo todavía requiere su actualización de diálogo. |
+| WCAG: teclado y foco | Contenido desplazable accesible, foco visible y nombres de controles. | Pestañas de inventario con flechas/Home/End; formularios etiquetados; región de pedido desplazable con foco. Catálogo, Ventas y Equipo comparten el diálogo nativo, con cierre protegido al guardar. |
 | [Google: Core Web Vitals](https://web.dev/articles/vitals) | LCP ≤2.5 s, INP ≤200 ms y CLS ≤0.1, evaluados al percentil 75 de visitas. | No hay medición de campo en la PC del café. La prueba registra LCP, suma de desplazamientos sin entrada reciente y duración máxima de eventos como laboratorio. Estos dos últimos datos no son una implementación/certificación de CLS/INP ni su percentil 75. |
 | [Nielsen Norman Group: heurísticas](https://www.nngroup.com/articles/ten-usability-heuristics/) | Estado visible, prevención de errores, recuperación y reconocimiento. | Cuatro áreas, inventario dentro de Catálogo, activación explícita, cantidades desconocidas separadas de cero, CSV con vista previa y recuperación de la misma operación. Falta validación observada con cajeros reales; no se inventa una puntuación de usabilidad. |
 
@@ -20,7 +20,7 @@ En ese recorrido, el LCP observado estuvo entre **64 y 264 ms**, la suma local d
 
 ## Pruebas de esta revisión
 
-- **202 pruebas** de aplicación: UI real, recuperación, permisos, borradores, inventario, CLIP simulado, controles e impresión Windows. Incluyen bloqueo entre ventanas y recuperación de activación incierta.
+- **212 pruebas** de aplicación: UI real, recuperación, permisos, borradores, inventario, CLIP simulado, controles e impresión Windows. Incluyen bloqueo entre ventanas y recuperación de activación incierta.
 - **2,539 comprobaciones PostgreSQL**: transacciones, revisiones obsoletas, lotes CSV atómicos, última pieza concurrente, venta/replay, devoluciones parciales, inventario apagado y reservas/liquidación CLIP sin JWT de cajero en el servicio.
 - **Auth/PostgREST y producción local**: roles reales, activación protegida, conteo, venta con control 30, no doble descuento, cancelación sin reposición automática, devolución/replay y pausa. Backend nuevo, sin acceder al cliente alojado.
 - **Navegador real** con los **82 productos** del menú de referencia: login, administración, Catálogo, inventario, Ventas, Caja, Clientes, Configuración, Equipo, respaldos, impresión y CLIP; detalle/conteo cero de inventario y diálogos de cobro/cierre. axe WCAG 2.2 AA y comprobación de desbordamiento. Las pantallas de configuración sin rutas privadas se revisan en su estado de configuración faltante, no como un respaldo físico ya instalado.
@@ -32,6 +32,10 @@ La inspección encontró problemas que las pruebas funcionales anteriores no det
 El primer recorrido de CI en Linux también detectó un desbordamiento a 320 px que no aparecía en Edge/Windows. La cabecera móvil permite envolver sus enlaces y omite la ruta padre redundante, que sigue disponible en la navegación de Catálogo. El check de 320 px se conserva: no se oculta el desbordamiento para forzar un aprobado.
 
 ## PC y display del café
+
+La revisión posterior aplica grupos y filas comunes a los ajustes, separa información de soporte en detalles y elimina acciones de recuperación sin pendientes. Los textos usan acciones como **Guardar**, **Comprobar venta** o **Revisar cambio pendiente**, conservando **No vuelvas a cobrar** cuando hace falta. La revisión independiente también cubre los guardados concurrentes entre ventanas y el POST de respaldo con la URL interna normalizada de Next.
+
+El tipo de cambio del negocio quedó guardado en **16 MXN/USD** para una próxima apertura, con registro de la petición del dueño. El turno abierto conserva **18**, al igual que sus comprobantes. Las huellas de ventas y turnos no cambiaron.
 
 | Dato conocido | Qué permite concluir / qué falta |
 | --- | --- |

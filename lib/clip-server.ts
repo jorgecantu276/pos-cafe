@@ -22,7 +22,7 @@ export function clipCents(value: unknown): number {
 export async function clipRpc(client: Client, name: string, args: Record<string, unknown>) {
   const { data, error } = await withDeadline(() => client.rpc(name, args));
   if (error?.code === 'PCL01' && name === 'pos_clip_prepare') throw new ClipNotSent();
-  if (error) throw new AccessError('No se pudo confirmar el registro del pago. Conserva el pedido y consulta el mismo pago.', 503);
+  if (error) throw new AccessError('No se confirmó el pago. Compruébalo antes de volver a cobrar.', 503);
   return data;
 }
 export async function clipStaff(client: SupabaseClient) {
@@ -39,7 +39,7 @@ export async function clipStaff(client: SupabaseClient) {
 export class ClipGateway {
   constructor(private db: Client, private config = clipSettings(), private providerFetch: typeof fetch = fetch) {}
   private async provider(path: string, method = 'GET', body?: unknown) {
-    if (!this.config.tokenReady) throw new AccessError('Falta configurar el token de CLIP en el servidor.', 503);
+    if (!this.config.tokenReady) throw new AccessError('Falta conectar la terminal CLIP. Pide ayuda al responsable.', 503);
     const signal = AbortSignal.timeout(10_000);
     const response = await withDeadline(() => this.providerFetch(`https://api.payclip.io/f2f/pinpad/v1/${path}`, {
       method, signal, redirect: 'error', cache: 'no-store',
@@ -55,7 +55,7 @@ export class ClipGateway {
     return { response, data };
   }
   private async read(request: string, actor: string | null): Promise<Payment> {
-    if (!uuid.test(request)) throw new AccessError('Identidad de pago inválida.', 400);
+    if (!uuid.test(request)) throw new AccessError('No se pudo identificar el pago.', 400);
     const payment = await clipRpc(this.db, 'pos_clip_get', { p_request:request, p_actor:actor });
     if (!payment) throw new AccessError('Pago no encontrado.', 404);
     return payment as Payment;
@@ -65,13 +65,13 @@ export class ClipGateway {
     const state = review ? 'review' : p.state;
     return { requestId:p.request_id, state,
       ...(state === 'completed' ? {order:p.result} : {}),
-      message: state === 'completed' ? 'Pago aprobado. Venta guardada.' : state === 'failed' ? 'CLIP confirmó que no se realizó el cobro. Puedes descartar esta solicitud y volver al pedido.' :
-        review || (state === 'dispatching' && !p.provider_id) ? 'El envío a CLIP requiere revisión. No vuelvas a cobrar; espera la confirmación o solicita revisión al responsable.' : 'Esperando el pago en CLIP. No vuelvas a cobrar.' };
+      message: state === 'completed' ? 'Pago aprobado. Venta guardada.' : state === 'failed' ? 'CLIP no cobró. Puedes volver al pedido.' :
+        review || (state === 'dispatching' && !p.provider_id) ? 'El pago sigue sin confirmar. No vuelvas a cobrar; avisa al responsable.' : 'Esperando el pago en CLIP. No vuelvas a cobrar.' };
   }
   async start(request: string, actor: string) {
     let p = await this.read(request, actor);
     if (p.state === 'prepared') {
-      if (!this.config.enabled) throw new AccessError('La integración CLIP aún no está activada o configurada.', 503);
+      if (!this.config.enabled) throw new AccessError('El cobro automático de CLIP está desactivado.', 503);
       const claim = await clipRpc(this.db, 'pos_clip_claim', { ...this.args(p), p_terminal:this.config.serial });
       if (claim?.claimed === true) {
         p = await this.read(request, actor);

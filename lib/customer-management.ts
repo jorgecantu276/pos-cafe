@@ -27,7 +27,7 @@ export function readCustomerCorrection(storage: Memory, actor: string): PendingC
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.request)
     || value.payload?.actor_id !== actor || typeof value.payload.customer_id !== 'string'
     || typeof value.payload.name !== 'string' || typeof value.payload.phone !== 'string') {
-    throw new Error('La corrección pendiente no se puede leer. Conserva los datos para revisión.');
+    throw new Error('No se pudieron abrir los cambios pendientes del cliente. Pide ayuda al responsable.');
   }
   validated(value.payload);
   return value;
@@ -55,7 +55,7 @@ async function submit(client: Client, storage: Memory, pending: PendingCustomerC
     const customer = data?.customer as Customer | undefined;
     if (data?.request_id !== pending.request || !customer || customer.id !== pending.payload.customer_id
       || customer.name !== pending.payload.name || customer.phone !== pending.payload.phone) {
-      throw new Error('Respuesta no confirmada. Recupera la misma corrección.');
+      throw new Error('No se confirmó el guardado. Pulsa Comprobar cambios.');
     }
     if (storage.getItem(key) !== raw) throw new Error('La corrección cambió en otra ventana. Actualiza antes de continuar.');
     storage.removeItem(key);
@@ -66,7 +66,7 @@ async function submit(client: Client, storage: Memory, pending: PendingCustomerC
 export async function saveCustomerCorrection(client: Client, storage: Memory, actor: string, correction: CustomerCorrection): Promise<Customer> {
   return locked(actor, async () => {
     const key = customerEditKey(actor);
-    if (storage.getItem(key)) throw new Error('Hay una corrección sin confirmar. Recupera la misma corrección antes de cambiar los datos.');
+    if (storage.getItem(key)) throw new Error('Comprueba los cambios pendientes antes de editar al cliente.');
     const pending: PendingCustomerCorrection = { actor, request: crypto.randomUUID(), payload: { ...validated(correction), actor_id: actor } };
     storage.setItem(key, JSON.stringify(pending));
     return submit(client, storage, pending);
@@ -76,7 +76,7 @@ export async function saveCustomerCorrection(client: Client, storage: Memory, ac
 export async function recoverCustomerCorrection(client: Client, storage: Memory, actor: string): Promise<Customer> {
   return locked(actor, async () => {
     const pending = readCustomerCorrection(storage, actor);
-    if (!pending) throw new Error('No hay una corrección pendiente para esta sesión.');
+    if (!pending) throw new Error('No hay cambios pendientes del cliente.');
     return submit(client, storage, pending);
   });
 }
