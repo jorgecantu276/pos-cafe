@@ -168,6 +168,27 @@ try {
     assert.deepEqual(barista.sections.map(lines=>lines.find(line=>['sin hielo','extra hielo','sin tapa'].includes(line))),['sin hielo','sin hielo','extra hielo','sin tapa']);
     pass('Exact mixed-order UI payload, confirmed by real local SQL, yields one customer job and four cup sections through the production API without duplicate retries');
   }
+  if(process.env.POS_RECEIPT_CONTRACT_EVIDENCE){
+    const evidence=JSON.parse(await readFile(process.env.POS_RECEIPT_CONTRACT_EVIDENCE,'utf8'));
+    assert.equal(evidence.liveDataAccess,false);assert.equal(evidence.scenarios.length,6);
+    for(const scenario of evidence.scenarios){
+      const {receipt,documents}=scenario,before=(await spool()).length;
+      orders.set(receipt.id,{id:receipt.id,ticket_number:receipt.ticket_number,status:'completed',cashier_id:actors[0],receipt_snapshot:receipt});
+      await post({orderId:receipt.id});await post({orderId:receipt.id});
+      const printed=(await spool()).filter(job=>job.orderId===receipt.id);
+      assert.equal((await spool()).length,before+2);assert.equal(printed.length,2);
+      const customer=printed.find(job=>job.audience==='customer').document;
+      // Issuer comes from this installation's local profile, not sale SQL.
+      const saleLines=doc=>doc.sections[0].filter((_,index)=>doc.styles[0][index]!=='issuer');
+      assert.deepEqual(saleLines(customer),saleLines(documents.customer));
+      assert.deepEqual(printed.find(job=>job.audience==='barista').document,documents.barista);
+      const response=await fetch('http://127.0.0.1:3112/api/receipts?orderId='+receipt.id,{headers:{Cookie:cookies[0]}});
+      assert.equal(response.status,200);const saved=await response.json();
+      assert.equal(saved.source,'stored');assert.deepEqual(saved.document,customer);
+      assert.equal((await spool()).length,before+2);
+    }
+    pass('All six real local SQL receipts retain exact financial/preparation fields through the production print API and read-only receipt endpoint; duplicate requests add no copies');
+  }
   const privateResponse = await http(); assert.match(privateResponse.headers.get('cache-control'), /private.*no-store/);
   assert.equal(methods.some(method => method.includes('/rpc/') || /^(PATCH|DELETE) /.test(method) || (method.startsWith('POST ') && !method.includes('/auth/v1/token'))), false);
   pass('Print retries perform no checkout/stock/payment writes; responses are private and uncached');

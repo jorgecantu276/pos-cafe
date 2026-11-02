@@ -160,6 +160,18 @@ in the separate `D:\Cafe-Receipt-Only-V8-2026-10-31` folder.
 | `outputs/SIMULTANEOUS-result.json` | `898d38565de81aef0f39984051fdb1e1e419f0cc80e40a720eac32c6f803f7b3` |
 | `work/test-simultaneous.mjs` | `25995a6e657ce55360aecaf218fed5fc1ff9807e395ed102c6520d8eb06b85b8` |
 
+## Later remote dual reference-label result
+
+After receiving the V9 package and AnyDesk instructions for both current
+outputs, the user reported “funciono” and requested only removal of the
+individual issuer name from the customer receipt. New POS receipts therefore
+omit that generic legal-name line, while preserving RFC, regime, address,
+amounts, logo and QR. The barista label remains reference-v2 with black artwork
+on colored stock. This records the user's physical confirmation; it does not
+invent additional transferred logs, photos or duplicate-test evidence.
+Historical documents and the current café journal are never rewritten or
+replayed to apply the wording change.
+
 ## POS integration verification
 
 The integration uses one source generator and the normal authenticated print

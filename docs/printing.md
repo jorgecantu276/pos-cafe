@@ -120,8 +120,11 @@ Existing documents without this version marker retain their physically approved
 flowing layout, text and footer. Obsolete `cupLabels` metadata stays ignored.
 No saved document, journal identity or accepted/uncertain state is reset to apply
 the new design. Normal confirmed POS sales still dispatch both copies together.
-The V8 customer receipt is unchanged. The new reference design has local
-rendering verification, distinct from the earlier flowing-label physical test.
+The V8 customer receipt retains the owner's later no-CFDI/no-personal-name
+wording. After the remote V9 dual test, the user reported that both outputs
+worked and requested only removal of the individual issuer name. This is the
+user's reported physical result for the reference design, distinct from the
+earlier transferred flowing-label logs and from full POS installation.
 
 `config/cafe-printers.json` records the original supplied café discovery:
 

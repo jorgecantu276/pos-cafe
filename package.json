@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test": "tsx --test tests/*.test.ts",
     "test:db": "node scripts/test-database.mjs",
+    "test:printing": "node scripts/printing/http-drill.mjs",
     "staging:prepare": "node scripts/staging/local.mjs prepare",
     "staging:start": "node scripts/staging/local.mjs start",
     "staging:test": "node scripts/staging/local.mjs test",
