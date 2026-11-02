@@ -1,6 +1,6 @@
 # Revisión de integración y preparación
 
-Fecha: **2 de noviembre de 2026**, America/Matamoros. Alcance: los cambios de `codex/pos-ui-usability` frente a `main`, incluido CLIP, controles 1–30 y las migraciones 013–016.
+Fecha: **2 de noviembre de 2026**, America/Matamoros. Alcance: UI actual, CLIP, controles 1–30 e integración local del inventario con la nueva migración 017.
 
 ## Dictamen
 
@@ -8,7 +8,7 @@ Fecha: **2 de noviembre de 2026**, America/Matamoros. Alcance: los cambios de `c
 
 **No activar el cobro automático CLIP todavía.** Faltan la habilitación efectiva de PinPad, el token privado, la configuración de la app instalada y una transacción real de aceptación autorizada. El receptor desplegado no inicia cargos.
 
-El inventario permanece en `codex/simple-inventory` y [PR #2](https://github.com/jorgecantu276/pos-cafe/pull/2). Su integración y su interruptor de activación inicial no se consideran terminados en esta versión.
+El inventario de la rama anterior está integrado en Catálogo, con activación inicial apagada, reservas CLIP y devoluciones explícitas. **La migración 017 solo se ha aplicado localmente; debe desplegarse antes de instalar esta app en el café.** Ver [inventario](inventory.md) y [calidad frente a benchmarks](quality-review.md).
 
 ## Conexiones revisadas
 
@@ -23,6 +23,7 @@ El inventario permanece en `codex/simple-inventory` y [PR #2](https://github.com
 | Control 1–30 | Borrador → payload → `orders.pager_number`/snapshot → cliente y cada taza/continuación. | Migración 015; navegador → Auth/PostgREST → SQL → render Windows. La orden siguiente vuelve a Sin control. Base física manual. |
 | CLIP | Cotización congelada → claim persistido → un POST → GET autenticado → liquidación atómica → diario de impresión. | Migración 016; proveedor simulado con PostgreSQL real. Apagado, sin token real ni aceptación bancaria. |
 | Receptor CLIP | Nonce por solicitud; guarda una pista del identificador; no aprueba ventas. | Función v1 ACTIVE en el cliente. HTTP/permisos comprobados sin crear pagos. |
+| Inventario | Configuración apagada → activación explícita → conteo/CSV → descuento atómico → devolución parcial auditada. CLIP reserva antes de cobrar. | Migración 017 local, permisos, concurrencia, respuestas perdidas, Auth/PostgREST y conteo cero desde navegador real. Sin cantidades heredadas ni despliegue cloud. |
 | Impresión | Snapshot confirmado → USB/Bluetooth independientes, con estado persistente por copia. | Render y pruebas HTTP; aceptación física anterior documentada. El control nuevo está probado en render, no en papel del café. |
 | Equipo / respaldos | API/perfil con permisos de administrador; snapshot cifrado y clave fuera del respaldo. | Pruebas de autorización, fallos parciales y recuperación. La configuración privada y el resguardo real aún requieren instalación. |
 
@@ -32,13 +33,13 @@ Código: [checkout](../lib/checkout.ts), [CLIP](../lib/clip-server.ts), [RPC fin
 
 | Verificación | Resultado registrado |
 | --- | --- |
-| `npm test` | 193 pruebas: UI real, recuperación, CLIP, controles y render Windows. |
-| `npm run test:db` | 2,394 comprobaciones; incluye gateway CLIP real con proveedor simulado y aviso tardío tras perder el ACK. |
+| `npm test` | 212 pruebas: UI real, recuperación, inventario, CLIP, controles y render Windows. |
+| `npm run test:db` | 2,539 comprobaciones; incluye inventario apagado/activo, reservas CLIP y gateway con proveedor simulado. |
 | TypeScript y lint | Sin errores ni advertencias. |
 | Producción / paquete Windows | Build aislado y paquete reubicado; 2,276 hashes de archivos verificados. |
 | Dependencias | Auditorías completas y de runtime: 0 vulnerabilidades al revisar este cambio. |
 | Auth/PostgREST y app HTTP | `npm run test:admin-http`: cuatro áreas, roles, pager y CLIP apagado, en una instancia nueva con API/DB 55481/55482 y app 3111. No reutiliza la vista previa existente. |
-| SQL → impresión HTTP | `POS_RECEIPT_CONTRACT_EVIDENCE` enlaza seis comprobantes reales de PostgreSQL desechable con endpoints/impresoras simulados. |
+| SQL → impresión HTTP | Seis comprobantes después de las 16 migraciones retenidas, inventario activo y control 30; mismo snapshot en endpoints/impresoras simulados, sin descontar dos veces. |
 | GitHub CI | **Windows verification** ejecuta los checks Windows y **Auth and backend integration** repite el ensayo Auth/PostgREST sobre un backend local desechable. Consultar ambos jobs del PR y del commit en `main`. |
 
 Los ensayos usan datos sintéticos y proveedor/impresoras simulados. No se hicieron cargos bancarios ni se envió papel durante estas verificaciones. La [aceptación física anterior](printer-acceptance-2026-10-31.md) no prueba por sí sola cada cambio nuevo.
@@ -72,11 +73,8 @@ Ver [registro de despliegue](clip-payments.md#authorized-cloud-deployment--novem
 No se presentan como terminados:
 
 - Vista y reactivación de productos, extras y empleados desactivados. Se conservan los registros; las pantallas actuales muestran activos.
-- Actualizar el editor de Equipo al diálogo accesible de Catálogo/Ventas y pasar el avatar a una opción secundaria.
-- Mostrar recuperación de Caja solo cuando exista una solicitud pendiente; los botones actuales siguen visibles aunque no haya una.
 - Debounce de búsquedas en Ventas/Clientes. Evitar respuestas obsoletas no implica que ya esté aplicado.
-- Simplificar la presentación de respaldos/impresión conservando sus controles de resultados inciertos.
-- Integrar el inventario separado, con activación inicialmente deshabilitada, cuando lleguen sus datos y se confirme la operación.
+- Desplegar 017 y registrar los conteos reales al activar inventario. Compartir existencias entre paquetes/sueltos, ingredientes y convertir pasteles a rebanadas requieren reglas posteriores del negocio.
 - Definir el canje de puntos con el dueño. No se inventó una regla ni se implementó el módulo de cupones retirado.
 
 ## Recuperación y rollback

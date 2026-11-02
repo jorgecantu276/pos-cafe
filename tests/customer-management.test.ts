@@ -23,7 +23,7 @@ test('a lost correction response preserves the exact actor, customer and request
   try{
     await assert.rejects(saveCustomerCorrection(client,h.storage,'admin',correction),/perdida/);
     const persisted=readCustomerCorrection(h.storage,'admin')!;assert.equal(persisted.payload.phone,'528682345678');assert.equal(persisted.payload.name,'Ana corregida');
-    await assert.rejects(saveCustomerCorrection(client,h.storage,'admin',{...correction,name:'Otro cliente'}),/Recupera/);assert.equal(calls.length,1);
+    await assert.rejects(saveCustomerCorrection(client,h.storage,'admin',{...correction,name:'Otro cliente'}),/Comprueba/);assert.equal(calls.length,1);
     fail=false;const customer=await recoverCustomerCorrection(client,h.storage,'admin');
     assert.deepEqual(calls[0],calls[1]);assert.equal(customer.id,'existing-member');assert.equal(customer.points,173);assert.equal(customer.total_spent,345.25);assert.equal(h.values.size,0);
   }finally{h.restore();}
@@ -34,7 +34,7 @@ test('confirmed correction rejection permits correcting the form; uncertain perm
   try{
     await assert.rejects(saveCustomerCorrection(api(async()=>({error:{code:'P0001',message:'Teléfono duplicado'}})),h.storage,'admin',correction),/duplicado/);assert.equal(h.values.size,0);
     await assert.rejects(saveCustomerCorrection(api(async()=>({error:{code:'42501',message:'Sesión cambiada'}})),h.storage,'admin',correction),/Sesión/);assert.ok(readCustomerCorrection(h.storage,'admin'));
-    await assert.rejects(recoverCustomerCorrection(api(async(_name,args)=>({error:null,data:{request_id:args.p_request,customer:{id:'wrong-person',name:args.p_payload.name,phone:args.p_payload.phone}}})),h.storage,'admin'),/no confirmada/);
+    await assert.rejects(recoverCustomerCorrection(api(async(_name,args)=>({error:null,data:{request_id:args.p_request,customer:{id:'wrong-person',name:args.p_payload.name,phone:args.p_payload.phone}}})),h.storage,'admin'),/No se confirmó el guardado/);
     assert.ok(readCustomerCorrection(h.storage,'admin'));
     await assert.rejects(recoverCustomerCorrection(api(async()=>assert.fail()),h.storage,'another-admin'),/No hay/);
   }finally{h.restore();}

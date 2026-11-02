@@ -1,5 +1,5 @@
 export class RequestTimeout extends Error {
-  constructor() { super('La conexión tardó demasiado. Revisa internet e intenta recuperar la misma operación.'); }
+  constructor() { super('La conexión no respondió. Comprueba la conexión y vuelve a intentar.'); }
 }
 
 // A deadline bounds our wait even if an SDK never settles. It does not prove

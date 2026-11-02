@@ -55,6 +55,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
       assert.ok(table in fixtures,`Unexpected table ${table}`);
       const query=Object.assign(Promise.resolve({data:fixtures[table],error:null}),{select:()=>query,eq:()=>query,order:()=>query,abortSignal:()=>query,single:()=>query,maybeSingle:()=>query});return query;
     },rpc:(name:string,args:{p_payload:checkout.CheckoutPayload})=>{
+      if(name==='pos_inventory_register'){const result=Promise.resolve({error:null,data:{enabled:false,items:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='get_register_shortcuts'){const result=Promise.resolve({error:null,data:{product_ids:[],revision:0}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:'mixed-user',cashier_name:'Prueba'},handoff:null,cashiers:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_shift_summary'){
@@ -113,7 +114,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     await act(async()=>{orderType.value='Para Llevar';orderType.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
     await click(button('Nota de la orden'));await typeNote('entregar juntos','.workspace-checkout fieldset[aria-label="Teclado en pantalla"]');
     const confirmation=dom.window.document.querySelector('.workspace-card-confirm input')!;assert.ok(confirmation);await click(confirmation);
-    await click(button('Confirmar Pago'));
+    await click(button('Confirmar pago'));
     assert.equal(calls,1);assert.ok(payload);assert.equal(payload.expected_total,425);assert.deepEqual(payload.items,fixture.expectedLines);
     assert.equal(payload.order_type,'Para Llevar');assert.equal(payload.order_note,'entregar juntos');
     assert.ok(receipt);const documents=salePrinting.saleDocuments(receipt,{testOnly:true});

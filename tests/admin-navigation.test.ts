@@ -36,6 +36,7 @@ test('related screens retain their shared area navigation and a path back to adm
   for (const [path, area, sibling] of [
     ['/admin/favoritos', 'Catálogo', '/admin/productos'],
     ['/admin/productos', 'Catálogo', '/admin/favoritos'],
+    ['/admin/inventario', 'Catálogo', '/admin/productos'],
     ['/admin/caja', 'Caja', '/admin/cortes'],
     ['/admin/cortes', 'Caja', '/admin/caja'],
   ]) {

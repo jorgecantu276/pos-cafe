@@ -6,7 +6,7 @@ import { build } from 'esbuild';
 
 // Called only by the disposable PostgreSQL runner after ALL migrations.
 // Fixtures and register setup below must never run against a hosted database.
-export async function receiptContractDatabaseCases(db, connection) {
+export async function receiptContractDatabaseCases(db, connection, ids) {
   let checks = 0;
   const equal = (actual, expected) => { assert.deepEqual(actual, expected); checks++; };
   const cents = value => Math.round(Number(value) * 100);
@@ -28,13 +28,22 @@ export async function receiptContractDatabaseCases(db, connection) {
     [tenth, 'Adición decimal', 0.10, 'Adición'], [forbidden, 'Extra no permitido', 10, 'Otra fase'],
   ]) await db.query('insert into extras(id,name,price,phase,active) values($1,$2,$3,$4,true)', [id, name, price, phase]);
   const staff = await connection('authenticated', owner);
+  const admin=await connection('authenticated',ids.admin);
+  const state=(await admin.query('select pos_inventory_state() r')).rows[0].r;
+  await admin.query('select pos_inventory_set_enabled($1,true,$2)',[randomUUID(),state.revision]);
+  let catalog=(await admin.query('select pos_inventory_catalog() r')).rows[0].r;
+  const tracked=[matcha,pastry,decimal];
+  await admin.query('select pos_inventory_write($1,$2)',[randomUUID(),JSON.stringify(tracked.map(product_id=>({product_id,revision:catalog.find(i=>i.product_id===product_id).revision,action:'configure',mode:'counted',unit:'pieza',minimum:2})))]);
+  catalog=(await admin.query('select pos_inventory_catalog() r')).rows[0].r;
+  await admin.query('select pos_inventory_write($1,$2)',[randomUUID(),JSON.stringify(tracked.map(product_id=>({product_id,revision:catalog.find(i=>i.product_id===product_id).revision,action:'count',quantity:100})))]);
+  const stock=async()=>Object.fromEntries((await db.query('select product_id,quantity from pos_inventory_items where product_id=any($1)',[tracked])).rows.map(r=>[r.product_id,r.quantity]));
   const rpc = async (key, payload) => (await staff.query('select pos_checkout($1,$2) result', [key, payload])).rows[0].result;
   const bundle = await build({ entryPoints: [fileURLToPath(new URL('../../lib/sale-printing.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', write: false });
   const { saleDocuments } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'));
   const issuer = { legalName: 'EMISOR SINTÉTICO OMITIDO', rfc: 'AAA010101AAA', taxRegime: '601 - General de Ley Personas Morales', establishmentAddress: 'Domicilio de prueba', postalCode: '87380', city: 'Matamoros' };
   const branding = JSON.parse(await readFile(new URL('../../config/receipt-branding.json', import.meta.url), 'utf8'));
   const line = (product_id, quantity, extra_ids = [], note = '') => ({ product_id, quantity, extra_ids, note });
-  const base = { register_id: register, customer_id: customer, order_type: 'Para Llevar', order_note: 'Entregar juntos', tender_mxn: 0, tender_usd: 0 };
+  const base = { register_id: register, customer_id: customer, order_type: 'Para Llevar', order_note: 'Entregar juntos', tender_mxn: 0, tender_usd: 0,pager_number:30 };
   const scenarios = [
     { name: 'card-base', payload: { ...base, items: [line(matcha, 1)], expected_total: 105, payment_method: 'tarjeta' }, change: 0 },
     { name: 'cash-quantity-paid-and-free-extras', payload: { ...base, items: [line(matcha, 2, [oat, free], 'Sin hielo'), line(pastry, 3, [], 'Sin tapa')], expected_total: 345, payment_method: 'efectivo', tender_mxn: 400 }, change: 55 },
@@ -45,12 +54,16 @@ export async function receiptContractDatabaseCases(db, connection) {
   ];
   const evidence = [];
   for (const scenario of scenarios) {
+    const beforeStock=await stock();
     const key = randomUUID(), payload = scenario.payload, receipt = await rpc(key, payload);
     const stored = (await db.query("select *,to_char(created_at at time zone 'America/Matamoros','DD/MM/YY') local_date,to_char(created_at at time zone 'America/Matamoros','HH12:MI AM') local_time from orders where id=$1", [receipt.id])).rows[0];
     const items = (await db.query('select * from order_items where order_id=$1', [receipt.id])).rows;
     equal(receipt, { ...stored.receipt_snapshot, id: stored.id, ticket_number: stored.ticket_number, status: stored.status });
     equal(stored.request_payload, payload);
     equal(receipt.status, 'completed'); equal(receipt.total, payload.expected_total);
+    equal(receipt.pager_number,30);
+    const expectedStock={...beforeStock};for(const line of payload.items)expectedStock[line.product_id]-=line.quantity;
+    equal(await stock(),expectedStock);
     equal(Number(stored.subtotal), receipt.total); equal(Number(stored.discount), 0);
     equal(new Date(receipt.created_at).toISOString(), stored.created_at.toISOString());
     for (const field of ['total', 'tender_mxn', 'tender_usd', 'exchange_rate', 'change_mxn']) equal(Number(stored[field]), receipt[field]);
@@ -83,7 +96,7 @@ export async function receiptContractDatabaseCases(db, connection) {
         const section = documents.barista.sections[cup], meta = documents.barista.referenceLabels[cup];
         equal(section.slice(0, 2), [receipt.customer_name, product.name]);
         equal(section.slice(2, 2 + extras.length), saved.product.displayExtras.map(extra => extra.name));
-        equal(meta, { folio: '#' + String(receipt.ticket_number).padStart(4, '0'), cup: `${++cup}/${receipt.items.reduce((sum, item) => sum + item.quantity, 0)}`, service: receipt.order_type, date: stored.local_date, time: stored.local_time });
+        equal(meta, { folio: 'CONTROL 30 · #' + String(receipt.ticket_number).padStart(4, '0'), cup: `${++cup}/${receipt.items.reduce((sum, item) => sum + item.quantity, 0)}`, service: receipt.order_type, date: stored.local_date, time: stored.local_time });
         if (input.note) equal(section.includes(input.note), true);
         if (payload.order_note) equal(section.includes('ORDEN: ' + payload.order_note), true);
       }
@@ -95,6 +108,7 @@ export async function receiptContractDatabaseCases(db, connection) {
     equal(sum, cents(stored.total)); equal(documents.barista.sections.length, cup);
     equal(text.some(value => value.startsWith('Folio: ' + String(stored.ticket_number).padStart(4, '0') + ' · ')), true);
     equal(text.includes('Cliente: ' + receipt.customer_name), true); equal(text.includes(receipt.order_type), true);
+    equal(text.includes('CONTROL: 30'),true);
     equal(text.includes('TOTAL: $' + Number(stored.total).toFixed(2) + ' MXN'), true);
     equal(text.includes('Pago: ' + ({ efectivo: 'EFECTIVO', tarjeta: 'TARJETA', mixto: 'MIXTO', otro: 'otro' })[stored.payment_method]), true);
     const cash = ['efectivo', 'mixto'].includes(stored.payment_method);
@@ -105,8 +119,9 @@ export async function receiptContractDatabaseCases(db, connection) {
     for (const value of [`RFC: ${issuer.rfc}`, `Régimen: ${issuer.taxRegime}`, issuer.establishmentAddress, `${issuer.city} · C.P. ${issuer.postalCode}`, 'Teléfono: +52 868 305 4668', 'MENÚ E INSTAGRAM', '@_carinitomio']) equal(text.includes(value), true);
     equal(/CFDI|CDFI|EMISOR SINTÉTICO OMITIDO|Nombre falso|Cliente falso|PRUEBA DE IMPRESIÓN|Ajuste de la venta/.test(text.join('\n')), false);
     equal(await rpc(key, payload), receipt);
+    equal(await stock(),expectedStock);
     equal((await db.query('select count(*)::int n from orders where cashier_id=$1 and request_id=$2', [owner, key])).rows[0].n, 1);
-    evidence.push({ scenario: scenario.name, receipt, documents, storedArithmeticMatches: true, oneOrderAfterReplay: true });
+    evidence.push({ scenario: scenario.name, receipt, documents, storedArithmeticMatches: true, oneOrderAfterReplay: true,inventoryActive:true,stockBefore:beforeStock,stockAfter:expectedStock });
   }
   const count = async () => (await db.query('select count(*)::int orders,(select count(*)::int from order_items) items from orders')).rows[0];
   const valid = scenarios[3].payload;

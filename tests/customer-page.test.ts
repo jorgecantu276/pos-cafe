@@ -56,7 +56,7 @@ test('actual CRM retains a lost correction for recovery, blocks other edits and 
     assert.equal((dom.window.document.querySelector('fieldset')as HTMLFieldSetElement).disabled,true);
     await click('Cerrar edición');
     assert.ok(dom.window.document.querySelector('[aria-label="Corrección pendiente"]'));
-    lost=false;await click('Recuperar la misma corrección');
+    lost=false;await click('Comprobar cambios');
     assert.deepEqual(calls[0],calls[1]);assert.equal(calls.length,2);assert.equal(loads.size,2);
     assert.equal(dom.window.localStorage.getItem(management.customerEditKey('manager')),null);
     assert.equal(dom.window.document.querySelector('[aria-label="Corrección pendiente"]'),null);

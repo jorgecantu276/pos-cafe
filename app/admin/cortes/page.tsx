@@ -53,7 +53,7 @@ export default function CortesPage() {
       {/* HEADER */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div className="space-y-1">
-          <h2 className="text-4xl font-semibold text-[#1d1d1f] tracking-tight">Caja</h2>
+          <h1 className="text-4xl font-semibold text-[#1d1d1f] tracking-tight">Caja</h1>
           <p className="text-[#86868b] text-sm font-bold uppercase tracking-widest mt-1">Turno actual e historial de cierres</p>
         </div>
         <button className="rounded-xl border bg-white p-3" onClick={() => { void reloadActive(); void reloadHistory(); }}>Actualizar caja</button>
@@ -81,7 +81,7 @@ export default function CortesPage() {
             {/* WIDGETS TURNO ACTIVO */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-slate-100/50 flex flex-col justify-between">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Fondo Inicial</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Fondo inicial</p>
                   <h3 className="text-2xl font-black text-[#1d1d1f] tracking-tighter">${startingCash.toFixed(2)}</h3>
               </div>
               <div className="bg-white p-6 rounded-[24px] shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-slate-100/50 flex flex-col justify-between">
@@ -93,7 +93,7 @@ export default function CortesPage() {
                   <h3 className="text-2xl font-black text-red-500 tracking-tighter">${totalExpenses.toFixed(2)}</h3>
               </div>
               <div className="bg-[#1d1d1f] p-6 rounded-[24px] shadow-lg shadow-slate-200 flex flex-col justify-between">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Efectivo Esperado</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Efectivo esperado</p>
                   <h3 className="text-3xl font-black text-white tracking-tighter">${expectedCash.toFixed(2)}</h3>
               </div>
             </div>

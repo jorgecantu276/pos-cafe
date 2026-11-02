@@ -4,6 +4,9 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { freshLocalApi } from '../testing/local-api.mjs';
 import { startApp } from '../staging/app.mjs';
+import {writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import {browserQualityReview} from '../quality/browser-review.mjs';
 
 let local, app; const sessions = [];
 const ok = result => { assert.ifError(result.error && Error(result.error.message)); return result.data; };
@@ -56,8 +59,8 @@ try {
   assert.equal(ok(await cashier.from('products').select('price').eq('id', product.id).single()).price, 60);
   pass('Catálogo: real saves/edits, exact create replay, staff denial and cashier-visible price/favorites');
 
-  ok(await admin.rpc('pos_set_drawer_rate', { p_request: randomUUID(), p_payload: { rate: 20 } }));
-  const register = ok(await cashier.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 100, p_rate: 20 }));
+  ok(await admin.rpc('pos_set_drawer_rate', { p_request: randomUUID(), p_payload: { rate: 16 } }));
+  const register = ok(await cashier.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 100, p_rate: 16 }));
   const drawer = ok(await admin.rpc('pos_drawer_status'));
   assert.equal(drawer.active.cashier_id, actors.cashier.id); assert.equal(drawer.active.id, register.id);
   assert.equal(ok(await admin.from('cash_registers').select('id').eq('opened_by', actors.admin.id).eq('status', 'open')).length, 0);
@@ -68,9 +71,17 @@ try {
   assert.equal(customer.points, 50);
   const checkout = { register_id: register.id, items: [{ product_id: product.id, quantity: 2, extra_ids: [extra.id], note: 'Sin azúcar' }],
     expected_total: 140, payment_method: 'efectivo', tender_mxn: 200, tender_usd: 0, customer_id: customer.id, order_type: 'Para Llevar', order_note: 'Prueba aislada',pager_number:30 };
+  assert.deepEqual(ok(await cashier.rpc('pos_inventory_state')),{enabled:false,revision:0});
+  for(const client of [cashier,anonymous]) assert.ok((await client.rpc('pos_inventory_set_enabled',{p_request:randomUUID(),p_enabled:true,p_revision:0})).error);
+  ok(await admin.rpc('pos_inventory_set_enabled',{p_request:randomUUID(),p_enabled:true,p_revision:0}));
+  const inventoryItem=()=>admin.rpc('pos_inventory_catalog').then(ok).then(rows=>rows.find(i=>i.product_id===product.id));
+  const adjustInventory=async(action,fields)=>ok(await admin.rpc('pos_inventory_write',{p_request:randomUUID(),p_changes:[{product_id:product.id,revision:(await inventoryItem()).revision,action,...fields}]}));
+  await adjustInventory('configure',{mode:'counted',unit:'pieza',minimum:2});
+  await adjustInventory('count',{quantity:5});
   const saleRequest = randomUUID(), sale = ok(await cashier.rpc('pos_checkout', { p_request: saleRequest, p_payload: checkout }));
   assert.equal(sale.total, 140); assert.equal(sale.change_mxn, 60);
   assert.equal(sale.pager_number,30);
+  assert.equal((await inventoryItem()).quantity,3);
   assert.equal(ok(await cashier.from('orders').select('receipt_snapshot').eq('id',sale.id).single()).receipt_snapshot.pager_number,30);
   let sales = ok(await admin.rpc('pos_sales_report', { p_period: 'all' }));
   assert.equal(sales.summary.sales, 140); assert.equal(sales.orders[0].id, sale.id);
@@ -89,8 +100,19 @@ try {
   }));
   assert.equal(ok(await admin.rpc('pos_customer_history', { p_customer: customer.id })).orders[0].order_items[0].product_snapshot.name, payload.fields.name);
   assert.deepEqual(ok(await cashier.rpc('pos_checkout', { p_request: saleRequest, p_payload: checkout })), sale);
+  assert.equal((await inventoryItem()).quantity,3);
   assert.ok((await cashier.rpc('pos_checkout', { p_request: randomUUID(), p_payload: checkout })).error);
   ok(await admin.rpc('pos_cancel_sale', { p_order: sale.id }));
+  assert.equal((await inventoryItem()).quantity,3);
+  const returns=ok(await admin.rpc('pos_inventory_sale_lines',{p_order:sale.id}));
+  assert.equal(returns[0].sold,2);
+  const returnArgs={p_request:randomUUID(),p_order:sale.id,p_lines:[{id:returns[0].id,quantity:1}]};
+  const returned=ok(await admin.rpc('pos_inventory_return',returnArgs));
+  assert.deepEqual(ok(await admin.rpc('pos_inventory_return',returnArgs)),returned);
+  assert.equal((await inventoryItem()).quantity,4);
+  ok(await admin.rpc('pos_inventory_set_enabled',{p_request:randomUUID(),p_enabled:false,p_revision:1}));
+  assert.deepEqual(ok(await cashier.rpc('pos_inventory_register')),{enabled:false,items:[]});
+  pass('Inventory: off by default, protected activation, real counted sale/replay, cancellation without automatic restock, partial return/replay and paused register');
   sales = ok(await admin.rpc('pos_sales_report', { p_period: 'all' })); assert.equal(sales.summary.sales, 0);
   purchases = ok(await admin.rpc('pos_customer_history', { p_customer: customer.id }));
   assert.equal(purchases.summary.sales, 0); assert.equal(purchases.orders[0].status, 'cancelled');
@@ -106,7 +128,7 @@ try {
   pass('Cross-module cancellation, immutable snapshots/replay, deactivation, loyalty reversal, closing and backup of request journal');
 
   app = await startApp(config,{port:3111}); await app.ready();
-  for (const route of ['/admin', '/admin/ventas', '/admin/cortes', '/admin/productos', '/admin/clientes', '/admin/favoritos', '/admin/configuracion','/admin/caja','/admin/usuarios','/admin/respaldos','/admin/impresion','/admin/clip']) {
+  for (const route of ['/admin', '/admin/ventas', '/admin/cortes', '/admin/productos', '/admin/clientes', '/admin/favoritos', '/admin/configuracion','/admin/caja','/admin/usuarios','/admin/respaldos','/admin/impresion','/admin/clip','/admin/inventario']) {
     const response = await fetch('http://127.0.0.1:3111' + route, { headers: { cookie: owner.cookie() }, redirect: 'manual' });
     assert.equal(response.status, 200, route); assert.ok((await response.text()).length > 100);
     const denied = await fetch('http://127.0.0.1:3111' + route, { headers: { cookie: employee.cookie() }, redirect: 'manual' });
@@ -123,6 +145,13 @@ try {
   assert.equal((await db.query('select count(*)::int n from cafe_private.clip_payments')).rows[0].n,0);
   pass('CLIP stays off through real cookie/API boundaries: owner status, cashier/anonymous denial and blocked dispatch with no payment journal writes');
   assert.equal((await db.query('select count(*)::int n from orders')).rows[0].n, 1);
+  if(process.env.POS_BROWSER_QUALITY==='1') await browserQualityReview({url:'http://127.0.0.1:3111',actors,db,appDirectory:app.app});
+  if(process.env.POS_KEEP_ADMIN_PREVIEW==='1') {
+    const target=path.join(app.app,'inventory-preview.private.json');
+    await writeFile(target,JSON.stringify({url:'http://127.0.0.1:3111',admin:actors.admin,cashier:actors.cashier,config},null,2));
+    console.log('Synthetic inventory preview ready; private fixture login: '+target);
+    await new Promise(resolve=>{process.once('SIGINT',resolve);process.once('SIGTERM',resolve);});
+  }
   console.log('PASS administration HTTP acceptance. Only newly created synthetic test records were written; no hardware output.');
 } finally {
   await app?.stop(); for (const client of sessions) client.auth.stopAutoRefresh(); await local?.cleanup();

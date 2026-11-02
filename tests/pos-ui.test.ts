@@ -83,6 +83,7 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
       return query;
     },
     rpc: (name: string, args: { p_payload: checkout.CheckoutPayload }) => {
+      if(name==='pos_inventory_register'){const result=Promise.resolve({error:null,data:{enabled:false,items:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='get_register_shortcuts'){favoriteReads++;const result=Promise.resolve(favoriteReads===1?{error:{message:'Synthetic favorites connection failure'},data:null}:{error:null,data:{product_ids:[fixtureProduct.id],revision:1}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:authenticatedUser,cashier_name:'Prueba'},handoff:null,cashiers:role==='admin'?[{id:'next-cashier',name:'Ana'},{id:'other-cashier',name:'Luis'}]:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_shift_summary') {
@@ -219,7 +220,7 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
       assert.equal(cart.useCartStore.getState().orderNote,'Entrega en puerta');
       assert.equal(cart.useCartStore.getState().orderType,'Para Llevar');
       assert.doesNotMatch(screen.textContent!,/El menú cambió/);
-      assert.ok(alerts.some(message=>/precios del borrador/.test(message))); alerts.length=0;
+      assert.ok(alerts.some(message=>/Los precios cambiaron/.test(message))); alerts.length=0;
     }
     if (process.env.POS_UI_PREVIEW) writeFileSync(process.env.POS_UI_PREVIEW, screen.outerHTML);
     await click(button(appearance==='owner'?'Pagar Ahora':'Cobrar'));
@@ -227,8 +228,8 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
     else if(appearance==='prototype') assert.match(screen.textContent!,/Cobrar orden/);
     else assert.ok(screen.querySelector('dialog[aria-label="Cobrar"]'));
     await click(button('Tarjeta'));
-    if(appearance!=='owner'&&!clipEnabled){assert.equal(button('Confirmar Pago').disabled,true);await click(screen.querySelector(appearance==='workspace'?'.workspace-card-confirm input':'.prototype-card-confirm input')!);}
-    await click(button(clipEnabled?'Enviar a CLIP':'Confirmar Pago'));
+    if(appearance!=='owner'&&!clipEnabled){assert.equal(button('Confirmar pago').disabled,true);await click(screen.querySelector(appearance==='workspace'?'.workspace-card-confirm input':'.prototype-card-confirm input')!);}
+    await click(button(clipEnabled?'Enviar a CLIP':'Confirmar pago'));
     assert.equal(submitted?.payment_method, 'tarjeta'); assert.equal(submitted?.expected_total, expectedTotal);
     assert.equal(submitted?.order_type, 'Para Llevar'); assert.equal(submitted?.order_note, 'Entrega en puerta');
     assert.equal(submitted?.customer_id, 'local-member');
@@ -236,7 +237,7 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
     assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user')), null);
     assert.equal(cart.useCartStore.getState().items.length, 0);
     assert.equal(printJobs.length,2);assert.ok(dispatches.length>=1);
-    assert.match(dom.window.document.body.textContent!,/Cliente · USB/);assert.match(dom.window.document.body.textContent!,/Barra · Bluetooth/);
+    assert.match(dom.window.document.body.textContent!,/Ticket del cliente/);assert.match(dom.window.document.body.textContent!,/Etiquetas del barista/);
     assert.equal(salePrinting.pendingSalePrints(dom.window.localStorage,'mi_cafe_checkout_review:fixture-user').length,0);
     assert.equal(alerts.length, 0);
     if(appearance==='workspace') {
@@ -249,22 +250,22 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
       assert.equal(closing.querySelectorAll('select').length,0,'Touch choices do not use small select menus');
       const confirm = closing.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
       assert.ok(closing.querySelector('footer')?.contains(confirm),'Count confirmation stays with the fixed actions');
-      assert.equal(button('Guardar e Imprimir Z').disabled,true);
+      assert.equal(button('Confirmar cierre').disabled,true);
       await click(confirm);
-      assert.equal(button('Guardar e Imprimir Z').disabled,false,'Zero counts still require explicit confirmation');
+      assert.equal(button('Confirmar cierre').disabled,false,'Zero counts still require explicit confirmation');
       await click(button('Entregar a otro cajero'));
       assert.equal(confirm.checked,false,'Changing the operation requires a fresh confirmation');
       await click(confirm);
-      assert.equal(button('Guardar corte y entregar caja').disabled,true,'A handoff requires a recipient');
+      assert.equal(button('Confirmar entrega').disabled,true,'A handoff requires a recipient');
       if(role==='admin') {
         await click(button('Ana'));
         assert.equal(confirm.checked,false);
         await click(confirm);
-        assert.equal(button('Guardar corte y entregar caja').disabled,false);
+        assert.equal(button('Confirmar entrega').disabled,false);
         await click(button('Luis'));
         assert.equal(button('Ana').getAttribute('aria-pressed'),'false');
         assert.equal(button('Luis').getAttribute('aria-pressed'),'true');
-        assert.equal(button('Guardar corte y entregar caja').disabled,true,'Changing recipients resets the confirmation');
+        assert.equal(button('Confirmar entrega').disabled,true,'Changing recipients resets the confirmation');
       } else assert.match(closing.textContent!,/No hay otro cajero disponible/);
       await click(button('Volver a caja'));
       assert.equal(screen.querySelector('dialog[aria-label="Cierre de caja"]'),null);

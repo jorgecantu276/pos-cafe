@@ -64,9 +64,9 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
     await act(async () => root.unmount()); root = createRoot(dom.window.document.getElementById('root')!);
     await act(async () => root.render(createElement(exports.default!)));
     assert.ok(button('Editar Café').matches(':disabled'));
-    await click('Recuperar guardado pendiente');
+    await click('Comprobar guardado');
     assert.deepEqual(calls[0], calls[1]); assert.equal(management.readCatalogRequest(dom.window.localStorage, 'owner'), null);
-    assert.match(dom.window.document.body.textContent!, /Catálogo guardado/);
+    assert.match(dom.window.document.body.textContent!, /Cambios guardados/);
     await click('Extras'); await click('Desactivar Almendra');
     assert.match(dom.window.document.body.textContent!, /No se pudo desactivar/);
     assert.ok(button('Editar Almendra')); assert.equal(management.readCatalogRequest(dom.window.localStorage, 'owner'), null);

@@ -20,7 +20,7 @@ export default function CustomerHistory({ customer, onClose }: { customer: { id:
   useEffect(() => { if (!loading) section.current?.scrollIntoView?.({ block: 'start' }); }, [data, loading]);
   const status = (value: string | null) => value === 'completed' ? 'Completada' : ['cancelled', 'canceled'].includes(value ?? '') ? 'Cancelada' : value === 'pending' ? 'Pendiente' : value ?? 'Sin estado';
   return <section ref={section} aria-label={`Compras de ${customer.name}`} className="scroll-mt-24 rounded-2xl border bg-white p-6 space-y-4">
-    <div className="flex items-start justify-between gap-4"><div><h3 className="text-xl font-bold">Compras de {customer.name}</h3><p className="text-sm text-slate-500">El total incluye solamente ventas completadas.</p></div><button type="button" className="rounded-xl border px-4 py-2" onClick={onClose}>Cerrar historial</button></div>
+    <div className="flex items-start justify-between gap-4"><div><h3 className="text-xl font-bold">Compras de {customer.name}</h3><p className="text-sm text-slate-500">Compras pagadas; no incluye cancelaciones.</p></div><button type="button" className="rounded-xl border px-4 py-2" onClick={onClose}>Cerrar historial</button></div>
     <button type="button" className="rounded-xl border px-4 py-2" onClick={() => setQuery({ page: 0, asOf: null })}>Actualizar historial</button>
     {error ? <LoadFailure message={error} retry={reload}/> : loading ? <p role="status">Cargando compras…</p> : data && <>
       <p>{data.summary.rows} tickets · Compras completadas {reportMoney(data.summary.sales)}</p>

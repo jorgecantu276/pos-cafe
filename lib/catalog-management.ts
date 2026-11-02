@@ -14,6 +14,13 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const catalogRequestKey = (actor: string) => `pos_catalog_request:v1:${actor}`;
 export const catalogChangeKey = 'pos_catalog_changed:v1';
 
+export async function loadRegisterInventory(client: Client, signal: AbortSignal) {
+  const { data, error } = await client.rpc('pos_inventory_register').abortSignal(signal);
+  if (error) throw error;
+  if (typeof data?.enabled !== 'boolean' || !Array.isArray(data.items)) throw Error('No se pudo verificar el inventario.');
+  return new Map<string, CatalogProduct['inventory']>(data.enabled ? data.items.map((i: { product_id: string } & NonNullable<CatalogProduct['inventory']>) => [i.product_id, {mode:i.mode, quantity:i.quantity, available:i.available}]) : []);
+}
+
 export function catalogFingerprint(products: CatalogProduct[], extras: ExtraRow[], favorites: readonly string[]) {
   return JSON.stringify({ products: products.map(p => ({ id: p.id, name: p.name, price: Number(p.price), category: p.category,
     image: p.image_url || '', active: p.is_active, customizable: p.customizable, steps: p.wizard_steps ?? [] })).sort((a, b) => a.id.localeCompare(b.id)),
@@ -42,7 +49,7 @@ export function readCatalogRequest(storage: Memory, actor: string): Pending | nu
   const pending = JSON.parse(raw) as Pending;
   if (!pending || pending.actor !== actor || pending.payload?.actor_id !== actor || !uuid.test(pending.request)
     || !['product', 'extra'].includes(pending.payload.kind) || !['save', 'deactivate'].includes(pending.payload.action)) {
-    throw Error('El guardado pendiente no se puede leer. Conserva los datos para revisión.');
+    throw Error('No se pudieron abrir los cambios pendientes. Pide ayuda al responsable.');
   }
   return pending;
 }
@@ -59,7 +66,7 @@ async function submit(client: Client, storage: Memory, pending: Pending) {
     }
     if (data?.request_id !== pending.request || data.kind !== pending.payload.kind || data.action !== pending.payload.action
       || typeof data.id !== 'string' || !uuid.test(data.id) || (pending.payload.id && data.id !== pending.payload.id)) {
-      throw Error('Respuesta no confirmada. Recupera el mismo guardado de catálogo.');
+      throw Error('No se confirmó el guardado. Pulsa Comprobar guardado.');
     }
     if (storage.getItem(key) !== raw) throw Error('El guardado cambió en otra ventana. Actualiza antes de continuar.');
     storage.removeItem(key);
@@ -74,11 +81,11 @@ export async function saveCatalogChange(client: Client, storage: Memory, actor: 
     if (!lock) throw Error('Otra ventana está guardando el catálogo.');
     let pending = readCatalogRequest(storage, actor);
     if (change) {
-      if (pending) throw Error('Recupera el guardado pendiente antes de hacer otro cambio.');
+      if (pending) throw Error('Comprueba los cambios pendientes antes de seguir.');
       pending = { actor, request: crypto.randomUUID(), payload: { ...change, actor_id: actor } };
       storage.setItem(catalogRequestKey(actor), JSON.stringify(pending));
     }
-    if (!pending) throw Error('No hay un guardado pendiente para esta sesión.');
+    if (!pending) throw Error('No hay cambios pendientes.');
     return submit(client, storage, pending);
   });
 }

@@ -47,7 +47,7 @@ test('actual favorites page retains ordered draft after lost save, blocks replac
     assert.deepEqual(order(),['1. Latte','2. Americano']);assert.deepEqual(config.product_ids,[first,second]);
     assert.equal(button('Guardar favoritos').disabled,true);assert.equal(button('Quitar Latte').disabled,true);
     assert.ok(dom.window.localStorage.getItem(shortcuts.registerShortcutsKey('owner')));
-    lost=false;await click('Recuperar guardado pendiente');
+    lost=false;await click('Comprobar guardado');
     assert.deepEqual(calls[0],calls[1]);assert.deepEqual(calls[0].p_payload.product_ids,[second,first]);assert.equal(calls.length,2);assert.equal(reloads,1);
     assert.equal(dom.window.localStorage.getItem(shortcuts.registerShortcutsKey('owner')),null);assert.equal(button('Guardar favoritos').disabled,false);
     assert.deepEqual(order(),['1. Latte','2. Americano']);assert.equal(config.revision,5);

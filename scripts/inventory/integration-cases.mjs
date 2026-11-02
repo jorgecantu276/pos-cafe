@@ -1,0 +1,64 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+
+export async function inventoryIntegrationCases(db,connection,ids) {
+  let checks=0;
+  const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
+  const deny=async(fn,pattern)=>{await assert.rejects(fn,pattern);checks++;};
+  const admin=await connection('authenticated',ids.admin),cash=await connection('authenticated',ids.cashier),service=await connection('service_role'),anon=await connection('anon');
+  const rpc=(client,name,args=[])=>client.query(`select ${name}(${args.map((_,i)=>'$'+(i+1)).join(',')}) r`,args.map(v=>Array.isArray(v)?JSON.stringify(v):v)).then(r=>r.rows[0].r);
+  await db.query("update cash_registers set status='closed' where status='open'");
+  const product=randomUUID();
+  await db.query("insert into products(id,name,price,is_active,customizable,wizard_steps) values($1,'Inventario integrado',30,true,false,'{}')",[product]);
+  const shift=await rpc(cash,'pos_open_shift',[randomUUID(),0,20]);
+  const item=()=>db.query('select * from pos_inventory_items where product_id=$1',[product]).then(r=>r.rows[0]);
+  const write=async(action,fields)=>rpc(admin,'pos_inventory_write',[randomUUID(),[{product_id:product,revision:(await item()).revision,action,...fields}]]);
+  const state=()=>rpc(admin,'pos_inventory_state');
+  const toggle=async(enabled,key=randomUUID())=>rpc(admin,'pos_inventory_set_enabled',[key,enabled,(await state()).revision]);
+  const payload=(qty=1)=>({register_id:shift.id,items:[{product_id:product,quantity:qty,extra_ids:[],note:''}],expected_total:qty*30,payment_method:'tarjeta',tender_mxn:0,tender_usd:0,customer_id:null,order_type:'Para Llevar',order_note:'',pager_number:30});
+  await deny(rpc(cash,'pos_inventory_set_enabled',[randomUUID(),false,(await state()).revision]));
+  await deny(rpc(anon,'pos_inventory_state'));await deny(rpc(anon,'pos_inventory_register'));
+  await deny(cash.query('select * from cafe_private.inventory_reservations'));
+  await write('configure',{mode:'counted',unit:'pieza',minimum:1});await write('count',{quantity:0});
+  await toggle(false);eq((await rpc(cash,'pos_inventory_register')).items,[]);
+  const off=await rpc(cash,'pos_checkout',[randomUUID(),payload()]);
+  eq((await item()).quantity,0);eq(off.pager_number,30);
+  eq((await db.query('select count(*)::int n from pos_inventory_movements where order_id=$1',[off.id])).rows[0].n,0);
+  const setting=await state(),key=randomUUID(),enabled=await rpc(admin,'pos_inventory_set_enabled',[key,true,setting.revision]);
+  eq(await rpc(admin,'pos_inventory_set_enabled',[key,true,setting.revision]),enabled);
+  await deny(rpc(admin,'pos_inventory_set_enabled',[key,false,setting.revision]));
+  await deny(rpc(admin,'pos_inventory_set_enabled',[randomUUID(),false,setting.revision]),/cambió/);
+  eq((await item()).quantity,null);await write('count',{quantity:3});
+  const request=randomUUID(),p={...payload(2),items:[payload().items[0],{...payload().items[0],note:'Otra taza'}]};
+  eq((await rpc(cash,'pos_clip_prepare',[request,p])).state,'prepared');
+  eq((await item()).quantity,3);
+  eq((await rpc(cash,'pos_inventory_register')).items.find(i=>i.product_id===product).quantity,1);
+  eq((await db.query('select quantity from cafe_private.inventory_reservations where request_id=$1',[request])).rows[0].quantity,2);
+  await rpc(cash,'pos_clip_prepare',[request,p]);
+  eq((await db.query('select count(*)::int n from cafe_private.inventory_reservations where request_id=$1',[request])).rows[0].n,1);
+  await deny(write('count',{quantity:99}),/CLIP pendiente/);
+  await deny(toggle(false),/CLIP pendientes/);
+  await rpc(service,'pos_clip_claim',[request,ids.cashier,'TESTSERIAL']);
+  const provider='pinpad-'+randomUUID();await rpc(service,'pos_clip_attach',[request,ids.cashier,provider]);
+  // No actor JWT: this is the real service-only settlement boundary.
+  const evidence={reference:'pos-'+request,device:'TESTSERIAL',amount_cents:6000,currency:'MXN',status:'APPROVED',paid_cents:6000,tip_cents:0,transaction:randomUUID()};
+  const receipt=await rpc(service,'pos_clip_settle',[request,ids.cashier,provider,'completed',evidence]);
+  eq(receipt.pager_number,30);eq((await item()).quantity,1);
+  eq((await db.query('select count(*)::int n from pos_inventory_movements where order_id=$1',[receipt.id])).rows[0].n,2);
+  eq((await db.query('select count(*)::int n from cafe_private.inventory_reservations where request_id=$1',[request])).rows[0].n,0);
+  eq(await rpc(service,'pos_clip_settle',[request,ids.cashier,provider,'completed',evidence]),receipt);eq((await item()).quantity,1);
+  const rejected=randomUUID();await deny(rpc(cash,'pos_clip_prepare',[rejected,payload(2)]),/Existencias insuficientes/);
+  eq((await db.query('select count(*)::int n from cafe_private.clip_payments where request_id=$1',[rejected])).rows[0].n,0);
+  const failed=randomUUID();await rpc(cash,'pos_clip_prepare',[failed,payload()]);
+  eq((await rpc(cash,'pos_inventory_register')).items.find(i=>i.product_id===product).quantity,0);
+  await rpc(service,'pos_clip_claim',[failed,ids.cashier,'TESTSERIAL']);
+  await rpc(service,'pos_clip_settle',[failed,ids.cashier,null,'unavailable',{code:'ERR10_04'}]);
+  eq((await item()).quantity,1);eq((await rpc(cash,'pos_inventory_register')).items.find(i=>i.product_id===product).quantity,1);
+  await toggle(false);
+  eq((await rpc(cash,'pos_inventory_register')).enabled,false);
+  const backup=JSON.parse(await rpc(service,'pos_business_backup'));
+  for(const table of ['public.pos_inventory_items','public.pos_inventory_movements','public.pos_inventory_settings','cafe_private.inventory_requests','cafe_private.inventory_reservations']){assert.ok(backup.tables[table]);checks++;}
+  await db.query("update cash_registers set status='closed' where id=$1",[shift.id]);
+  console.log(`PASS ${checks} current inventory integration assertions: activation/replay, paused sales, fresh counts, CLIP reservation/settlement/release, pagers and encrypted-backup source`);
+  return checks;
+}

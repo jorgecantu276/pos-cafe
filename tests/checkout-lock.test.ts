@@ -13,14 +13,14 @@ test('checkout lock refuses another tab while a response is pending and releases
   let release!:()=>void, secondCalled=false;
   try{
     const first=withCheckoutLock('cashier-a',()=>new Promise<void>(resolve=>{release=resolve;}));
-    await assert.rejects(withCheckoutLock('cashier-a',async()=>{secondCalled=true;}),/Otra ventana/);
+    await assert.rejects(withCheckoutLock('cashier-a',async()=>{secondCalled=true;}),/otra ventana/i);
     assert.equal(secondCalled,false);
     assert.equal(await withCheckoutLock('cashier-b',async()=>7),7);
     release();await first;
     await assert.rejects(withCheckoutLock('cashier-a',async()=>{throw Error('Network failed');}),/Network/);
     assert.equal(await withCheckoutLock('cashier-a',async()=>8),8);
     Object.defineProperty(globalThis,'navigator',{configurable:true,value:{}});
-    await assert.rejects(withCheckoutLock('cashier-a',async()=>{secondCalled=true;}),/Actualiza el navegador/);
+    await assert.rejects(withCheckoutLock('cashier-a',async()=>{secondCalled=true;}),/Actualiza Chrome o Edge/);
     assert.equal(secondCalled,false);
   }finally{if(descriptor)Object.defineProperty(globalThis,'navigator',descriptor);else Reflect.deleteProperty(globalThis,'navigator');}
 });
