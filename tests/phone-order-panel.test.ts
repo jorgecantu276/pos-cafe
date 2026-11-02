@@ -31,13 +31,13 @@ test('phone cancellation requires explicit vendible counts, states the waste, an
   },{client,disabled:false,onClose:()=>{},onPay:()=>assert.fail('Cancellation cannot initiate a charge'),onCancel:async(_order,reason,returns)=>{calls.push({reason,returns});cancelled=calls.length===2;return cancelled;}});
 });
 
-test('phone queue loads more than200 orders, can retry the same older-page cursor, and refresh resets pagination',async()=>{
+test('phone queue retries the same older-page cursor and reloads when returning from a detail',async()=>{
   const first=Array.from({length:200},(_,index)=>({...sample,id:`phone-${1000-index}`,folio:1000-index})),calls:Array<unknown>=[];let olderCalls=0;
-  const client={rpc:async(_name:string,args:{p_before:string|null})=>{calls.push(args.p_before);if(args.p_before){olderCalls++;return olderCalls===1?{data:null,error:{message:'Conexión interrumpida'}}:{data:[{...sample,id:'oldest',folio:800}],error:null};}return{data:first,error:null};}} as unknown as Pick<SupabaseClient,'rpc'>;
+  const client={rpc:async(name:string,args:{p_before:string|null;p_id:string})=>{if(name!=='pos_phone_list')return{data:{...sample,id:args.p_id},error:null};calls.push(args.p_before);if(args.p_before){olderCalls++;return olderCalls===1?{data:null,error:{message:'Conexión interrumpida'}}:{data:[{...sample,id:'oldest',folio:800}],error:null};}return{data:first,error:null};}} as unknown as Pick<SupabaseClient,'rpc'>;
   await render(async(document,click)=>{
     assert.equal(document.querySelectorAll('.phone-order-list li').length,200);await click('Cargar anteriores');assert.match(document.body.textContent!,/Conexión interrumpida/);assert.equal(document.querySelectorAll('.phone-order-list li').length,200);
-    await click('Cargar anteriores');assert.equal(document.querySelectorAll('.phone-order-list li').length,201);assert.ok(document.querySelector('[aria-label="Abrir pedido 800"]'));
-    await click('Actualizar pedidos');assert.equal(document.querySelectorAll('.phone-order-list li').length,200);assert.deepEqual(calls,[null,'801','801',null]);
+    await click('Reintentar');assert.equal(document.querySelectorAll('.phone-order-list li').length,201);assert.ok(document.querySelector('[aria-label="Abrir pedido 800"]'));
+    await click('Abrir pedido 1000');await click('Volver a pedidos');assert.equal(document.querySelectorAll('.phone-order-list li').length,200);assert.deepEqual(calls,[null,'801','801',null]);
   },{client,disabled:false,onClose:()=>{},onPay:()=>{},onCancel:async()=>false});
 });
 
@@ -47,7 +47,7 @@ test('paid phone orders retain preparation recovery, while a cancelled paid sale
   await render(async(document,click)=>{
     await click('Pagados');await click('Abrir pedido 1000');assert.match(document.body.textContent!,/Pagado/);await click('Comprobar comanda');assert.equal(prints,1);
     assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent==='Cobrar pedido'),false);
-    saleStatus='cancelled';await click('Volver a pedidos');await click('Actualizar pedidos');await click('Abrir pedido 1000');assert.match(document.body.textContent!,/Venta cancelada/);
+    saleStatus='cancelled';await click('Volver a pedidos');await click('Abrir pedido 1000');assert.match(document.body.textContent!,/Venta cancelada/);
     assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent==='Comprobar comanda'),false);assert.equal(prints,1);
   },{client,disabled:false,onClose:()=>{},onPay:()=>assert.fail('Paid orders cannot charge again'),onCancel:async()=>assert.fail('Paid orders cannot be cancelled as unpaid'),onPrint:async(order)=>{assert.equal(order.id,sample.id);prints++;return true;}});
 });

@@ -73,7 +73,7 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
   }
   const twoSizes=async(page,name)=>{for(const viewport of [{width:1366,height:768},{width:1093,height:560}]){await page.setViewportSize(viewport);await audit(page,name);}};
   const openQueue=async page=>{await page.getByRole('button',{name:'Pedidos por cobrar',exact:true}).click();return page.getByRole('dialog',{name:'Pedidos por teléfono',exact:true});};
-  const findPhone=async(page,phone,state='Por cobrar')=>{const queue=await openQueue(page);await queue.getByRole('button',{name:state,exact:true}).click();await queue.getByRole('textbox',{name:'Buscar pedido por cobrar',exact:true}).fill(String(phone.folio));
+  const findPhone=async(page,phone,state='Por cobrar')=>{const queue=await openQueue(page);await queue.getByRole('button',{name:state,exact:true}).click();await queue.getByRole('textbox',{name:'Nombre, teléfono o folio',exact:true}).fill(String(phone.folio));
     await queue.getByRole('button',{name:'Buscar',exact:true}).click();await queue.getByRole('button',{name:`Abrir pedido ${phone.folio}`,exact:true}).click();return queue;};
   async function startPhone(page,name,quantity=1){
     await page.locator('.workspace-product').filter({hasText:'Iced coffee caramelo'}).first().click();
@@ -218,7 +218,7 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     await cancelQueue.waitFor({state:'hidden'});
     await pageB.route('**/rest/v1/rpc/pos_phone_list',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Prueba: no se pudo cargar la lista.'})}));
     const errorQueue=await openQueue(pageB);await errorQueue.getByRole('alert').filter({hasText:/Prueba/}).waitFor();await audit(pageB,'phone-list-error');
-    await pageB.unroute('**/rest/v1/rpc/pos_phone_list');await errorQueue.getByRole('button',{name:'Actualizar pedidos',exact:true}).click();await errorQueue.getByText('No hay pedidos por cobrar.',{exact:true}).waitFor();
+    await pageB.unroute('**/rest/v1/rpc/pos_phone_list');await errorQueue.getByRole('button',{name:'Reintentar',exact:true}).click();await errorQueue.getByText('No hay pedidos por cobrar.',{exact:true}).waitFor();
     await errorQueue.getByRole('button',{name:'Cerrar Pedidos por teléfono',exact:true}).click();
     const pages=[];await pageB.route('**/rest/v1/rpc/pos_phone_list',route=>{
       const before=route.request().postDataJSON().p_before??null;pages.push(before);

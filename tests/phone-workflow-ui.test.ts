@@ -65,7 +65,14 @@ for(const appearance of ['owner','prototype','workspace'] as const)test(`actual 
   cart.useCartStore.getState().clearCart();
   const seed=cart.createCartStore(),binding=drafts.bindCartDraft({storage:dom.window.localStorage,userId:'actor',registerId:'shift',products:[product],extras:[],store:seed,onError:message=>assert.fail(message),onRepriced:()=>{}});seed.getState().setCustomerId('existing-member');binding.disconnect();
   try{
-    await act(async()=>root.render(createElement(exports.default!,{appearance})));await add();await click(button('Control de entrega: Elegir control'));await click(button('Pedido por teléfono'));
+    await act(async()=>root.render(createElement(exports.default!,{appearance})));await add();
+    if(appearance==='workspace'){
+      await click(button('Nota de la orden'));await click(button('Teclado'));
+      const noteDialog=dom.window.document.querySelector('dialog[aria-label="Nota de la orden"]')!;
+      for(const letter of 'puerta')await click(button(letter,noteDialog));
+      await click(button('Listo',noteDialog));
+    }
+    await click(button('Control de entrega: Elegir control'));await click(button('Pedido por teléfono'));
     assert.equal(dom.window.document.querySelector('dialog[aria-label="Cobrar"]'),null);assert.equal(payment,undefined);
     const contact=()=>dom.window.document.querySelector('dialog[aria-label="Pedido por teléfono"]')!;
     assert.equal(button('Guardar pedido',contact()).disabled,true);await fill('Nombre del pedido','Ana');await fill('Teléfono del pedido','8681234567');await click(button('Para llevar',contact()));assert.equal(button('Guardar pedido',contact()).disabled,false);
@@ -75,7 +82,8 @@ for(const appearance of ['owner','prototype','workspace'] as const)test(`actual 
     // Simulate a shared pending order whose saving PC left before recording the
     // local preparation intent. The queue must restore that intent before pay.
     salePrinting.forgetSalePrint(dom.window.localStorage,'mi_cafe_checkout_review:actor','phone:phone-order');
-    await add();const counterDraft=dom.window.localStorage.getItem(drafts.cartDraftKey('actor'));await click(button('Pedidos por cobrar'));await click(button('Abrir pedido 1'));assert.match(dom.window.document.body.textContent!,/Precio guardado/);
+    await add();const counterDraft=dom.window.localStorage.getItem(drafts.cartDraftKey('actor'));await click(button('Pedidos por cobrar'));await click(button('Abrir pedido 1'));
+    assert.match(dom.window.document.querySelector('dialog[aria-label="Pedidos por teléfono"]')?.textContent??'',/\$50\.00 MXN.*Pago al recoger/);
     assert.equal(salePrinting.pendingSalePrints(dom.window.localStorage,'mi_cafe_checkout_review:actor').length,0);
     if(appearance!=='workspace'){
     await click(button('Comprobar comanda'));
@@ -86,6 +94,7 @@ for(const appearance of ['owner','prototype','workspace'] as const)test(`actual 
     await click(button('Cobrar pedido'));
     assert.match(dom.window.document.body.textContent!,/Pedido por teléfono #1/);assert.equal((dom.window.document.querySelector('[aria-label="Tipo de pedido"]') as HTMLSelectElement).disabled,true);assert.equal(cart.useCartStore.getState().getTotal(),50);await click(button('Importe exacto'));await click(button('Confirmar pago'));
     const collected=payment as checkout.CheckoutPayload|undefined;assert.ok(collected);assert.equal(collected.phone_order_id,'phone-order');assert.equal(collected.pager_number,null);assert.equal(collected.expected_total,50);assert.equal(collected.tender_mxn,50);assert.equal(collected.phone_order_revision,0);assert.equal(collected.customer_id,'existing-member');assert.equal(collected.order_type,'Para Llevar');
+    assert.equal(collected.order_note,appearance==='workspace'?'puerta':'');
     assert.equal(cart.useCartStore.getState().getTotal(),50);assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('actor')),counterDraft,'Collecting a phone order must not retire the counter draft');
     await click(button(appearance==='workspace'?'Nueva venta':'Finalizar y Nueva Venta'));assert.equal(cart.useCartStore.getState().items.length,1);assert.equal(cart.useCartStore.getState().phoneOrder,false);assert.deepEqual(alerts,[]);
   }finally{await act(async()=>root.unmount());cart.useCartStore.getState().clearCart();dom.window.close();for(const[key,descriptor]of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}}

@@ -59,17 +59,19 @@
 .workspace-order h1{font-size:20px;font-weight:700;letter-spacing:-.6px;white-space:nowrap}
 .workspace-order-count{display:grid;place-items:center;min-width:25px;height:25px;padding:0 5px;font-size:12px;font-weight:650;color:#536179;background:#f0f3f8;border-radius:9px}
 .workspace-order>header>.workspace-icon{margin-left:auto;border:0;background:transparent;color:#677489}
-.workspace-register .workspace-order-client{border:0;background:#f5f7fa;min-height:48px;margin:0 14px 8px;border-radius:12px;justify-content:flex-start;color:#5b6980;padding:10px 13px;font-size:14px;font-weight:500;min-width:0}
+.workspace-order-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:0 14px 4px}
+.workspace-register .workspace-order-client,.workspace-register .workspace-order-note{border:0;background:#f5f7fa;min-height:48px;border-radius:12px;justify-content:flex-start;color:#5b6980;padding:10px 12px;font-size:14px;font-weight:500;min-width:0}
 .workspace-order-client>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .workspace-order-client>svg{flex-shrink:0}
 .workspace-order-client>svg:last-child{margin-left:auto}
 .workspace-order-lines{overflow-y:auto;overscroll-behavior:contain;min-height:0;padding:2px 14px;scrollbar-width:thin;scrollbar-gutter:stable}
-.workspace-register .workspace-order-line{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto 16px;gap:6px 10px;min-height:72px;padding:12px 7px;border:0;border-bottom:1px solid #edf0f5;border-radius:0;background:#fff;text-align:left;align-content:center;align-items:center;font-size:15px;font-weight:600;line-height:1.35;color:#25334a}
+.workspace-order-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:6px;border-bottom:1px solid #edf0f5}
+.workspace-register .workspace-order-line{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto 16px;gap:6px 10px;min-height:72px;padding:12px 7px 12px 0;border:0;border-radius:0;background:#fff;text-align:left;align-content:center;align-items:center;font-size:15px;font-weight:600;line-height:1.35;color:#25334a}
 .workspace-line-edit{color:#68788e;justify-self:end}
 .workspace-order-line>span{min-width:0;overflow-wrap:anywhere}
 .workspace-order-line>strong{font-size:15px;font-weight:650;white-space:nowrap;font-variant-numeric:tabular-nums}
 .workspace-order-line>small{grid-column:1/-1;font-size:12px;color:#626d7e;font-weight:400;line-height:1.45}
-.workspace-line-count{color:#0071e3;font-weight:700}
+.workspace-register .workspace-line-count{min-width:48px;min-height:48px;padding:6px;border:0;border-radius:10px;background:#f5f7fa;color:#0066cc;font-size:14px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .workspace-empty{color:#626d7e;font-size:15px;padding:18px 4px;line-height:1.5}
 .workspace-empty-order{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#97a3b4;padding:24px 10px;gap:10px}
 .workspace-empty-order>svg{margin-bottom:7px;color:#a9b9cd}
@@ -146,7 +148,6 @@
 .workspace-note-toggle{width:100%;justify-content:flex-start!important;margin-top:14px;background:#f5f7fa!important;border-color:#edf0f5!important;color:#5c6c81!important;font-size:14px!important;font-weight:500!important}
 .workspace-modifier-group{margin:0 0 20px;border:0;padding:0}
 .workspace-modifier-group legend{font-size:15px;font-weight:650;margin-bottom:10px;color:#536078}
-.workspace-modifier-help{font-size:13px;color:#626d7e;line-height:1.45;margin:-3px 0 12px}
 .workspace-modifier-group>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .workspace-modifier-group button{min-height:64px;justify-content:space-between;text-align:left;line-height:1.25;font-size:15px}
 .workspace-modifier-group button span{font-size:13px;color:#626d7e;white-space:nowrap}
@@ -156,6 +157,12 @@
 .workspace-edit-quantity>span{margin-right:auto;color:#626d7e;font-size:15px}
 .workspace-edit-quantity button{width:56px;padding:8px;background:#f3f6fa}
 .workspace-edit-quantity strong{font-size:23px;min-width:30px;text-align:center}
+.workspace-quantity-dialog{width:min(400px,calc(100vw - 24px))}
+.workspace-quantity-dialog .workspace-edit-quantity{justify-content:center;border:0;margin:0}
+.workspace-order-note-dialog textarea{width:100%;padding:12px;border:1px solid #dce3ec;border-radius:12px;background:#f5f7fa;color:inherit;font:inherit;resize:vertical}
+.workspace-order-note-dialog .workspace-dialog-content{display:grid;gap:12px}
+.workspace-order-note-dialog .workspace-dialog-content>button{justify-self:start}
+.workspace-drawer-gate>footer{flex-wrap:wrap}
 .workspace-checkout{width:760px}
 .workspace-checkout-summary{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px;background:#f4f7fb;padding:18px;border-radius:18px}
 .workspace-checkout-summary>div{display:flex;align-items:baseline;gap:16px}
@@ -230,7 +237,6 @@
 .workspace-cash-fields .workspace-caption{margin:6px 0 10px}
 .workspace-checkout-keypad{min-width:0}
 .workspace-checkout-main:not(.has-cash) .workspace-checkout-keypad{margin-top:10px}
-.workspace-checkout-main:not(.has-cash) .workspace-note-toggle{margin-top:0}
 .workspace-checkout-main.has-cash .workspace-checkout-keypad>.workspace-keyboard{margin-top:0}
 @media(max-width:680px){.workspace-checkout-main.has-cash{grid-template-columns:1fr}.workspace-checkout-main.has-cash .workspace-payment-methods{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
@@ -296,10 +302,13 @@
 .phone-order-notice>div{display:grid;gap:3px;flex:1;min-width:180px}.phone-order-notice span{overflow-wrap:anywhere}
 .phone-order-notice button{min-width:44px;min-height:48px;border:1px solid #e2d4ba;border-radius:12px;background:#fff;padding:8px 12px;cursor:pointer}
 .phone-order-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px}.phone-order-heading h3{margin:0;font-size:22px}
-.phone-order-search{display:flex;align-items:end;gap:10px;flex-wrap:wrap}.phone-order-search label{flex:1;min-width:220px;margin:0}
+.phone-order-search{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:end;gap:8px;margin-bottom:12px}.phone-order-search label{min-width:0;margin:0}.phone-order-search button{min-height:48px}
+.phone-orders .phone-order-search+.workspace-keyboard{margin-bottom:12px}
+.phone-orders .phone-order-notice{margin:12px 0}
+@media(max-width:500px){.phone-order-search{grid-template-columns:1fr 1fr}.phone-order-search label{grid-column:1/-1}}
 .phone-order-list,.phone-order-items{list-style:none;padding:0;margin:16px 0;display:grid;gap:10px}
 .workspace-dialog .phone-order-list button{display:grid;grid-template-columns:minmax(0,1fr) auto;width:100%;gap:4px 16px;text-align:left;justify-content:stretch;padding:14px 16px}
-.phone-order-list button span{font-size:14px;color:#626d7e}.phone-order-list button>*{overflow-wrap:anywhere;min-width:0}
+.phone-order-list button span{font-size:14px;color:#626d7e}.phone-order-list button>*{overflow-wrap:anywhere;min-width:0}.phone-order-list button>:nth-child(even){text-align:right;font-variant-numeric:tabular-nums}
 .phone-order-items li{display:grid;gap:5px;padding:12px 0;border-bottom:1px solid #e2e7ee}.phone-order-items span{font-size:14px;color:#626d7e}
 .phone-order-cancel{margin:18px 0 0;border:1px solid #e2e7ee;border-radius:14px;padding:16px}.phone-order-cancel legend{font-weight:700}.phone-order-cancel small{font-size:14px;color:#626d7e}
 .phone-order-cancel label.phone-order-confirm{display:flex;align-items:center;min-height:48px;gap:12px;margin:14px 0;font-size:14px;font-weight:500}.phone-order-confirm input{width:24px;height:24px;flex-shrink:0;accent-color:#0066cc}

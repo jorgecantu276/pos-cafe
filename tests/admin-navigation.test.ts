@@ -15,7 +15,7 @@ function load(file: string, navigation: object) {
     target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS,
     jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true,
   } }).outputText;
-  const exports: { default?: ComponentType<{ children?: string }> } = {};
+  const exports: { default?: ComponentType<{ children?: string; inventoryEnabled?: boolean }> } = {};
   new Function('require', 'exports', compiled)((name: string) =>
     name === 'next/navigation' ? navigation : name.endsWith('.css') ? {} : nodeRequire(name), exports);
   return exports.default!;
@@ -41,10 +41,11 @@ test('related screens retain their shared area navigation and a path back to adm
     ['/admin/cortes', 'Caja', '/admin/caja'],
   ]) {
     const Shell = load('AdminShell.tsx', { usePathname: () => path });
-    const dom = new JSDOM(renderToStaticMarkup(createElement(Shell, null, 'Workflow')));
+    const dom = new JSDOM(renderToStaticMarkup(createElement(Shell, { inventoryEnabled: path === '/admin/inventario' }, 'Workflow')));
     try {
       const nav = dom.window.document.querySelector(`[aria-label="Secciones de ${area}"]`)!;
       assert.ok(nav.querySelector(`a[href="${sibling}"]`));
+      if (area === 'Catálogo') assert.equal(Boolean(nav.querySelector('a[href="/admin/inventario"]')), path === '/admin/inventario');
       assert.equal(nav.querySelector('[aria-current="page"]')?.getAttribute('href'), path);
       assert.ok(dom.window.document.querySelector('header a[href="/admin"]'));
     } finally { dom.window.close(); }

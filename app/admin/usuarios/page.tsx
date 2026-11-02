@@ -14,7 +14,7 @@ import LoadFailure from '@/app/LoadFailure';
 import AdminDialog from '../AdminDialog';
 import {
   ShieldCheck, Loader2, Trash2, UserPlus,
-  Check, Edit2
+  Check
 } from 'lucide-react';
 
 export default function UsuariosPage() {
@@ -115,7 +115,7 @@ export default function UsuariosPage() {
   );
 
   return (
-    <div className="max-w-[900px] mx-auto space-y-12 py-10 animate-in slide-in-from-bottom-2 duration-1000">
+    <div className="max-w-[1100px] mx-auto space-y-12 py-10">
 
       {/* HEADER */}
       <header className="flex justify-between items-center">
@@ -170,10 +170,11 @@ export default function UsuariosPage() {
               <div className="flex items-center gap-2">
                 {!user.is_active?<button type="button" className="admin-secondary-button" disabled={isSaving||!!pendingChange||activePending} aria-label={`Reactivar a ${user.username}`} onClick={()=>void handleActive(user)}>Reactivar</button>:<>
                 <button
+                  type="button"
                   disabled={isSaving||!!pendingChange||activePending} onClick={() => handleOpenModal('edit', user)}
-                  className="px-4 py-2 rounded-full text-[13px] font-semibold transition-all border bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-[#0071e3] flex items-center gap-2"
+                  className="admin-secondary-button"
                 >
-                  <Edit2 size={14} /> Editar
+                  Editar
                 </button>
 
                 <button disabled={isSaving || !!pendingChange||activePending} aria-label={'Desactivar a ' + user.username} onClick={() => void handleActive(user)} className="p-2.5 text-slate-300 hover:bg-red-50 hover:text-[#ff3b30] rounded-full transition-all">

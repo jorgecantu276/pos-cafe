@@ -35,6 +35,7 @@ export default function DrawerAdmin() {
     if (!data) return;
     setRate(data.status.rate === null ? '' : String(data.status.rate));
     setPendingRate(data.pending); setStorageError(data.unreadable);
+    if (data.status.active || data.status.handoff || data.pending) setEditing(false);
   }, []);
   const { data, error, loading, reload } = useResource(load, null, apply);
   const checkPending = (actor: string) => {
@@ -50,6 +51,7 @@ export default function DrawerAdmin() {
         if (!pending) throw new Error('No hay un cambio pendiente.');
         await recoverDrawerRequest(supabase, localStorage, data.actor, 'rate');
       } else {
+        if (data.status.active || data.status.handoff) return;
         if (pending) throw new Error('Revisa el cambio pendiente antes de guardar otro.');
         await drawerWrite(supabase, localStorage, data.actor, 'rate', { rate: Number(rate.replace(',', '.')) });
       }
@@ -60,6 +62,10 @@ export default function DrawerAdmin() {
   if (error) return <LoadFailure message={error} retry={reload} />;
   if (!data) return <p role="status">Cargando caja…</p>;
   const blocked = Boolean(data.status.active || data.status.handoff);
+  const canEdit = !blocked && !pendingRate;
+  const rateAvailability = data.status.handoff
+    ? 'Podrás editarlo cuando se reciba la caja y termine el turno.'
+    : data.status.active ? 'Podrás editarlo al cerrar la caja.' : undefined;
   const differentRate = data.activeRate !== null && data.status.rate !== data.activeRate;
   return <div className="settings-page">
     <div className="settings-page-heading"><h1>Caja</h1><button type="button" className="settings-button" disabled={busy || loading} onClick={() => void reload()}><RefreshCw size={18} aria-hidden="true"/>Actualizar</button></div>
@@ -67,12 +73,12 @@ export default function DrawerAdmin() {
     <SettingsGroup title="Tipo de cambio">
       <SettingsRow label={differentRate ? "Próxima apertura" : "Dólar estadounidense"} detail={differentRate ? 'Se aplica al volver a abrir caja.' : undefined}>
         <span className="settings-value">{data.status.rate ? `1 USD = ${data.status.rate} MXN` : 'Sin definir'}</span>
-        <button type="button" aria-label="Editar tipo de cambio" disabled={busy || loading || pendingRate} onClick={() => setEditing(!editing)}><Pencil size={18} aria-hidden="true"/>{editing ? 'Cancelar' : 'Editar'}</button>
+        {canEdit && <button type="button" aria-label={editing ? 'Cancelar edición del tipo de cambio' : 'Editar tipo de cambio'} disabled={busy || loading} onClick={() => setEditing(!editing)}><Pencil size={18} aria-hidden="true"/>{editing ? 'Cancelar' : 'Editar'}</button>}
       </SettingsRow>
       {differentRate && <SettingsRow label="Turno actual"><span className="settings-value">1 USD = {data.activeRate} MXN</span></SettingsRow>}
-      {editing && <form className="settings-editor" onSubmit={event => { event.preventDefault(); void save(); }}>
-        <div className="settings-rate-editor"><div className="settings-rate-source"><strong>1</strong><span>USD</span></div><ArrowRight size={20} aria-hidden="true"/><label className="settings-rate-target"><input aria-label="Tipo de cambio guardado MXN por USD" inputMode="decimal" value={rate} disabled={busy || blocked || pendingRate} onChange={event => setRate(event.target.value)}/><span>MXN</span></label><button className="is-primary" disabled={busy || blocked || loading || pendingRate || !/^\d+(?:[.,]\d{1,4})?$/.test(rate) || Number(rate.replace(',','.')) <= 0}>{busy ? 'Guardando…' : 'Guardar'}</button></div>
-        {blocked && <p className="settings-help">Cierra la caja y termina cualquier entrega para editar este valor.</p>}
+      {rateAvailability && <SettingsNotice>{rateAvailability}</SettingsNotice>}
+      {editing && canEdit && <form className="settings-editor" onSubmit={event => { event.preventDefault(); void save(); }}>
+        <div className="settings-rate-editor"><div className="settings-rate-source"><strong>1</strong><span>USD</span></div><ArrowRight size={20} aria-hidden="true"/><label className="settings-rate-target"><input aria-label="Tipo de cambio guardado MXN por USD" inputMode="decimal" value={rate} disabled={busy || loading} onChange={event => setRate(event.target.value)}/><span>MXN</span></label><button className="is-primary" disabled={busy || loading || !/^\d+(?:[.,]\d{1,4})?$/.test(rate) || Number(rate.replace(',','.')) <= 0}>{busy ? 'Guardando…' : 'Guardar'}</button></div>
       </form>}
       {pendingRate && <div className="settings-editor"><SettingsNotice error={storageError}>{storageError ? 'No se pudo leer el cambio pendiente. Vuelve a abrir esta pantalla.' : 'Hay un cambio de tipo de cambio sin confirmar.'}</SettingsNotice><div><button type="button" disabled={busy} onClick={() => void save(true)}>Revisar cambio pendiente</button></div></div>}
     </SettingsGroup>

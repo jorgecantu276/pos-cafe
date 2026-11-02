@@ -20,7 +20,7 @@ import { Loader2, Keyboard, Delete, Printer, Ban, AlertCircle } from 'lucide-rea
 
 export default function VentasPage() {
 
-  const [query, setQuery] = useState(reportQuery('all'));
+  const [query, setQuery] = useState(reportQuery('today'));
   
   // ESTADOS PARA EL BUSCADOR Y EL TECLADO
   const [searchTerm, setSearchTerm] = useState('');
@@ -85,27 +85,17 @@ export default function VentasPage() {
     }
   };
 
-  if (loading && !report) return (
-    <div className="flex h-[60vh] items-center justify-center">
-      <Loader2 className="animate-spin text-slate-300 w-8 h-8" strokeWidth={1.5} />
-    </div>
-  );
-
-  if (loadError&&!searchPending&&!loading) return <LoadFailure message={loadError} retry={fetchOrders} />;
-
-  if (!report) return null;
-
   return (
     <div className="workspace-sales">
       <header><div className="workspace-admin-heading-row"><h1>Ventas</h1><Link className="workspace-admin-text-action" href="/tv" target="_blank" rel="noopener noreferrer">Abrir pantalla de ventas</Link></div><div className="workspace-sales-filters"><div className="workspace-sales-search"><input type="search" aria-label="Buscar ticket o producto" placeholder="Buscar ticket o producto" maxLength={100} value={searchTerm} onChange={event => changeSearch(event.target.value)} /><button type="button" aria-label="Teclado de búsqueda" aria-pressed={isKeyboardOpen} onClick={() => setIsKeyboardOpen(!isKeyboardOpen)}><Keyboard size={22}/></button></div><ReportFilters query={query} onChange={setQuery}/></div></header>
-      {loading||searchPending ? <p role="status">Verificando reporte…</p> : <>
+      {loading || searchPending ? <p role="status">Cargando ventas…</p> : loadError ? <LoadFailure message={loadError} retry={fetchOrders} /> : report && <>
         <div className="workspace-sales-total"><span>Ventas pagadas <strong>{reportMoney(report.summary.sales)}</strong></span><span>{report.summary.completed} tickets · {reportPeriod(query, report.day)}</span></div>
         <div className="workspace-sales-list" aria-label="Tickets">{filteredOrders.map(order => <button type="button" key={order.id} onClick={() => setSelectedOrder(order)}>
           <span><strong>#{String(order.ticket_number ?? order.id.split('-')[0]).padStart(4, '0')}</strong><small>{reportDate(order.created_at, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</small></span>
           <span className="workspace-sales-items">{order.order_items.map(item => { const info=item.product_snapshot || (Array.isArray(item.products) ? item.products[0] : item.products); return item.quantity+' × '+(info?.name || 'Producto'); }).join(', ')}{isCanceled(order.status) && <small>Cancelado</small>}{order.status === 'pending' && <small>Pendiente de revisión</small>}</span>
           <span className="workspace-sales-amount"><strong>{reportMoney(Number(order.total))}</strong><small>{order.payment_method}</small></span>
         </button>)}</div>
-        {!filteredOrders.length && <p className="workspace-sales-empty">No hay ventas en este periodo.</p>}
+        {!filteredOrders.length && <p className="workspace-sales-empty">{search ? 'Sin resultados en este periodo.' : 'No hay ventas en este periodo.'}</p>}
         <ReportPagination page={report.page} pageSize={report.page_size} rows={report.summary.rows} onPage={page => setQuery({ ...query, page, asOf: report.as_of })}/>
         <details className="workspace-sales-details"><summary>Desglose</summary><p>{report.summary.pending} pendientes · {report.summary.cancelled} canceladas · Ticket promedio {reportMoney(report.summary.average)}</p><div>{report.payments.map(payment => <p key={payment.name}>{payment.name}: {reportMoney(payment.total)}</p>)}</div><p>Ventas pagadas en MXN; no incluye cancelaciones.</p><p>Actualizado {reportDate(report.captured_at)} · Matamoros</p></details>
       </>}

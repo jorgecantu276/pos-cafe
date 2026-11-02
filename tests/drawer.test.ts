@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { JSDOM } from 'jsdom';
+import { act, createElement } from 'react';
+import DrawerGate from '../app/register/DrawerGate';
 import { drawerWrite, drawerRequestKey, recoverDrawerRequest, enrollCustomer } from '../lib/drawer';
 
 function harness() {
@@ -45,4 +48,57 @@ test('permission uncertainty retains a pending write; storage failure never reac
     await assert.rejects(drawerWrite(client,h.storage,'a','rate',{rate:20}));assert.equal(calls,1);assert.ok(h.storage.getItem(drawerRequestKey('a','rate')));
     assert.equal(await recoverDrawerRequest(client,h.storage,'b','rate'),null);assert.equal(calls,1);
   }finally{h.restore();}
+});
+
+test('drawer receipt asks for USD on demand and a reason only for a valid difference',async()=>{
+  const dom = new JSDOM('<div id="root"></div>', {url:'http://localhost'});
+  const h = harness(), saved = new Map<string,PropertyDescriptor|undefined>();
+  Object.defineProperty(dom.window.navigator,'locks',{value:navigator.locks});
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window.navigator});
+  for (const [key,value] of Object.entries({window:dom.window,document:dom.window.document,localStorage:h.storage,IS_REACT_ACT_ENVIRONMENT:true})) {
+    saved.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+    Object.defineProperty(globalThis,key,{configurable:true,value});
+  }
+  const {createRoot} = await import('react-dom/client');
+  const root = createRoot(dom.window.document.getElementById('root')!);
+  const find = (label:string) => dom.window.document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
+  const button = (text:string) => [...dom.window.document.querySelectorAll('button')].find(node=>node.textContent===text)!;
+  const fill = async (input:HTMLInputElement,value:string) => act(async()=>{
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(input,value);
+    input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
+  });
+  const submitted:unknown[]=[];
+  const client=api(async(name,{p_request,p_payload})=>{
+    assert.equal(name,'pos_accept_drawer_handoff');
+    submitted.push({p_request,p_payload});
+    if(submitted.length===1)return {error:{message:'Respuesta perdida',code:''},data:null};
+    return {error:null,data:{request_id:p_request,register:{id:'next',opened_by:'b',initial_balance:p_payload.counted}}};
+  });
+  try {
+    await act(async()=>root.render(createElement(DrawerGate,{client,status:{active:null,rate:16,cashiers:[],handoff:{id:'h',from_name:'Ana',to_id:'b',to_name:'Bea',delivered:100,rate:16}},actor:'b',isAdmin:false,reload:async()=>{},logout:()=>{}})));
+    assert.equal(dom.window.document.querySelectorAll('input').length,1);
+    assert.equal(button('Recibir caja').disabled,true);
+    assert.equal(button('Recibir caja').parentElement?.tagName,'FOOTER');
+    assert.equal(button('Comprobar recepción'),undefined);
+    await fill(find('Efectivo recibido MXN')!,'100');
+    assert.equal(find('Motivo de diferencia'),null);
+    assert.equal(button('Recibir caja').disabled,false);
+    await act(async()=>button('Agregar USD').click());
+    const dollars = [...dom.window.document.querySelectorAll('label')].find(label=>label.textContent==='Dólares recibidos')?.querySelector('input');
+    assert.ok(dollars);
+    await fill(dollars,'1');
+    assert.equal(button('Recibir caja').disabled,true);
+    await fill(find('Motivo de diferencia')!,'Dólar de más');
+    assert.equal(button('Recibir caja').disabled,false);
+    await act(async()=>button('Recibir caja').click());
+    assert.deepEqual((submitted[0] as {p_payload:unknown}).p_payload,{handoff:'h',counted:116,note:'Dólar de más',actor_id:'b'});
+    assert.equal(button('Recibir caja'),undefined);
+    assert.equal(find('Efectivo recibido MXN')?.disabled,true);
+    await act(async()=>button('Comprobar recepción').click());
+    assert.deepEqual(submitted[0],submitted[1]);
+    assert.equal(button('Comprobar recepción'),undefined);
+  } finally {
+    await act(async()=>root.unmount());dom.window.close();h.restore();
+    for(const [key,descriptor] of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}
+  }
 });

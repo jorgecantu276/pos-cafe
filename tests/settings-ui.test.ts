@@ -36,17 +36,18 @@ async function harness(active=false,initialPending=false){
   return{dom,calls,button,click,inject:()=>dom.window.localStorage.setItem(drawer.drawerRequestKey(actor,'rate'),JSON.stringify(old)),async clean(){await act(async()=>root.unmount());dom.window.close();for(const[key,d]of saved){if(d)Object.defineProperty(globalThis,key,d);else Reflect.deleteProperty(globalThis,key);}}};
 }
 
-test('drawer settings show saved 16 separately from the open shift at 18 and prefill the blocked editor',async()=>{
+test('drawer settings show saved 16 separately from the open shift at 18 and omit the unavailable editor',async()=>{
   const h=await harness(true);try{
     assert.match(h.dom.window.document.body.textContent!,/Próxima apertura/);assert.match(h.dom.window.document.body.textContent!,/1 USD = 16 MXN/);assert.match(h.dom.window.document.body.textContent!,/Turno actual/);assert.match(h.dom.window.document.body.textContent!,/1 USD = 18 MXN/);
-    assert.equal(h.button('Revisar cambio pendiente'),undefined);await h.click('Editar tipo de cambio');
-    const input=h.dom.window.document.querySelector<HTMLInputElement>('input[aria-label="Tipo de cambio guardado MXN por USD"]')!;assert.equal(input.value,'16');assert.equal(input.disabled,true);assert.equal(h.button('Guardar')!.disabled,true);assert.equal(h.calls.length,0);
+    assert.match(h.dom.window.document.body.textContent!,/Podrás editarlo al cerrar la caja/);
+    assert.equal(h.button('Revisar cambio pendiente'),undefined);assert.equal(h.button('Editar tipo de cambio'),undefined);
+    assert.equal(h.dom.window.document.querySelector('input[aria-label="Tipo de cambio guardado MXN por USD"]'),null);assert.equal(h.calls.length,0);
   }finally{await h.clean();}
 });
 
 test('drawer settings show recovery only for a real pending rate change',async()=>{
   const h=await harness(false,true);try{
-    assert.ok(h.button('Revisar cambio pendiente'));assert.equal(h.button('Editar tipo de cambio')!.disabled,true);await h.click('Revisar cambio pendiente');
+    assert.ok(h.button('Revisar cambio pendiente'));assert.equal(h.button('Editar tipo de cambio'),undefined);await h.click('Revisar cambio pendiente');
     assert.equal(h.calls.length,1);assert.equal(h.calls[0].name,'pos_set_drawer_rate');assert.deepEqual(h.calls[0].args,{p_request:old.request,p_payload:old.payload});
     assert.equal(h.button('Revisar cambio pendiente'),undefined);
   }finally{await h.clean();}
@@ -57,7 +58,7 @@ test('saving a new rate cannot silently recover a change created in another wind
     await h.click('Editar tipo de cambio');const input=h.dom.window.document.querySelector<HTMLInputElement>('input[aria-label="Tipo de cambio guardado MXN por USD"]')!;
     const setter=Object.getOwnPropertyDescriptor(h.dom.window.HTMLInputElement.prototype,'value')!.set!;await act(async()=>{setter.call(input,'20');input.dispatchEvent(new h.dom.window.Event('input',{bubbles:true}));input.dispatchEvent(new h.dom.window.Event('change',{bubbles:true}));});h.inject();
     await act(async()=>h.dom.window.document.querySelector('form')!.dispatchEvent(new h.dom.window.Event('submit',{bubbles:true,cancelable:true})));
-    assert.equal(h.calls.length,0);assert.equal(input.value,'20');assert.ok(h.button('Revisar cambio pendiente'));assert.equal(h.dom.window.localStorage.getItem(drawer.drawerRequestKey(actor,'rate')),JSON.stringify(old));
+    assert.equal(h.calls.length,0);assert.equal(h.button('Editar tipo de cambio'),undefined);assert.ok(h.button('Revisar cambio pendiente'));assert.equal(h.dom.window.localStorage.getItem(drawer.drawerRequestKey(actor,'rate')),JSON.stringify(old));
     await h.click('Revisar cambio pendiente');assert.equal(h.calls.length,1);assert.deepEqual(h.calls[0].args,{p_request:old.request,p_payload:old.payload});
   }finally{await h.clean();}
 });

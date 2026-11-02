@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Archive, ChevronRight, Printer, UsersRound, CreditCard, CircleDollarSign } from 'lucide-react';
 import { SettingsGroup } from '../Settings';
+import { clipSettings } from '@/lib/clip-config';
 
 export default function ConfigurationPage() {
   return <div className="settings-page"><h1>Configuración</h1>
@@ -9,8 +10,8 @@ export default function ConfigurationPage() {
       <Link className="settings-link-row" href="/admin/caja"><CircleDollarSign size={22} aria-hidden="true"/><span><strong>Tipo de cambio</strong><small>Dólares y pesos</small></span><ChevronRight size={18} aria-hidden="true"/></Link>
     </nav></SettingsGroup>
     <SettingsGroup title="Dispositivos"><nav aria-label="Dispositivos">
-      <Link className="settings-link-row" href="/admin/impresion"><Printer size={22} aria-hidden="true"/><span><strong>Impresoras</strong><small>Tickets y etiquetas</small></span><ChevronRight size={18} aria-hidden="true"/></Link>
-      <Link className="settings-link-row" href="/admin/clip"><CreditCard size={22} aria-hidden="true"/><span><strong>Terminal CLIP</strong><small>Cobros con tarjeta</small></span><ChevronRight size={18} aria-hidden="true"/></Link>
+      <Link className="settings-link-row" href="/admin/impresion"><Printer size={22} aria-hidden="true"/><span><strong>Tickets e impresión</strong><small>Revisar tickets y etiquetas</small></span><ChevronRight size={18} aria-hidden="true"/></Link>
+      {clipSettings().enabled && <Link className="settings-link-row" href="/admin/clip"><CreditCard size={22} aria-hidden="true"/><span><strong>Terminal CLIP</strong><small>Cobros con tarjeta</small></span><ChevronRight size={18} aria-hidden="true"/></Link>}
     </nav></SettingsGroup>
     <SettingsGroup title="Datos"><nav aria-label="Datos">
       <Link className="settings-link-row" href="/admin/respaldos"><Archive size={22} aria-hidden="true"/><span><strong>Respaldos</strong><small>Copias del negocio</small></span><ChevronRight size={18} aria-hidden="true"/></Link>

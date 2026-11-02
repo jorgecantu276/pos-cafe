@@ -50,7 +50,7 @@ export default function PrintRecoveryPage(){
     finally{setBusy(false);}
   };
   const name=(id:string)=>data?.cashiers.find(c=>c.id===id)?.full_name||'Cajero';
-  return <div className="settings-page"><div className="settings-page-heading"><h1>Impresión</h1><button className="settings-button" disabled={busy} onClick={()=>void load().then(()=>setError('')).catch(()=>setError('No se pudo cargar el estado de impresión.'))}>Actualizar</button></div>
+  return <div className="settings-page"><div className="settings-page-heading"><h1>Tickets e impresión</h1><button className="settings-button" disabled={busy} onClick={()=>void load().then(()=>setError('')).catch(()=>setError('No se pudo cargar el estado de impresión.'))}>Actualizar</button></div>
     {data?.mode==='mock'&&<SettingsNotice>Modo de prueba · No imprime en papel.</SettingsNotice>}
     {error&&<SettingsNotice error>{error}</SettingsNotice>}{message&&<SettingsNotice>{message}</SettingsNotice>}
     {pending&&<SettingsGroup title="Revisión pendiente"><div className="settings-editor"><SettingsNotice>Comprueba esta revisión antes de imprimir otra copia.</SettingsNotice><div><button disabled={busy} onClick={()=>void run(pending,true)}>Revisar cambio pendiente</button></div></div></SettingsGroup>}

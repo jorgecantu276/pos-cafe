@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
 import { withDeadline } from '@/lib/request-deadline';
@@ -16,6 +17,7 @@ import './inventory.css';
 interface InventoryData { actor: string; items: InventoryItem[]; history: InventoryMovement[]; pending: InventoryRequest | null; state: { enabled: boolean; revision: number } }
 const initial: InventoryData = { actor: '', items: [], history: [], pending: null, state: { enabled: false, revision: 0 } };
 export default function InventoryPage() {
+  const router = useRouter();
   const [before, setBefore] = useState<number | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const load = useCallback(async (signal: AbortSignal): Promise<InventoryData> => {
@@ -34,6 +36,7 @@ export default function InventoryPage() {
   const { data, loading, error, reload, setData } = useResource(load, initial);
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState(''), [failure, setFailure] = useState('');
   const inFlight = useRef(false);
+  const activation = useRef<HTMLDetailsElement>(null);
   const save = async (changes?: InventoryChange[], toggle?: boolean) => {
     if (inFlight.current) return false;
     inFlight.current = true; setBusy(true); setFailure(''); setNotice('');
@@ -52,6 +55,10 @@ export default function InventoryPage() {
       } : null);
       if (!pending) throw new Error('No hay una operación pendiente.');
       await saveInventoryRequest(supabase, localStorage, pending);
+      if (pending.rpc === 'pos_inventory_set_enabled') {
+        if (activation.current) activation.current.open = false;
+        router.refresh();
+      }
       announceCatalogChange(); setConfirmed(false);
       setNotice('Inventario actualizado.'); await reload(); return true;
     } catch (error) {
@@ -66,7 +73,7 @@ export default function InventoryPage() {
   return <div className="inventory-page settings-page"><h1>Inventario</h1>
     <SettingsGroup title="Control de existencias">
       <SettingsRow label="Inventario" detail={data.state.enabled ? 'Las ventas descuentan las existencias contadas.' : 'Las ventas no descuentan existencias.'}><span className={`settings-badge${data.state.enabled ? ' is-on' : ''}`}>{data.state.enabled ? 'Activado' : 'Desactivado'}</span></SettingsRow>
-      <details className="settings-disclosure"><summary>{data.state.enabled ? 'Pausar inventario' : 'Activar inventario'}</summary><div>
+      <details ref={activation} className="settings-disclosure"><summary>{data.state.enabled ? 'Pausar inventario' : 'Activar inventario'}</summary><div>
         <p>{data.state.enabled ? 'Las ventas seguirán disponibles sin descontar productos.' : 'Al activarlo, vuelve a contar o importa las existencias actuales. Los conteos anteriores dejan de usarse.'}</p>
         <label className="settings-confirm"><input type="checkbox" checked={confirmed} disabled={busy || loading || Boolean(data.pending)} onChange={e=>setConfirmed(e.target.checked)}/>{data.state.enabled ? 'Pausar el descuento de existencias.' : 'Voy a registrar las existencias actuales.'}</label>
         <button className="is-primary" disabled={!confirmed || busy || loading || Boolean(data.pending)} onClick={()=>void save(undefined,!data.state.enabled)}>{data.state.enabled ? 'Pausar inventario' : 'Activar inventario'}</button>
