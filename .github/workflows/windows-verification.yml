@@ -15,6 +15,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  integration:
+    name: Auth and backend integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      POS_PRINT_MODE: disabled
+      POS_CLIP_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.2
+          cache: npm
+      - run: npm ci
+      - name: Exercise real Auth, PostgREST and production app on a disposable local backend
+        run: npm run test:admin-http
   verify:
     runs-on: windows-latest
     timeout-minutes: 20

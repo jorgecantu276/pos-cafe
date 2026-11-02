@@ -11,20 +11,22 @@ import { randomUUID } from 'node:crypto';
 
 // Separate fresh synthetic stack. Existing staging, archives and hosted data
 // are never read or reconciled. Each run owns a new project and test volumes.
-export async function freshLocalApi() {
+export async function freshLocalApi({ portBase = 55471 } = {}) {
+  assert.ok([55471,55481].includes(portBase), 'Only dedicated loopback test port families are allowed');
+  const portPrefix=String(portBase).slice(0,-1);
   await dockerCheck();
   const project = `pos-cafe-admin-${randomUUID().slice(0, 8)}`, network = `supabase_network_${project}`;
   const directory = path.join(work, 'admin-api', project), bin = path.join(directory, 'docker-bin');
   await mkdir(path.join(directory, 'supabase'), { recursive: true }); await mkdir(bin, { recursive: true });
   const configText = (await readFile(path.join(root, 'supabase/staging/config.toml'), 'utf8'))
-    .replaceAll('pos-cafe-staging-local', project).replaceAll('5545', '5547');
+    .replaceAll('pos-cafe-staging-local', project).replaceAll('5545', portPrefix);
   await writeFile(path.join(directory, 'supabase/config.toml'), configText);
   const require = createRequire(import.meta.url), pkg = require('supabase/package.json');
   const cli = path.join(path.dirname(require.resolve('supabase/package.json')), pkg.bin.supabase);
   let env = { ...process.env };
   if (process.platform === 'win32') {
     const source = path.join(bin, 'loopback.cs'), launcher = path.join(bin, 'docker.exe');
-    await writeFile(source, (await readFile(path.join(root, 'scripts/staging/docker-loopback.cs'), 'utf8')).replaceAll('5545', '5547'));
+    await writeFile(source, (await readFile(path.join(root, 'scripts/staging/docker-loopback.cs'), 'utf8')).replaceAll('5545', portPrefix));
     await run(path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/target:exe', `/out:${launcher}`, source]);
     await run(launcher, ['--pos-cafe-self-test']);
     env = { ...env, POS_CAFE_REAL_DOCKER: path.join(process.env.LOCALAPPDATA, 'Programs/DockerDesktop/resources/bin/docker.exe'), PATH: `${bin}${path.delimiter}${process.env.PATH}` };
@@ -38,8 +40,8 @@ export async function freshLocalApi() {
   try {
     await cliRun(['start', '--exclude', 'realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor,studio,inbucket']);
     const status = JSON.parse(await cliRun(['status', '-o', 'json']));
-    assert.equal(status.API_URL, 'http://127.0.0.1:55471');
-    const dbUrl = new URL(status.DB_URL); assert.equal(dbUrl.hostname, '127.0.0.1'); assert.equal(dbUrl.port, '55472'); assert.equal(dbUrl.pathname, '/postgres');
+    assert.equal(status.API_URL, `http://127.0.0.1:${portBase}`);
+    const dbUrl = new URL(status.DB_URL); assert.equal(dbUrl.hostname, '127.0.0.1'); assert.equal(dbUrl.port, String(portBase+1)); assert.equal(dbUrl.pathname, '/postgres');
     const containers = (await run('docker', ['ps', '--filter', `name=_${project}$`, '--format', '{{.ID}}'])).trim().split(/\r?\n/).filter(Boolean);
     assert.ok(containers.length >= 4);
     for (const info of JSON.parse(await run('docker', ['inspect', ...containers]))) {

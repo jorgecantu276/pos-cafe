@@ -31,6 +31,9 @@ test('actual CLIP route authenticates before credentials/provider construction a
   try {
     const denied=harness({authenticated:false});assert.equal((await denied.route.POST(post({requestId:id,payload:{payment_method:'tarjeta'}}))).status,401);assert.equal(denied.privileged,0);assert.equal(denied.started,0);
     const cross=harness();assert.equal((await cross.route.POST(post({requestId:id,payload:{payment_method:'tarjeta'}},'https://other.invalid'))).status,403);assert.equal(cross.privileged,0);assert.equal(cross.started,0);
+    const normalized=harness();const request=new Request('http://localhost:3111/api/payments/clip',{method:'POST',headers:{Host:'127.0.0.1:3111',Origin:'http://127.0.0.1:3111','Content-Type':'application/json'},body:JSON.stringify({requestId:id,payload:{payment_method:'tarjeta'}})});
+    assert.equal((await normalized.route.POST(request)).status,200);assert.equal(normalized.started,1);
+    const missing=harness();assert.equal((await missing.route.POST(new Request('http://localhost/api/payments/clip',{method:'POST',body:'{}'}))).status,403);assert.equal(missing.started,0);
     const valid=harness();const response=await valid.route.POST(post({requestId:id,payload:{payment_method:'tarjeta'}}));assert.equal(response.status,200);assert.equal(valid.prepared,1);assert.equal(valid.started,1);assert.match(response.headers.get('Cache-Control')!,/no-store/);assert.equal((await response.text()).includes('TEST_ONLY_SECRET'),false);
   } finally {if(previous===undefined)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=previous;}
 });

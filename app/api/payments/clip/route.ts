@@ -15,7 +15,10 @@ const failure = (error: unknown) => reply({error:error instanceof AccessError ? 
 export async function POST(request: Request) {
   try {
     const caller = await serverSupabase(), actor = await clipStaff(caller);
-    if (request.headers.get('origin') !== new URL(request.url).origin) throw new AccessError('Origen de solicitud inválido.',403);
+    // Next can normalize the internal URL to localhost while the browser uses
+    // 127.0.0.1. Validate against the received Host, as the print API does.
+    const url=new URL(request.url),authority=new URL(`${url.protocol}//${request.headers.get('host')||url.host}`);
+    if (request.headers.get('origin') !== authority.origin) throw new AccessError('Origen de solicitud inválido.',403);
     const raw = await request.text();
     if (raw.length > 256_000) throw new AccessError('Pedido demasiado grande.',400);
     const body = JSON.parse(raw);
