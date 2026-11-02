@@ -103,10 +103,9 @@ export function PrototypeCheckout({total,method,mxn,usd,exchangeRate,orderType,n
       <div className="prototype-service">{['En Local','Para Llevar'].map(t=><button key={t} disabled={busy||!!phoneOrderLabel} aria-pressed={orderType===t} onClick={()=>onOrderType(t)}>{t==='En Local'?'Para aquí':'Para llevar'}</button>)}</div>
       <button disabled={busy||!!phoneOrderLabel} onClick={()=>setNotes(!notes)}>Notas de la orden{note?' · añadidas':''}</button>
       {notes&&<><textarea aria-label="Notas de la orden" disabled={busy} value={note} onChange={e=>onNote(e.target.value)} maxLength={1000}/><TouchKeyboard value={note} onChange={onNote}/></>}
-      <div className="prototype-options">{['Efectivo','Mixto','Tarjeta','Otro'].map(m=><button key={m} disabled={busy} aria-pressed={method===m} onClick={()=>{onMethod(m);setConfirmed(false);}}>{m==='Mixto'?'MXN + USD':m}</button>)}</div>
+      <div className="prototype-options prototype-payment-methods">{['Efectivo','Mixto','Tarjeta'].map(m=><button key={m} disabled={busy} aria-pressed={method===m} onClick={()=>{onMethod(m);setConfirmed(false);}}>{m==='Mixto'?'MXN + USD':m}</button>)}</div>
       {method==='Tarjeta'&&!clipEnabled&&<label className="prototype-card-confirm"><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Confirmé el cobro aprobado en la terminal.</label>}
       {phoneOrderLabel?<p className="phone-order-state">{phoneOrderLabel} · Paga al recoger</p>:onPagerNumber&&<PagerPicker value={pagerNumber??null} onChange={onPagerNumber} disabled={busy}/>}
-      {method==='Otro'&&<p>Confirma el pago por separado antes de registrar la venta.</p>}
       {cash&&<><div className="prototype-service">{['MXN','USD'].map(c=><button key={c} disabled={busy} aria-pressed={currency===c} onClick={()=>setCurrency(c as 'MXN'|'USD')}>{c}</button>)}</div>
         <label>Recibido MXN<input inputMode="decimal" disabled={busy} value={mxn} onFocus={()=>setCurrency('MXN')} onChange={e=>onMXN(e.target.value)}/></label><label>Recibido USD<input inputMode="decimal" disabled={busy} value={usd} onFocus={()=>setCurrency('USD')} onChange={e=>onUSD(e.target.value)}/></label>
         <p>Tipo de cambio: {exchangeRate} MXN / USD</p><p>{received>=total?`Cambio MXN: ${money(received-total)}`:`Faltan MXN: ${money(total-received)}`}</p></>}

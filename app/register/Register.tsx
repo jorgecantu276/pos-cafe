@@ -1461,14 +1461,14 @@ const handleSaveAndClose = async () => {
 
                  <div className="mb-6">
                     <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-3">Método de Pago</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {['Efectivo', 'Mixto', 'Tarjeta', 'Otro'].map(method => (
+                    <div className="grid grid-cols-3 gap-3">
+                      {['Efectivo', 'Mixto', 'Tarjeta'].map(method => (
                          <button key={method} onClick={() => {
                               setPaymentMethod(method);
                               if (method === 'Tarjeta' || method === 'Otro') { setAmountReceivedMXN(getTotal()); setAmountReceivedUSD(''); }
                               else { setAmountReceivedMXN(''); setAmountReceivedUSD(''); }
                             }} className={`p-3.5 rounded-xl border-2 font-bold text-sm transition-all ${paymentMethod === method ? 'border-[#0071e3] text-[#0071e3] bg-blue-50/50' : 'border-slate-100 text-slate-600 hover:border-blue-200 bg-white'}`}>
-                            {method}
+                            {method === 'Mixto' ? 'MXN + USD' : method}
                           </button>
                       ))}
                     </div>
