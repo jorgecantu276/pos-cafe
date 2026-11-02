@@ -23,6 +23,7 @@ import { clipDatabaseCases } from './clip/database-cases.mjs';
 import { requiredPagerDatabaseCases } from './pagers/database-cases.mjs';
 import { phoneOrderDatabaseCases } from './phone-orders/database-cases.mjs';
 import { deliveryReadinessDatabaseCases } from './delivery-readiness/database-cases.mjs';
+import { deliveryProjectionCases } from './delivery-readiness/projection-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
 // User-owned TEMP survives PostgreSQL's restricted Windows token; a hosted
@@ -231,6 +232,7 @@ try {
   assertions+=await requiredPagerDatabaseCases(db,connection,await readFile(resolve(root,'supabase/migrations/202611020018_required_order_pager.sql'),'utf8'));
   assertions+=await phoneOrderDatabaseCases(db,connection,ids,await readFile(resolve(root,'supabase/migrations/202611020019_phone_orders.sql'),'utf8'));
   assertions+=await deliveryReadinessDatabaseCases(db,connection,ids,await readFile(resolve(root,'supabase/migrations/202611020020_delivery_readiness.sql'),'utf8'));
+  assertions+=await deliveryProjectionCases(db,connection,ids,await readFile(resolve(root,'supabase/migrations/202611020021_staff_revision_read.sql'),'utf8'));
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {
   await Promise.allSettled(clients.map(c=>c.end()));
