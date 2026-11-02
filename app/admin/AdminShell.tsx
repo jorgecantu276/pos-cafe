@@ -6,7 +6,7 @@ import './workspace-admin.css';
 
 const areas = {
   catalog: { name: 'Catálogo', href: '/admin/productos', links: [
-    { name: 'Productos y extras', href: '/admin/productos' }, { name: 'Favoritos de caja', href: '/admin/favoritos' },
+    { name: 'Productos y extras', href: '/admin/productos' }, { name: 'Favoritos de caja', href: '/admin/favoritos' }, { name: 'Inventario', href: '/admin/inventario' },
   ] },
   drawer: { name: 'Caja', href: '/admin/cortes', links: [
     { name: 'Turno y cortes', href: '/admin/cortes' }, { name: 'Entregas y tipo de cambio', href: '/admin/caja' },
@@ -16,6 +16,7 @@ const areas = {
 const pages: Record<string, { name: string; area?: keyof typeof areas }> = {
   ventas: { name: 'Ventas' }, clientes: { name: 'Clientes' },
   productos: { name: 'Productos y extras', area: 'catalog' }, favoritos: { name: 'Favoritos de caja', area: 'catalog' },
+  inventario: { name: 'Inventario', area: 'catalog' },
   cortes: { name: 'Turno y cortes', area: 'drawer' }, caja: { name: 'Entregas y tipo de cambio', area: 'drawer' },
   configuracion: { name: 'Configuración', area: 'settings' }, usuarios: { name: 'Equipo', area: 'settings' },
   respaldos: { name: 'Respaldos', area: 'settings' }, impresion: { name: 'Recuperar impresión', area: 'settings' },

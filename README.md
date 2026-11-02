@@ -14,15 +14,18 @@ Punto de venta para una cafetería con una sola caja física. Next.js 16.4.3, Re
 | Cobro automático CLIP | **Apagado. Token como placeholder.** Pendiente de habilitación de PinPad, token real y aceptación con la terminal. |
 | Controles de entrega 1–30 | Selección manual, guardado con la venta y número en ticket del cliente y etiquetas del barista. |
 | App en la PC del café | Instalación/configuración de esta versión y aceptación operativa pendientes. Publicar código en GitHub no instala la app. |
-| Inventario | Fuera de esta versión; el desarrollo separado está en [PR #2](https://github.com/jorgecantu276/pos-cafe/pull/2). |
+| Inventario | Integrado en Catálogo y probado localmente; **apagado al inicio**. La migración 017 sigue pendiente en el backend alojado. |
 
 La [revisión de integración y preparación](docs/integration-readiness.md) documenta conexiones UI/backend, evidencias, pendientes y condiciones para instalar o activar cada función. Pasar pruebas locales no equivale a aceptar toda la operación del café.
+
+La [revisión de calidad](docs/quality-review.md) compara las comprobaciones funcionales, accesibilidad, pantalla touch y tickets con criterios verificables. No presenta una puntuación inventada ni confunde un navegador de desarrollo con la PC del café.
 
 ## Qué incluye
 
 - **Caja:** apertura, gastos, tipo de cambio guardado, arqueo, corte y entrega a otro cajero. El entrante inicia sesión y confirma el efectivo recibido. Solo puede existir un turno abierto.
 - **Ventas:** cantidades, extras y notas; efectivo MXN/USD, tarjeta y otro medio; historial, cancelación administrativa y reimpresión. Cancelar una venta **no devuelve dinero** en CLIP ni en otra terminal.
 - **Catálogo:** productos, extras y favoritos; búsqueda/filtros; guardados recuperables y desactivación que conserva el historial. Caja detecta cambios de menú y exige revisar precios antes de un nuevo cobro.
+- **Inventario dentro de Catálogo:** disponibilidad, conteos, entradas, mermas, CSV con vista previa, movimientos y devoluciones parciales de ventas canceladas. Activación explícita por administrador, apagada al inicio. Ver [operación y CLIP](docs/inventory.md).
 - **Clientes:** alta por nombre/teléfono, corrección, compras y puntos según la regla existente. El canje sigue pendiente de la política del negocio.
 - **Configuración:** equipo, respaldos cifrados, impresión y revisión de pagos CLIP pendientes.
 
@@ -70,13 +73,15 @@ El POS requiere conexión al backend. La PWA no habilita ventas offline: el serv
 | --- | --- |
 | `npm test` | Carrito, UI real, permisos, recuperación, CLIP simulado, controles y diseño Windows sin papel. |
 | `npm run test:db` | PostgreSQL 17.6 aislado: precios, transacciones, concurrencia, puntos, cortes, CLIP/pagers y permisos. Puerto 55439. |
-| `npm run test:admin-http` | Auth/PostgREST y app de producción: cuatro áreas, cookies por rol, control guardado y CLIP apagado. API/DB 55481/55482 y app 3111. Requiere Docker. |
+| `npm run test:admin-http` | Auth/PostgREST y app de producción: cuatro áreas, inventario apagado/activo, venta, devolución, roles, control guardado y CLIP apagado. API/DB 55481/55482 y app 3111. Requiere Docker. |
 | `npm run test:printing` | Endpoints de impresión/reimpresión y diario con backend/impresoras simulados; app 3112. |
 | `npm run typecheck` / `npm run lint` | TypeScript y reglas sin advertencias. |
 | `npm run build:verify` | Compilación de producción aislada de la vista previa en ejecución. |
 | `npm audit` / `npm audit --omit=dev` | Dependencias completas y de ejecución. |
 
-La integración pasó localmente **193 pruebas y 2,394 comprobaciones de PostgreSQL**, además del paquete Windows trasladado a otra carpeta. GitHub Actions repite los checks Windows y el ensayo Auth/PostgREST en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
+La integración pasó localmente **202 pruebas y 2,539 comprobaciones de PostgreSQL**. GitHub Actions repite los checks Windows y el ensayo Auth/PostgREST en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
+
+Con `POS_BROWSER_QUALITY=1`, el ensayo HTTP también abre Chromium/Edge aislado y ejecuta axe WCAG 2.2 AA, navegación real, conteo cero por UI y revisión de desbordamiento sobre 82 productos de referencia. CI ejecuta este modo. Necesita un navegador Chromium instalado; no usa un perfil personal ni envía papel. Las mediciones locales de carga/eventos se registran como laboratorio, sin atribuirles cumplimiento de Core Web Vitals en campo.
 
 Para enlazar los seis comprobantes SQL con la prueba HTTP de impresión, usar la misma ruta temporal en `POS_RECEIPT_CONTRACT_EVIDENCE` para `test:db` y `test:printing`. CI ya lo hace. Las pruebas no deben tocar ventas del negocio, cobrar tarjetas ni enviar papel.
 
@@ -88,6 +93,6 @@ La PC de desarrollo prepara el paquete; la del café recibe una versión revisad
 
 Las migraciones 013–016 y el receptor CLIP ya están desplegados. Un respaldo cifrado previo y las huellas de las 28 tablas existentes confirmaron datos conservados. **No reinstalar estas migraciones ni activar CLIP para probar el despliegue.**
 
-La instalación debe conservar el POS anterior, configuración privada, respaldos y diario de impresión. El inventario no participa en ventas ni descuenta existencias en esta versión. Integrar su rama y preparar su activación requiere otro cambio revisado cuando el negocio entregue sus datos. Los pendientes de UI están declarados en la revisión de preparación.
+La instalación debe conservar el POS anterior, configuración privada, respaldos y diario de impresión. **Antes de instalar esta app, aplicar su migración 017; aquí solo se ha aplicado a bases locales desechables.** El inventario apagado no limita ni descuenta ventas. Al activarlo se deben registrar/importar conteos físicos actualizados. Los pendientes están declarados en la revisión de preparación.
 
 Ver [contrato de base de datos](supabase/README.md), [instalación Windows](docs/windows-deployment.md), [respaldos](docs/business-backups.md) y [revisión de preparación](docs/integration-readiness.md).

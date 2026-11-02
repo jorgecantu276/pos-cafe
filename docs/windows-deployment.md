@@ -106,7 +106,7 @@ separate local print journal. Rehearse a full recovery before live use.
 Provision the chosen client test project, apply the retained migrations 001, 002, 004, 005, 006, 007, 008, 009, 010, 011 and 012 in order and
 create confirmed staff profiles. Review the legacy compatibility requirements
 before applying to any existing database. Test against a separate synthetic
-catalog and explicit test quantities, not live business records. Inventory has been removed at the owner's request; this candidate does not check or deduct pieces/ingredients. The app still
+catalog and explicit test quantities, not live business records. Optional finished-product inventory requires migration 017 and starts OFF. That migration is validated locally and is not yet deployed to the hosted client; apply it before installing this matching app. Count/import fresh stock only after explicit activation. Legacy ingredient stock/recipes remain inert. See [inventory](inventory.md) and [quality review](quality-review.md). The app still
 requires internet for cloud sales; it has no offline sales queue.
 
 Keep every deployed release folder and the one current external print journal.

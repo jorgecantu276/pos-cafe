@@ -3,6 +3,7 @@ import type { Product } from '../store/useCartStore';
 // UI query projections, aligned with the verified schema and receipt contract.
 // Nullable legacy fields stay nullable; their display defaults are explicit.
 export interface ProductRow {
+  pos_inventory_items?: Product['inventory'] | Product['inventory'][];
   id: string;
   name: string;
   price: number;
@@ -89,7 +90,18 @@ export type CatalogProduct = Product & { is_active: boolean };
 export function catalogProduct(row: ProductRow): CatalogProduct {
   return { id: row.id, name: row.name, price: row.price, category: row.category ?? '',
     image_url: row.image_url ?? undefined, is_active: row.is_active === true,
-    customizable: row.customizable === true, wizard_steps: row.wizard_steps ?? [] };
+    customizable: row.customizable === true, wizard_steps: row.wizard_steps ?? [],
+    inventory: (Array.isArray(row.pos_inventory_items) ? row.pos_inventory_items[0] : row.pos_inventory_items) ?? undefined };
+}
+
+export function productAvailable(product: Product) {
+  const i = product.inventory;
+  return !i || (i.mode === 'availability' ? i.available : i.quantity === null || i.quantity > 0);
+}
+export function productStockLabel(product: Product) {
+  if (!productAvailable(product)) return 'Agotado';
+  const i = product.inventory;
+  return i?.mode === 'counted' ? i.quantity === null ? 'Sin contar' : `${i.quantity} disponibles` : '';
 }
 
 export function errorMessage(error: unknown): string {

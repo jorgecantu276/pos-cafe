@@ -10,10 +10,10 @@ import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, Workspace
 import RecentTickets from './RecentTickets';
 import ClipPaymentStatus from './ClipPaymentStatus';
 import { loadRegisterShortcuts } from '@/lib/register-shortcuts';
-import { catalogChangeKey, catalogFingerprint, loadLiveCatalog } from '@/lib/catalog-management';
+import { catalogChangeKey, catalogFingerprint, loadLiveCatalog, loadRegisterInventory } from '@/lib/catalog-management';
 import './workspace.css';
 
-import { catalogProduct, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
+import { catalogProduct, productAvailable, productStockLabel, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { customizeProduct, useCartStore, type CartExtra, type CartItem, type Product } from '@/store/useCartStore';
@@ -197,15 +197,16 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     await recoverDrawerRequest(supabase, localStorage, user.id, 'handoff');
     await recoverDrawerRequest(supabase, localStorage, user.id, 'accept');
     const drawer = await loadDrawerStatus(supabase, signal);
-    const [catalog, extras, shift] = await Promise.all([
+    const [catalog, extras, shift, inventory] = await Promise.all([
       supabase.from('products').select('*').order('name').abortSignal(signal),
       supabase.from('extras').select('*').order('phase').abortSignal(signal),
       supabase.from('cash_registers').select('id,opened_at,initial_balance,exchange_rate').eq('opened_by',user.id).eq('status','open').abortSignal(signal).maybeSingle(),
+      loadRegisterInventory(supabase, signal),
     ]);
     for (const result of [catalog, extras, shift]) if (result.error) throw result.error;
     if (shift.data && !shift.data.exchange_rate) throw new Error('El turno anterior requiere conciliación antes de usar esta versión.');
     const summary = shift.data ? await restoreShiftExpenses(supabase, localStorage, user.id, shift.data.id, signal) : null;
-    return { user, drawer, profile:profile.data, products:(catalog.data || []).map(catalogProduct), extras:(extras.data || []) as ExtraRow[], shift:shift.data, summary };
+    return { user, drawer, profile:profile.data, products:(catalog.data || []).map(row => ({...catalogProduct(row),inventory:inventory.get(row.id)})), extras:(extras.data || []) as ExtraRow[], shift:shift.data, summary };
   }, [sessionActor]);
   const applyPOS = useCallback((data: Awaited<ReturnType<typeof loadPOS>> | null) => {
     if (!data) { router.replace('/login'); return; }
@@ -266,6 +267,8 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       try {
         const latest = await withDeadline(() => loadLiveCatalog(supabase, controller.signal), { signal: controller.signal });
         if (!controller.signal.aborted) { setCatalogStale(latest !== current); setCatalogCheckError(''); }
+        const inventory = await withDeadline(() => loadRegisterInventory(supabase, controller.signal), { signal: controller.signal });
+        if (!controller.signal.aborted) setProducts(previous => previous.map(p => ({...p,inventory:inventory.get(p.id)})));
       } catch {
         if (!controller.signal.aborted) setCatalogCheckError('No se pudo comprobar si el menú cambió.');
       } finally { checking = false; }
@@ -524,6 +527,9 @@ const handleSaveAndClose = async () => {
 
   const handleProductClick = useCallback((product: Product) => {
     if (!cartDraft.current || draftError || loading || loadError) return;
+    if (!productAvailable(product)) { alert('Este producto está agotado.'); return; }
+    const quantity = useCartStore.getState().items.filter(i=>i.product.id===product.id).reduce((sum,i)=>sum+i.quantity,0);
+    if (product.inventory?.mode==='counted' && product.inventory.quantity!==null && quantity>=product.inventory.quantity) { alert('Ya agregaste las existencias disponibles.'); return; }
     setEditingItemId(null);
     const steps = buildWizardSteps(product);
 
@@ -553,6 +559,9 @@ const handleSaveAndClose = async () => {
 
   const handleConfirmAdd = () => {
     if (!selectedProduct) return;
+    const latest = products.find(p => p.id === selectedProduct.id);
+    const requested = items.filter(i => i.product.id === selectedProduct.id && i.id !== editingItemId).reduce((sum,i) => sum+i.quantity,0) + (editingItemId ? editingQuantity : 1);
+    if (latest && (!productAvailable(latest) || (latest.inventory?.mode === 'counted' && latest.inventory.quantity !== null && requested > latest.inventory.quantity))) { alert('Revisa las existencias disponibles.'); return; }
     const productWithExtras = customizeProduct(selectedProduct, activeExtras, productNote);
     if (editingItemId) replaceItem(editingItemId, productWithExtras, editingQuantity);
     else addItem(productWithExtras);
@@ -563,6 +572,10 @@ const handleSaveAndClose = async () => {
   };
 
   const handleOpenCheckout = () => {
+    for (const product of products) {
+      const quantity = items.filter(i => i.product.id === product.id).reduce((sum,i) => sum+i.quantity,0);
+      if (quantity && (!productAvailable(product) || (product.inventory?.mode === 'counted' && product.inventory.quantity !== null && quantity > product.inventory.quantity))) { alert(`Revisa las existencias de ${product.name}.`); return; }
+    }
     if (catalogStale) { alert('El menú cambió. Actualízalo y revisa el pedido antes de cobrar.'); return; }
     if (loading || loadError || draftError || customerError || customerRestoring || closingShift.current || shiftSaved.current) return;
     if (checkoutReview || checkoutInFlight.current) {
@@ -575,6 +588,15 @@ const handleSaveAndClose = async () => {
     setAmountReceivedUSD('');
     setCheckoutStep(1);
     setShowCheckoutModal(true);
+  };
+
+  const changeQuantity = (id: string, quantity: number) => {
+    const line=items.find(i=>i.id===id),product=products.find(p=>p.id===line?.product.id);
+    if (line && product && quantity>line.quantity) {
+      const requested=items.filter(i=>i.product.id===product.id && i.id!==id).reduce((sum,i)=>sum+i.quantity,0)+quantity;
+      if (!productAvailable(product) || (product.inventory?.mode==='counted' && product.inventory.quantity!==null && requested>product.inventory.quantity)) { alert('La cantidad supera las existencias disponibles.'); return; }
+    }
+    updateQuantity(id,quantity);
   };
 
   // 🟢 NUEVA FUNCIÓN: REIMPRIMIR HISTÓRICO (Por ID o Último)
@@ -968,7 +990,7 @@ const handleSaveAndClose = async () => {
         recentTicketsContent={<RecentTickets key={drawerActor} onReprint={ticket=>void reprintHistoricalTicket(ticket)} disabled={isProcessingCheckout || isClosingShift}/>}
         userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout}
         {...(appearance === 'workspace' ? { catalogLoading: loading } : {})}
-        onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={updateQuantity} onRemove={removeItem} onClear={handleClearOrder} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
+        onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={changeQuantity} onRemove={removeItem} onClear={handleClearOrder} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
         onHandoff={()=>void handleOpenCierre('handoff')}
         customerSearchError={customerSearchError} customerSearching={customerSearching} onRetryCustomerSearch={()=>void handleCustomerSearchInput(customerSearch)} customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
         onNewCustomer={handleOpenCustomerModal} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
@@ -1138,7 +1160,7 @@ const handleSaveAndClose = async () => {
                     <div className="h-32 bg-slate-50 rounded-[20px] mb-4 overflow-hidden relative">
                       <ProductPhoto product={p} width={512} height={512} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                     </div>
-                    <h3 className="font-bold text-sm text-slate-800">{p.name}</h3>
+                    <h3 className="font-bold text-sm text-slate-800">{p.name}</h3>{productStockLabel(p) && <small>{productStockLabel(p)}</small>}
                     <p className="text-[#0071e3] font-black text-sm mt-1">${Number(p.price).toFixed(2)}</p>
                   </div>
                 ))}
@@ -1235,9 +1257,9 @@ const handleSaveAndClose = async () => {
 
                 <div className="flex justify-between items-center pt-2">
                    <div className="flex items-center gap-4 bg-white rounded-xl px-3 py-1.5 shadow-sm border border-slate-100">
-                      <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="p-1 hover:text-[#0071e3] text-slate-400 transition-colors"><Minus size={14}/></button>
+                      <button onClick={() => changeQuantity(item.id, item.quantity - 1)} className="p-1 hover:text-[#0071e3] text-slate-400 transition-colors"><Minus size={14}/></button>
                       <span className="font-bold text-[13px] w-5 text-center text-[#1d1d1f]">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="p-1 hover:text-[#0071e3] text-slate-400 transition-colors"><Plus size={14}/></button>
+                      <button onClick={() => changeQuantity(item.id, item.quantity + 1)} className="p-1 hover:text-[#0071e3] text-slate-400 transition-colors"><Plus size={14}/></button>
                    </div>
                    <div className="flex gap-2">
                       <button onClick={() => handleEditItem(item)} className="p-2.5 text-[#86868b] hover:text-[#0071e3] rounded-full transition-all"><Edit3 size={18}/></button>

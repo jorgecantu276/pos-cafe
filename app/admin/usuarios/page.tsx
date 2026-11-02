@@ -149,7 +149,7 @@ export default function UsuariosPage() {
                   <div className="flex items-center gap-3">
                     <h4 className="font-semibold text-lg text-[#1d1d1f]">{user.username || 'Usuario'}</h4>
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-tight uppercase ${
-                      user.role === 'admin' ? 'bg-[#0071e3]/10 text-[#0071e3]' : 'bg-slate-100 text-slate-500'
+                      user.role === 'admin' ? 'bg-[#0071e3]/10 text-[#005ab8]' : 'bg-slate-100 text-slate-500'
                     }`}>
                       {user.role === 'admin' ? 'ADMINISTRADOR' : 'CAJERO'}
                     </span>

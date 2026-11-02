@@ -8,6 +8,7 @@ export interface CartExtra {
 }
 
 export interface Product {
+  inventory?: { mode: 'availability' | 'counted'; quantity: number | null; available: boolean };
   id: string;
   name: string;
   price: number;

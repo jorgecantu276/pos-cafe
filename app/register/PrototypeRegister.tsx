@@ -1,6 +1,7 @@
 'use client';
 
 import PagerPicker from './PagerPicker';
+import { productAvailable, productStockLabel } from '@/lib/pos-types';
 
 import {useState,type ReactNode} from 'react';
 import ProductPhoto from '@/components/ProductPhoto';
@@ -45,9 +46,9 @@ export default function PrototypeRegister(p:RegisterProps){
       <section className="prototype-menu"><div className="prototype-heading"><h1>Menú</h1><button onClick={()=>setSheet('search')}>{p.search?`Buscar: ${p.search}`:'Buscar'}</button></div>
         <div className="prototype-categories" aria-label="Categorías">{categories.map(c=><button key={c} aria-pressed={category===c} onClick={()=>{setCategory(c);setPage(0);}}>{c}</button>)}</div>
         <div className="prototype-products">{visible.map(product=>{
-          return <button className="prototype-product" key={product.id} onClick={()=>p.onProduct(product)} disabled={p.disabled}>
+          return <button className="prototype-product" key={product.id} onClick={()=>p.onProduct(product)} disabled={p.disabled || !productAvailable(product)}>
           <div className="prototype-photo"><ProductPhoto product={product} width={320} height={180}/></div>
-          <div><h3>{product.name}</h3><span>{money(Number(product.price))}</span></div></button>;})}
+          <div><h3>{product.name}</h3><span>{money(Number(product.price))}</span>{productStockLabel(product) && <small>{productStockLabel(product)}</small>}</div></button>;})}
           {!visible.length&&<p>No hay productos para esta búsqueda.</p>}</div>
         <footer className="prototype-pager"><button disabled={!currentPage} onClick={()=>setPage(currentPage-1)}>Anterior</button><span>Página {currentPage+1} de {pages} · {filtered.length} productos</span><button disabled={currentPage>=pages-1} onClick={()=>setPage(currentPage+1)}>Siguiente</button></footer>
       </section>

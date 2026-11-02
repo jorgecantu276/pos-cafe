@@ -74,10 +74,10 @@
 .workspace-empty-order{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#97a3b4;padding:24px 10px;gap:10px}
 .workspace-empty-order>svg{margin-bottom:7px;color:#a9b9cd}
 .workspace-empty-order>strong{font-size:16px;font-weight:600;color:#56677d}
-.workspace-empty-order>p{font-size:14px;color:#7b8799;margin:0}
+.workspace-empty-order>p{font-size:14px;color:#596579;margin:0}
 .workspace-order-footer{padding:17px 20px 20px;display:grid;gap:15px;background:#fff;border-top:1px solid #edf0f5}
 .workspace-total{display:flex;align-items:baseline;justify-content:space-between;font-size:16px;color:#506078}
-.workspace-total small{font-size:11px;font-weight:500;color:#7a8698;margin-left:3px}
+.workspace-total small{font-size:13px;font-weight:500;color:#596579;margin-left:3px}
 .workspace-total strong{font-size:31px;font-weight:700;letter-spacing:-1.1px;color:#172033;font-variant-numeric:tabular-nums}
 .workspace-order-footer .workspace-pay{min-height:62px;border-radius:16px;background:var(--ui-accent,#0066cc);border-color:var(--ui-accent,#0066cc);color:#fff;justify-content:center;font-size:18px;font-weight:650;box-shadow:0 4px 10px #007aff1a}
 .workspace-order-footer .workspace-pay>svg{margin-left:auto}
@@ -163,7 +163,7 @@
 .workspace-checkout-summary strong{font-size:36px;font-weight:700;letter-spacing:-1px;font-variant-numeric:tabular-nums}
 .workspace-checkout-summary select{font:inherit;min-height:52px;padding:10px 12px;border:1px solid #e2e7ee;border-radius:12px;background:#fff;width:auto}
 .workspace-payment-methods{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:18px;background:#eef1f6;padding:5px;border-radius:15px}
-.workspace-payment-methods button{min-height:52px;border-color:transparent;background:transparent;border-radius:11px;font-size:15px;color:#66748b}
+.workspace-payment-methods button{min-height:52px;border-color:transparent;background:transparent;border-radius:11px;font-size:15px;color:#52627a}
 .workspace-payment-methods button[aria-pressed=true]{background:#fff;color:#0069dd;border-color:#e4e9f1;box-shadow:0 2px 5px #2335520d}
 .workspace-cash-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
 .workspace-cash-grid section>label{margin-bottom:10px}
@@ -262,6 +262,7 @@
 .pos-closing-summary .justify-between>span:last-child{margin-left:auto}
 .pos-closing-summary button{min-height:56px;width:100%;padding:10px;text-align:left;justify-content:flex-start;background:transparent;border-color:#ffffff30;color:#ffabab;font-size:14px}
 .pos-closing-content{min-width:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:20px 24px}
+.pos-closing-content .text-slate-400{color:#52627a}
 .pos-closing-content fieldset{margin:0 0 20px;padding:0;border:0;min-width:0}
 .pos-closing-content legend{font-size:15px;font-weight:650;color:#26354d;margin-bottom:10px}
 .pos-closing-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -281,3 +282,4 @@
 .pos-closing-actions button{height:auto;min-height:64px;font-size:16px;line-height:1.3;box-shadow:none;transform:none}
 .pos-closing-actions button:last-child{background:#0066cc;border-color:#0066cc;color:#fff}
 @media(max-width:760px){.pos-closing-main{grid-template-columns:220px minmax(0,1fr)}.pos-closing-summary{padding:16px}.pos-closing-content{padding:16px}.pos-closing-options{grid-template-columns:1fr}.pos-closing-content .grid-cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}.pos-closing-dialog>footer.pos-closing-footer{grid-template-columns:1fr;padding:10px 16px}}
+.workspace-order-lines:focus-visible{outline:3px solid #0071e3;outline-offset:-3px}

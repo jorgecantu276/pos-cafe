@@ -83,6 +83,7 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
       return query;
     },
     rpc: (name: string, args: { p_payload: checkout.CheckoutPayload }) => {
+      if(name==='pos_inventory_register'){const result=Promise.resolve({error:null,data:{enabled:false,items:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='get_register_shortcuts'){favoriteReads++;const result=Promise.resolve(favoriteReads===1?{error:{message:'Synthetic favorites connection failure'},data:null}:{error:null,data:{product_ids:[fixtureProduct.id],revision:1}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:authenticatedUser,cashier_name:'Prueba'},handoff:null,cashiers:role==='admin'?[{id:'next-cashier',name:'Ana'},{id:'other-cashier',name:'Luis'}]:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_shift_summary') {

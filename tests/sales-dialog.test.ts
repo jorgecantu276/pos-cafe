@@ -28,7 +28,7 @@ test('actual ticket dialog moves/restores focus, handles cancel and keeps a pend
     if (name === 'pos_cancel_sale') { cancellations++; return pending; }
     assert.equal(name, 'pos_sales_report'); const result = Promise.resolve({ error: null, data: report }); return Object.assign(result, { abortSignal: () => result });
   } };
-  const imports: Record<string, unknown> = { '../AdminDialog': { default: AdminDialog, __esModule: true }, '@/lib/reports': reports,
+  const imports: Record<string, unknown> = { '../inventario/InventoryReturn': {default:()=>null,__esModule:true}, '../AdminDialog': { default: AdminDialog, __esModule: true }, '@/lib/reports': reports,
     'next/link': { default: ({ href, children, ...props }: { href: string; children: ReactNode }) => createElement('a', { href, ...props }, children), __esModule: true },
     '@/lib/use-resource': resource, '@/lib/pos-types': types, '@/lib/shift': shift, '@/lib/cancellation': cancellation, '@/lib/supabase': { supabase: client },
     '@/lib/printing': { openPrintWindow: () => assert.fail('No printing during dialog verification') }, '@/lib/receipt-reprint': {},

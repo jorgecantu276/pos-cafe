@@ -5,6 +5,7 @@ import ProductPhoto from '@/components/ProductPhoto';
 import PagerPicker from './PagerPicker';
 import { Keyboard, Minus, Plus, Search, X, Pencil, Trash2, Printer, UserRound, ChevronRight, Coffee, Settings2, ArrowRight } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/pos-types';
+import { productAvailable, productStockLabel } from '@/lib/pos-types';
 
 type RegisterProps = ComponentProps<typeof import('./PrototypeRegister').default> & {
   orderNote: string; onOrderNote: (value: string) => void;
@@ -53,10 +54,10 @@ export function WorkspaceKeyboard({ value, onChange, numeric = false, disabled =
 const ProductButton = memo(function ProductButton({ product, disabled, onProduct }: {
   product: CatalogProduct; disabled: boolean; onProduct: RegisterProps['onProduct'];
 }) {
-  return <button className="workspace-product has-photo" disabled={disabled}
+  return <button className="workspace-product has-photo" disabled={disabled || !productAvailable(product)}
     onClick={() => onProduct(product)} title={product.name} aria-label={`${product.name}, ${money(Number(product.price))}`}>
     <ProductPhoto product={product} width={56} height={56} illustrativeFallback={false} />
-    <span className="workspace-product-copy"><strong>{product.name}</strong><span>{money(Number(product.price))}</span></span>
+    <span className="workspace-product-copy"><strong>{product.name}</strong><span>{money(Number(product.price))}</span>{productStockLabel(product) && <small>{productStockLabel(product)}</small>}</span>
   </button>;
 });
 
@@ -123,7 +124,7 @@ export default function WorkspaceRegister(p: RegisterProps) {
       <aside className="workspace-order" aria-label="Orden actual"><header><h1>Orden actual</h1>
         <span className="workspace-order-count">{p.items.reduce((sum, item) => sum + item.quantity, 0)}</span><button type="button" className="workspace-icon" aria-label="Vaciar orden" disabled={!p.items.length || p.disabled} onClick={() => { if (confirm('¿Vaciar esta orden?')) p.onClear(); }}><Trash2 size={20} /></button></header>
         <button type="button" className="workspace-order-client" disabled={p.disabled} onClick={() => setPanel('customer')}><UserRound size={19} /><span>{p.customer?.name ?? 'Cliente (opcional)'}</span><ChevronRight size={18} /></button>
-        <div className="workspace-order-lines">{p.items.map(item => <button type="button" className="workspace-order-line" key={item.id} aria-label={`Editar ${item.product.name}`} disabled={p.disabled} onClick={() => p.onEdit(item)}>
+        <div className="workspace-order-lines" role="region" aria-label="Artículos del pedido" tabIndex={0}>{p.items.map(item => <button type="button" className="workspace-order-line" key={item.id} aria-label={`Editar ${item.product.name}`} disabled={p.disabled} onClick={() => p.onEdit(item)}>
           <span><span className="workspace-line-count">{item.quantity} × </span>{item.product.name}</span><strong>{money(Math.round(item.quantity * item.product.price * 100) / 100)}</strong><Pencil className="workspace-line-edit" size={16} aria-hidden="true" />
           {(item.product.displayExtras?.length || item.product.note) ? <small>{[...(item.product.displayExtras ?? []).map(extra => extra.name), item.product.note].filter(Boolean).join(' · ')}</small> : null}
         </button>)}{!p.items.length && <div className="workspace-empty-order"><Coffee size={34} aria-hidden="true" /><strong>Orden vacía</strong><p>Toca un producto del menú.</p></div>}</div>

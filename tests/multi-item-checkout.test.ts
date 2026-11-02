@@ -55,6 +55,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
       assert.ok(table in fixtures,`Unexpected table ${table}`);
       const query=Object.assign(Promise.resolve({data:fixtures[table],error:null}),{select:()=>query,eq:()=>query,order:()=>query,abortSignal:()=>query,single:()=>query,maybeSingle:()=>query});return query;
     },rpc:(name:string,args:{p_payload:checkout.CheckoutPayload})=>{
+      if(name==='pos_inventory_register'){const result=Promise.resolve({error:null,data:{enabled:false,items:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='get_register_shortcuts'){const result=Promise.resolve({error:null,data:{product_ids:[],revision:0}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:'mixed-user',cashier_name:'Prueba'},handoff:null,cashiers:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_shift_summary'){

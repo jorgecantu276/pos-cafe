@@ -1,4 +1,5 @@
 'use client';
+import InventoryReturn from '../inventario/InventoryReturn';
 
 import { type Sale, errorMessage } from '@/lib/pos-types';
 import Link from 'next/link';
@@ -135,6 +136,7 @@ export default function VentasPage() {
               </div>
             </div>
 
+        {isCanceled(selectedOrder.status) && <InventoryReturn key={selectedOrder.id} orderId={selectedOrder.id}/>}
       </AdminDialog>}
 
       {/* TECLADO VIRTUAL G-BOARD STYLE */}

@@ -17,6 +17,8 @@ import { businessBackupDatabaseCases } from './backups/database-cases.mjs';
 import { receiptContractDatabaseCases } from './receipts/contract-database-cases.mjs';
 import { catalogDatabaseCases } from './catalog/database-cases.mjs';
 import { customerHistoryDatabaseCases } from './customers/history-database-cases.mjs';
+import { inventoryDatabaseCases } from './inventory/database-cases.mjs';
+import { inventoryIntegrationCases } from './inventory/integration-cases.mjs';
 import { clipDatabaseCases } from './clip/database-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
@@ -44,6 +46,7 @@ try {
   const snap=JSON.parse(await readFile(resolve(root,'supabase/schema.snapshot.json'),'utf8'));
   await db.query(`create role anon; create role authenticated; create role service_role bypassrls;
     create schema auth; create table auth.users(id uuid primary key);
+    create table auth.identities(id uuid primary key,user_id uuid,provider text,identity_data jsonb);
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
     grant usage on schema public,auth to anon,authenticated,service_role;
     grant execute on function auth.uid() to public;
@@ -210,15 +213,18 @@ try {
   assertions+=await registerShortcutsDatabaseCases(db,connection,ids);
   assertions+=await recentTicketDatabaseCases(db,connection,ids);
   await db.query(await readFile(resolve(root,'supabase/migrations/202610300012_business_backups.sql'),'utf8'));
-  assertions+=await businessBackupDatabaseCases(db,connection,ids);
-  assertions+=await receiptContractDatabaseCases(db,connection);
   await db.query(await readFile(resolve(root,'supabase/migrations/202611020013_catalog_requests.sql'),'utf8'));
   assertions+=await catalogDatabaseCases(db,connection,ids);
   await db.query(await readFile(resolve(root,'supabase/migrations/202611020014_customer_history.sql'),'utf8'));
   assertions+=await customerHistoryDatabaseCases(db,connection,ids);
   await db.query(await readFile(resolve(root,'supabase/migrations/202611020015_order_pager.sql'),'utf8'));
   await db.query(await readFile(resolve(root,'supabase/migrations/202611020016_clip_payments.sql'),'utf8'));
+  await db.query(await readFile(resolve(root,'supabase/migrations/202611020017_inventory.sql'),'utf8'));
   assertions+=await clipDatabaseCases(db,connection,ids);
+  assertions+=await inventoryDatabaseCases(db,connection,ids);
+  assertions+=await inventoryIntegrationCases(db,connection,ids);
+  assertions+=await receiptContractDatabaseCases(db,connection,ids);
+  assertions+=await businessBackupDatabaseCases(db,connection,ids);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {
   await Promise.allSettled(clients.map(c=>c.end()));

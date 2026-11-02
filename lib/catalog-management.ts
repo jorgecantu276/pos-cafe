@@ -14,6 +14,13 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const catalogRequestKey = (actor: string) => `pos_catalog_request:v1:${actor}`;
 export const catalogChangeKey = 'pos_catalog_changed:v1';
 
+export async function loadRegisterInventory(client: Client, signal: AbortSignal) {
+  const { data, error } = await client.rpc('pos_inventory_register').abortSignal(signal);
+  if (error) throw error;
+  if (typeof data?.enabled !== 'boolean' || !Array.isArray(data.items)) throw Error('No se pudo verificar el inventario.');
+  return new Map<string, CatalogProduct['inventory']>(data.enabled ? data.items.map((i: { product_id: string } & NonNullable<CatalogProduct['inventory']>) => [i.product_id, {mode:i.mode, quantity:i.quantity, available:i.available}]) : []);
+}
+
 export function catalogFingerprint(products: CatalogProduct[], extras: ExtraRow[], favorites: readonly string[]) {
   return JSON.stringify({ products: products.map(p => ({ id: p.id, name: p.name, price: Number(p.price), category: p.category,
     image: p.image_url || '', active: p.is_active, customizable: p.customizable, steps: p.wizard_steps ?? [] })).sort((a, b) => a.id.localeCompare(b.id)),

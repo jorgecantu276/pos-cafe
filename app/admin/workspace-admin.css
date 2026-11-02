@@ -10,7 +10,7 @@
 }
 .workspace-admin > header { position: sticky; top: 0; z-index: 30; display: flex; justify-content: space-between; align-items: center; gap: 20px; min-height: 72px; padding: 10px 30px; border-bottom: 1px solid var(--admin-line); background: #fff; }
 .workspace-admin-location, .workspace-admin-location > a { display: flex; align-items: center; gap: 12px; }
-.workspace-admin-location > a { color: #172033; font-size: 16px; font-weight: 650; text-decoration: none; }
+.workspace-admin-location > a { color: #172033; font-size: 16px; font-weight: 650; text-decoration: none; min-height:48px; min-width:44px; }
 .workspace-admin-location > svg { color: #a3adbb; }
 .workspace-admin-mark { display: grid; place-items: center; width: 36px; height: 36px; color: var(--admin-blue); background: #edf5ff; border: 1px solid #dceaff; border-radius: 12px; }
 .workspace-admin-current { font-size: 14px; color: var(--admin-muted); }
@@ -26,7 +26,8 @@
 .workspace-admin main h3[class*="font-black"], .workspace-admin main h4[class*="font-black"] { font-weight: 650; font-style: normal; }
 .workspace-admin main [class*="font-black"] { font-weight: 650; }
 .workspace-admin main [class*="tracking-widest"], .workspace-admin main [class*="tracking-wider"] { letter-spacing: .025em; }
-.workspace-admin main [class*="text-[#86868b]"], .workspace-admin main .text-slate-400 { color: var(--admin-muted); }
+.workspace-admin main [class*="text-[#86868b]"], .workspace-admin main .text-slate-400, .workspace-admin main .text-slate-500 { color: var(--admin-muted); }
+.workspace-admin main .text-green-600 { color:#18744b; }
 .workspace-admin main [class*="rounded-["] { border-radius: 20px !important; box-shadow: 0 3px 14px #24324c05 !important; }
 .workspace-admin main > div > section, .workspace-admin main > main > section { border-color: var(--admin-line); border-radius: 20px; box-shadow: 0 3px 14px #24324c04; }
 .workspace-admin main section > p { max-width: 88ch; }
@@ -85,7 +86,7 @@
 .workspace-admin-menu-icon { display: grid; place-items: center; width: 39px; height: 39px; flex-shrink: 0; border-radius: 12px; background: #edf5ff; color: #0074e8; }
 .workspace-admin-menu-label { flex: 1; min-width: 0; }
 .workspace-admin-menu-label strong { display: block; font-size: 15px; font-weight: 600; line-height: 1.35; }
-.workspace-admin-menu-label small { display: block; margin-top: 2px; color: #748095; font-size: 12px; line-height: 1.35; }
+.workspace-admin-menu-label small { display: block; margin-top: 2px; color: #596579; font-size: 13px; line-height: 1.35; }
 .workspace-admin-menu nav > a > svg { color: #9ba6b6; }
 .workspace-admin-tv { display: inline-flex; align-items: center; gap: 10px; margin: 20px 0 0 2px; min-height: 44px; color: #46719e; font-size: 13px; text-decoration: none; }
 .workspace-admin-tv span { flex: 1; }
