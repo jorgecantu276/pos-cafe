@@ -150,7 +150,7 @@ export default function ProductosPage() {
           {activeTab === 'items' ? (
             <>
               <input type="url" placeholder="Enlace de la foto (opcional)" value={formData.image_url} className="p-3 rounded-xl bg-slate-50 border-none text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 transition-all w-full" onChange={e => setFormData({...formData, image_url: e.target.value})} />
-              <p className="text-sm text-slate-500">Pega el enlace de la foto del producto. Si lo dejas vacío o la foto no carga, se muestra una imagen provisional.</p>
+              <p className="text-sm text-slate-500">Pega el enlace de la foto del producto. Si no hay una foto disponible, la caja muestra su nombre y precio.</p>
               
               {/* Categoría del producto */}
               <div className="relative w-full">

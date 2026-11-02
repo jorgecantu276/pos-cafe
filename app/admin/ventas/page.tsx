@@ -1,6 +1,7 @@
 'use client';
 
 import { type Sale, errorMessage } from '@/lib/pos-types';
+import Link from 'next/link';
 
 import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -91,7 +92,7 @@ export default function VentasPage() {
 
   return (
     <div className="workspace-sales">
-      <header><h1>Ventas</h1><div className="workspace-sales-filters"><div className="workspace-sales-search"><input type="search" aria-label="Buscar ticket o producto" placeholder="Buscar ticket o producto" maxLength={100} value={searchTerm} onChange={event => changeSearch(event.target.value)} /><button type="button" aria-label="Teclado de búsqueda" aria-pressed={isKeyboardOpen} onClick={() => setIsKeyboardOpen(!isKeyboardOpen)}><Keyboard size={22}/></button></div><ReportFilters query={query} onChange={setQuery}/></div></header>
+      <header><div className="workspace-admin-heading-row"><h1>Ventas</h1><Link className="workspace-admin-text-action" href="/tv" target="_blank" rel="noopener noreferrer">Abrir pantalla de ventas</Link></div><div className="workspace-sales-filters"><div className="workspace-sales-search"><input type="search" aria-label="Buscar ticket o producto" placeholder="Buscar ticket o producto" maxLength={100} value={searchTerm} onChange={event => changeSearch(event.target.value)} /><button type="button" aria-label="Teclado de búsqueda" aria-pressed={isKeyboardOpen} onClick={() => setIsKeyboardOpen(!isKeyboardOpen)}><Keyboard size={22}/></button></div><ReportFilters query={query} onChange={setQuery}/></div></header>
       {loading ? <p role="status">Verificando reporte…</p> : <>
         <div className="workspace-sales-total"><span>Ventas completadas <strong>{reportMoney(report.summary.sales)}</strong></span><span>{report.summary.completed} tickets · {reportPeriod(query, report.day)}</span></div>
         <div className="workspace-sales-list" aria-label="Tickets">{filteredOrders.map(order => <button type="button" key={order.id} onClick={() => setSelectedOrder(order)}>
@@ -161,6 +162,7 @@ export default function VentasPage() {
                   {isCanceling ? <Loader2 className="animate-spin" size={20} /> : <><Ban size={20} /> Cancelar Venta</>}
                 </button>
               )}
+              <Link className="workspace-admin-text-action" href="/admin/impresion">Revisar impresión pendiente</Link>
             </div>
 
           </div>

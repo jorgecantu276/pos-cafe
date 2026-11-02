@@ -88,7 +88,7 @@ export default function CortesPage() {
       {/* HEADER */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div className="space-y-1">
-          <h2 className="text-4xl font-semibold text-[#1d1d1f] tracking-tight">Cortes de Caja</h2>
+          <h2 className="text-4xl font-semibold text-[#1d1d1f] tracking-tight">Caja</h2>
           <p className="text-[#86868b] text-sm font-bold uppercase tracking-widest mt-1">Turno actual e historial de cierres</p>
         </div>
         <button className="rounded-xl border bg-white p-3" onClick={() => window.location.reload()}>Actualizar página</button>
