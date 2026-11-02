@@ -35,12 +35,14 @@ export function InventoryWorkspace({ items, history, disabled, onSave, onRefresh
       }} /></label></div></header>
     {csvError && <p className="inventory-error" role="alert">{csvError}</p>}
     {preview && <section className="inventory-preview" aria-label="Vista previa del CSV"><h2>Revisar importación</h2>
-      <p>{preview.changes.length} productos · {preview.errors.length} errores</p>
+      <p>{preview.changes.length} {preview.changes.length === 1 ? 'producto' : 'productos'} · {preview.errors.length} {preview.errors.length === 1 ? 'error' : 'errores'}</p>
       {preview.errors.length > 0 && <ul role="alert">{preview.errors.map((e, n) => <li key={n}>{e}</li>)}</ul>}
       <div className="inventory-preview-table"><table><thead><tr><th>Producto</th><th>Modo</th><th>Cantidad después de importar</th></tr></thead><tbody>{preview.changes.map((c, n) => {
         const item = preview.items[n];
+        const quantity = c.quantity ?? (item.mode === 'counted' && item.unit === c.unit ? item.quantity : null);
+        const unit = quantity === 1 ? c.unit : c.unit === 'pastel' ? 'pasteles' : `${c.unit}s`;
         return <tr key={c.product_id}><td>{item.name}<small>{item.code}</small></td><td>{c.mode === 'counted' ? 'Conteo' : 'Disponibilidad'}</td><td>{c.mode !== 'counted' ? c.available ? 'Disponible' : 'Agotado'
-          : c.quantity ?? (item.mode === 'counted' && item.unit === c.unit ? item.quantity ?? 'Sin contar' : 'Sin contar')} {c.mode === 'counted' ? c.unit : ''}</td></tr>;
+          : quantity === null ? 'Sin contar' : `${quantity} ${unit}`}</td></tr>;
       })}</tbody></table></div><p>Las cantidades reemplazan el conteo actual. Deja una celda vacía para conservarlo.</p>
       <div className="inventory-buttons"><button className="inventory-primary" disabled={disabled || preview.errors.length > 0 || !preview.changes.length} onClick={async () => { if (await onSave(preview.changes)) setPreview(null); }}>Guardar importación</button><button disabled={disabled} onClick={() => setPreview(null)}>Cerrar</button></div>
     </section>}
