@@ -233,3 +233,35 @@
 .workspace-checkout-main:not(.has-cash) .workspace-note-toggle{margin-top:0}
 .workspace-checkout-main.has-cash .workspace-checkout-keypad>.workspace-keyboard{margin-top:0}
 @media(max-width:680px){.workspace-checkout-main.has-cash{grid-template-columns:1fr}.workspace-checkout-main.has-cash .workspace-payment-methods{grid-template-columns:repeat(2,1fr)}}
+
+/* Closing keeps the handoff choice first and the counted amount/actions in view. */
+.pos-closing-dialog[open]{display:flex;flex-direction:column;width:1000px;height:min(780px,calc(100dvh - 28px));overflow:hidden}
+.pos-closing-dialog>header,.pos-closing-dialog>footer{flex-shrink:0;position:static}
+.pos-closing-main{display:grid;grid-template-columns:280px minmax(0,1fr);flex:1;min-height:0}
+.pos-closing-summary{display:flex;flex-direction:column;justify-content:space-between;gap:24px;padding:24px;background:#1d1d1f;color:#fff;overflow-y:auto;overscroll-behavior:contain}
+.pos-closing-summary h2{font-size:20px;letter-spacing:-.3px}
+.pos-closing-summary .text-\[10px\]{font-size:13px;line-height:1.4;letter-spacing:0;text-transform:none;color:#b8c1ce}
+.pos-closing-summary .text-\[\#06c167\]{color:#64dda0}
+.pos-closing-summary .justify-between{gap:8px;flex-wrap:wrap}
+.pos-closing-summary .justify-between>span:last-child{margin-left:auto}
+.pos-closing-summary button{min-height:56px;width:100%;padding:10px;text-align:left;justify-content:flex-start;background:transparent;border-color:#ffffff30;color:#ffabab;font-size:14px}
+.pos-closing-content{min-width:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:20px 24px}
+.pos-closing-content fieldset{margin:0 0 20px;padding:0;border:0;min-width:0}
+.pos-closing-content legend{font-size:15px;font-weight:650;color:#26354d;margin-bottom:10px}
+.pos-closing-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.pos-closing-options button{min-height:60px;overflow-wrap:anywhere;line-height:1.3}
+.pos-closing-options button[aria-pressed=true]{background:#edf5ff;color:#005ab8;border-color:#0066cc;box-shadow:inset 0 0 0 1px #0066cc}
+.pos-closing-recipients p{margin:10px 0 0;color:#52627a;font-size:14px;line-height:1.45}
+.pos-closing-content .text-\[10px\],.pos-closing-content .text-\[11px\]{font-size:13px;line-height:1.45;text-transform:none;letter-spacing:0;color:#52627a}
+.pos-closing-content input:not([type=checkbox]){font-size:16px;padding-left:44px;text-align:right}
+.pos-closing-content input[aria-label="Concepto del gasto"]{padding-left:12px;text-align:left;flex:1}
+.pos-closing-content input[aria-label="Importe del gasto"]{width:100px;padding-left:10px;flex-shrink:0}
+.pos-closing-content button{flex-shrink:0;min-width:56px}
+.pos-closing-content input::-webkit-inner-spin-button{appearance:none}
+.pos-closing-dialog>footer.pos-closing-footer{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.6fr);justify-content:stretch;align-items:stretch;gap:12px;padding:12px 24px;background:#fff;border-top:1px solid #e2e7ee}
+.pos-closing-dialog label.pos-closing-confirm{display:flex;align-items:center;gap:14px;min-height:56px;padding:10px 14px;margin:0;border:1px solid #dfe5ed;border-radius:13px;background:#f6f8fb;color:#26354d;font-size:15px;cursor:pointer}
+.pos-closing-confirm input{width:28px;height:28px;flex-shrink:0;margin:0;accent-color:#0066cc}
+.pos-closing-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pos-closing-actions button{height:auto;min-height:64px;font-size:16px;line-height:1.3;box-shadow:none;transform:none}
+.pos-closing-actions button:last-child{background:#0066cc;border-color:#0066cc;color:#fff}
+@media(max-width:760px){.pos-closing-main{grid-template-columns:220px minmax(0,1fr)}.pos-closing-summary{padding:16px}.pos-closing-content{padding:16px}.pos-closing-options{grid-template-columns:1fr}.pos-closing-content .grid-cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}.pos-closing-dialog>footer.pos-closing-footer{grid-template-columns:1fr;padding:10px 16px}}

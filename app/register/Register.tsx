@@ -815,11 +815,11 @@ const handleSaveAndClose = async () => {
 
       {/* MODAL: CIERRE DE TURNO CON GASTOS Y ARQUEO */}
       {showCierre && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" aria-label={closeAction==='handoff'?'Entregar caja':'Cierre de caja'} className="bg-white rounded-[32px] w-full max-w-[950px] max-h-[calc(100dvh-24px)] overflow-y-auto shadow-2xl flex animate-in zoom-in-95 duration-200">
+        <WorkspaceDialog title="Cierre de caja" busy={isClosingShift} onClose={() => setShowCierre(false)} className="pos-closing-dialog">
+          <div className="pos-closing-main">
 
              {/* PANEL IZQUIERDO: RESUMEN Y MATEMÁTICA */}
-             <div className="w-1/3 bg-[#1d1d1f] p-8 text-white flex flex-col justify-between">
+             <div className="pos-closing-summary">
                 <div className="space-y-4">
                   <h2 className="text-2xl font-semibold tracking-tighter mb-4">Resumen del Turno</h2>
 
@@ -853,15 +853,28 @@ const handleSaveAndClose = async () => {
              </div>
 
              {/* PANEL DERECHO: GASTOS Y ARQUEO */}
-             <div className="flex-1 p-6 lg:p-8 flex flex-col justify-between max-h-[90vh]">
+             <div className="pos-closing-content">
+
+                <fieldset className="pos-closing-operation" disabled={isClosingShift}>
+                  <legend>¿Qué harás con la caja?</legend>
+                  <div className="pos-closing-options">
+                    <button type="button" aria-pressed={closeAction==='close'} onClick={() => { setCloseAction('close'); setHandoffTarget(''); setCountConfirmed(false); }}>Cerrar caja</button>
+                    <button type="button" aria-pressed={closeAction==='handoff'} onClick={() => { setCloseAction('handoff'); setCountConfirmed(false); }}>Entregar a otro cajero</button>
+                  </div>
+                </fieldset>
+                {closeAction==='handoff' && <fieldset className="pos-closing-recipients" disabled={isClosingShift}>
+                  <legend>Recibirá la caja</legend>
+                  <div className="pos-closing-options">{drawer?.cashiers.map(c => <button type="button" key={c.id} aria-pressed={handoffTarget===c.id} onClick={() => { setHandoffTarget(c.id); setCountConfirmed(false); }}>{c.name}</button>)}</div>
+                  <p>{drawer?.cashiers.length ? 'El cajero elegido iniciará sesión y confirmará el efectivo recibido.' : 'No hay otro cajero disponible para recibir la caja.'}</p>
+                </fieldset>}
 
                 {/* SECCIÓN GASTOS */}
                 <div className="bg-[#f5f5f7] p-4 rounded-[20px] border border-slate-100 mb-4">
                   <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-2.5">Registrar Gasto (Retiro)</label>
                   <div className="flex gap-2">
-                    <input type="text" placeholder="Ej. Garrafón de agua..." className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-semibold outline-none focus:border-[#0071e3]/30 transition-all" value={newExpense.desc} onChange={e => setNewExpense({...newExpense, desc: e.target.value})} />
-                    <input type="number" placeholder="$0.00" className="w-24 flex-shrink-0 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-semibold outline-none focus:border-[#0071e3]/30 text-right transition-all" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} />
-                    <button onClick={handleAddExpense} disabled={savingExpense || isClosingShift || !!expenseError} className="bg-[#1d1d1f] flex-shrink-0 text-white w-10 flex items-center justify-center rounded-lg hover:bg-slate-800 transition-colors"><Plus size={16}/></button>
+                    <input type="text" aria-label="Concepto del gasto" placeholder="Ej. Garrafón de agua..." disabled={isClosingShift} className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-semibold outline-none focus:border-[#0071e3]/30 transition-all" value={newExpense.desc} onChange={e => setNewExpense({...newExpense, desc: e.target.value})} />
+                    <input type="number" inputMode="decimal" aria-label="Importe del gasto" placeholder="$0.00" disabled={isClosingShift} className="w-24 flex-shrink-0 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-semibold outline-none focus:border-[#0071e3]/30 text-right transition-all" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value})} />
+                    <button aria-label="Registrar gasto" onClick={handleAddExpense} disabled={savingExpense || isClosingShift || !!expenseError} className="bg-[#1d1d1f] flex-shrink-0 text-white w-14 flex items-center justify-center rounded-lg hover:bg-slate-800 transition-colors"><Plus size={20}/></button>
                   </div>
 
                   {expenseError && <p role="alert" className="text-sm text-red-600 mt-2">{expenseError} <button className="underline" onClick={() => { setShowCierre(false); void fetchData(); }}>Reintentar conexión</button></p>}
@@ -872,7 +885,7 @@ const handleSaveAndClose = async () => {
                         <div key={i} className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-md border border-slate-200 shadow-sm">
                           <span className="text-[11px] font-semibold text-slate-600">{exp.desc}</span>
                           <span className="text-[11px] font-black text-red-500">-${exp.amount.toFixed(2)}</span>
-                          <button onClick={() => { void handleRemoveExpense(i); }} disabled={savingExpense || isClosingShift || !!expenseError} className="text-slate-300 hover:text-red-500 transition-colors ml-1"><X size={12}/></button>
+                          <button aria-label={`Quitar gasto: ${exp.desc}`} onClick={() => { void handleRemoveExpense(i); }} disabled={savingExpense || isClosingShift || !!expenseError} className="text-slate-500 hover:text-red-500 transition-colors ml-1"><X size={20}/></button>
                         </div>
                       ))}
                     </div>
@@ -888,11 +901,14 @@ const handleSaveAndClose = async () => {
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400 group-focus-within:text-[#0071e3] transition-colors">${den}</span>
                         <input
                           type="number"
+                          inputMode="numeric"
+                          aria-label={`Piezas de ${den} pesos al cierre`}
+                          disabled={isClosingShift}
                           min="0"
                           placeholder="0"
                           className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 pl-10 pr-3 text-right text-base font-black outline-none focus:border-[#0071e3]/30 transition-all shadow-sm"
                           value={breakdown[den] === 0 ? '' : breakdown[den]}
-                          onChange={(e) => setBreakdown({ ...breakdown, [den]: e.target.value === '' ? 0 : Number(e.target.value) })}
+                          onChange={(e) => { setBreakdown({ ...breakdown, [den]: e.target.value === '' ? 0 : Number(e.target.value) }); setCountConfirmed(false); }}
                         />
                       </div>
                     ))}
@@ -907,10 +923,13 @@ const handleSaveAndClose = async () => {
                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                         <input
                           type="number"
+                          inputMode="decimal"
+                          aria-label="Dólares finales"
+                          disabled={isClosingShift}
                           placeholder="0"
                           className="w-full bg-white border border-slate-200 focus:border-[#0071e3]/40 rounded-xl py-2 pl-9 pr-3 text-right text-sm font-black outline-none transition-all shadow-sm"
                           value={dollarsInBox}
-                          onChange={(e) => setDollarsInBox(e.target.value === '' ? '' : Number(e.target.value))}
+                          onChange={(e) => { setDollarsInBox(e.target.value === '' ? '' : Number(e.target.value)); setCountConfirmed(false); }}
                         />
                       </div>
                    </div>
@@ -926,10 +945,11 @@ const handleSaveAndClose = async () => {
                    </div>
                 </div>
 
-                <label className="block mb-3">Operación<select aria-label="Operación de cierre" disabled={isClosingShift} value={closeAction} onChange={e=>setCloseAction(e.target.value as 'close'|'handoff')} className="w-full border rounded p-3"><option value="close">Cerrar caja al terminar</option><option value="handoff">Entregar al siguiente cajero</option></select></label>
-                {closeAction==='handoff'&&<label className="block mb-3">Recibirá la caja<select aria-label="Cajero que recibe" disabled={isClosingShift} value={handoffTarget} onChange={e=>setHandoffTarget(e.target.value)} className="w-full border rounded p-3"><option value="">Selecciona otro cajero</option>{drawer?.cashiers.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select><span>Se guarda tu corte. El siguiente cajero debe iniciar sesión y confirmar el efectivo recibido.</span></label>}
-                <label className="flex gap-3 items-center mb-4"><input type="checkbox" checked={countConfirmed} disabled={isClosingShift} onChange={e=>setCountConfirmed(e.target.checked)}/>Terminé de contar todo el efectivo; confirmo el importe mostrado (también si es cero).</label>
-                <div className="flex gap-4">
+             </div>
+          </div>
+          <footer className="pos-closing-footer">
+                <label className="pos-closing-confirm"><input type="checkbox" checked={countConfirmed} disabled={isClosingShift} onChange={e=>setCountConfirmed(e.target.checked)}/><span>Terminé de contar. Confirmo <strong>${countedCash.toFixed(2)} MXN</strong>{countedCash===0 ? ' (caja en cero)' : ''}.</span></label>
+                <div className="pos-closing-actions">
                   <button disabled={isClosingShift} onClick={() => setShowCierre(false)} className="flex-1 bg-slate-100 text-slate-600 h-14 rounded-[20px] font-bold hover:bg-slate-200 transition-all disabled:opacity-50">
                     Volver a caja
                   </button>
@@ -937,9 +957,8 @@ const handleSaveAndClose = async () => {
                     <Printer size={20} /> {isClosingShift ? 'Guardando…' : closeAction==='handoff' ? 'Guardar corte y entregar caja' : 'Guardar e Imprimir Z'}
                   </button>
                 </div>
-             </div>
-          </div>
-        </div>
+          </footer>
+        </WorkspaceDialog>
       )}
 
       {appearance!=='owner' ? <RegisterView products={products} items={items} total={getTotal()} search={searchTerm} onSearch={setSearchTerm}
