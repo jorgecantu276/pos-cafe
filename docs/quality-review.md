@@ -14,9 +14,9 @@ Revisión del 2 de noviembre de 2026. El inventario pasa las mismas comprobacion
 
 axe es una comprobación automatizada parcial. Cero hallazgos en una pantalla no prueba todos los criterios WCAG, todos los estados, lectores de pantalla ni legibilidad física.
 
-Resultado local registrado: **24 estados, cero infracciones de axe, cero objetivos medidos menores de 44 px y cero desbordamientos horizontales**, en Edge 156.0.4314.58. Quedan comprobaciones manuales de axe (`color-contrast` y `aria-prohibited-attr`) que se conservan en el reporte; no se contabilizan falsamente como criterios certificados.
+Resultado local registrado: **34 estados, cero infracciones de axe, cero objetivos medidos menores de 44 px y cero desbordamientos horizontales**, en Edge 156.0.4314.58. Quedan comprobaciones manuales de axe (`color-contrast` y `aria-prohibited-attr`) que se conservan en el reporte; no se contabilizan falsamente como criterios certificados.
 
-En ese recorrido, el LCP observado estuvo entre **64 y 264 ms**, la suma local de desplazamientos llegó a **0.064** y el evento observado más largo fue **88 ms**. Son datos de un navegador en el PC de desarrollo con backend local, no percentiles de usuarios ni prueba de rendimiento del café. La inspección visual también corrigió el panel fijo del inventario para que el encabezado de Administración no tape el producto al desplazarse.
+En ese recorrido, el LCP observado estuvo entre **84 y 308 ms**, la suma local de desplazamientos llegó a **0.049** y el evento observado más largo fue **112 ms**. Son datos de un navegador en el PC de desarrollo con backend local, no percentiles de usuarios ni prueba de rendimiento del café. La inspección visual también corrigió el panel fijo del inventario para que el encabezado de Administración no tape el producto al desplazarse.
 
 ## Pruebas de esta revisión
 

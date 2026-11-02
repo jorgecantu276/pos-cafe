@@ -88,7 +88,8 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     await audit(page,'inventory-detail');
     const code=(await db.query("select i.code from pos_inventory_items i join products p on p.id=i.product_id where p.name='Brownie tradicional'")).rows[0].code;
     await page.getByLabel('Importar CSV',{exact:true}).setInputFiles({name:'conteo-prueba.csv',mimeType:'text/csv',buffer:Buffer.from(`codigo,producto,modo,unidad,cantidad,minimo,disponible\n${code},,conteo,pieza,2,,si`)});
-    await page.getByRole('region',{name:'Vista previa del CSV'}).waitFor();await audit(page,'inventory-csv-preview');
+    await page.getByRole('region',{name:'Vista previa del CSV'}).waitFor();
+    await page.getByRole('region',{name:'Vista previa del CSV'}).scrollIntoViewIfNeeded();await audit(page,'inventory-csv-preview');
     await page.getByRole('region',{name:'Vista previa del CSV'}).getByRole('button',{name:'Cerrar',exact:true}).click();
     for(const viewport of [{width:1093,height:614},{width:1093,height:560},{width:1024,height:768},{width:390,height:844},{width:320,height:740}]) {
       await page.setViewportSize(viewport);await audit(page,'inventory-detail');
