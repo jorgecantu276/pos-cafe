@@ -137,7 +137,7 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     await pageB.locator('.workspace-product').filter({hasText:'Agua natural'}).first().click();
     await pageB.getByRole('button',{name:'Control de entrega: Elegir control',exact:true}).click();await pageB.getByRole('button',{name:'Control 7',exact:true}).click();
     const beforeDraft=await pageB.evaluate(()=>Object.fromEntries(Object.entries(localStorage).filter(([key])=>key.includes('cart_draft'))));
-    const queue=await findPhone(pageB,phone);await twoSizes(pageB,'phone-queue-details');
+    let queue=await findPhone(pageB,phone);await twoSizes(pageB,'phone-queue-details');
     assert.ok(faultsFile,'The owning runner must configure an isolated mock fault file');
     assert.equal(path.dirname(path.resolve(faultsFile)),path.resolve(printDirectory));
     await writeFile(faultsFile,JSON.stringify({barista:'uncertain'}));
@@ -148,12 +148,17 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     for(const document of prepared)assert.match(JSON.stringify(document.document),/Para Llevar/,'The selected service appears on each preparation document');
     await poll(async()=>journal().find(row=>row.order_id===prepId&&row.audience==='barista')?.state,state=>state==='uncertain','Lost mock spool acknowledgment was not retained');
     await poll(()=>pageB.locator('.print-dispatch-body > button').last().isEnabled(),enabled=>enabled,'Preparation status check did not finish');
+    await queue.waitFor({state:'hidden'});
+    await pageB.locator('.print-dispatch > summary').click();
+    await pageB.getByText('Salida por comprobar',{exact:true}).waitFor();await audit(pageB,'phone-shared-preparation-uncertain');
+    await pageB.locator('.print-dispatch > summary').click();
     await writeFile(faultsFile,'{}');
+    queue=await findPhone(pageB,phone);
     const repeated=pageB.waitForResponse(response=>new URL(response.url()).pathname==='/api/phone-printing'&&response.request().method()==='POST');
     await queue.getByRole('button',{name:'Comprobar comanda',exact:true}).click();await repeated;
     check('Repeated shared preparation does not blindly resend uncertain paper',(await spool()).filter(row=>row.orderId===prepId).length,2);
     check('Unknown barista acknowledgment stays uncertain',journal().find(row=>row.order_id===prepId&&row.audience==='barista').state,'uncertain');
-    await audit(pageB,'phone-shared-preparation-uncertain');
+    await queue.waitFor({state:'hidden'});queue=await findPhone(pageB,phone);
     await queue.getByRole('button',{name:'Cobrar pedido',exact:true}).click();
     const checkout=pageB.getByRole('dialog',{name:'Cobrar',exact:true});check('Pickup has no pager picker',await checkout.locator('.pos-pager-trigger').count(),0);
     check('Pickup service stays fixed',await checkout.getByRole('combobox',{name:'Tipo de pedido',exact:true}).isDisabled(),true);
