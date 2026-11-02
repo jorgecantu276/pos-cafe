@@ -12,12 +12,12 @@ interface Purchases { captured_at: string; as_of: string; page: number; page_siz
 
 export default function CustomerHistory({ customer, onClose }: { customer: { id: string; name: string }; onClose: () => void }) {
   const section = useRef<HTMLElement>(null);
-  useEffect(() => { section.current?.scrollIntoView?.({ block: 'start' }); }, []);
   const [query, setQuery] = useState<{ page: number; asOf: string | null }>({ page: 0, asOf: null });
   const load = useCallback((signal: AbortSignal) => loadReport<Purchases>(supabase, 'pos_customer_history', {
     p_customer: customer.id, p_page: query.page, p_as_of: query.asOf,
   }, signal), [customer.id, query]);
   const { data, loading, error, reload } = useResource<Purchases | null>(load, null);
+  useEffect(() => { if (!loading) section.current?.scrollIntoView?.({ block: 'start' }); }, [data, loading]);
   const status = (value: string | null) => value === 'completed' ? 'Completada' : ['cancelled', 'canceled'].includes(value ?? '') ? 'Cancelada' : value === 'pending' ? 'Pendiente' : value ?? 'Sin estado';
   return <section ref={section} aria-label={`Compras de ${customer.name}`} className="scroll-mt-24 rounded-2xl border bg-white p-6 space-y-4">
     <div className="flex items-start justify-between gap-4"><div><h3 className="text-xl font-bold">Compras de {customer.name}</h3><p className="text-sm text-slate-500">El total incluye solamente ventas completadas.</p></div><button type="button" className="rounded-xl border px-4 py-2" onClick={onClose}>Cerrar historial</button></div>
