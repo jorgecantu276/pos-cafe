@@ -1,6 +1,6 @@
 /* Lightweight iOS-inspired surfaces for the touch register. */
 .pos-workspace{display:block!important;height:100dvh!important;background:var(--ui-bg,#f3f5f9)!important;color:var(--ui-ink,#172033)!important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif!important;font-synthesis:none}
-.workspace-register{--ws-blue:#007aff;--ws-line:#e2e7ee;--ws-muted:#626d7e;display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;overflow:hidden;background:var(--ui-bg,#f3f5f9);color:#172033}
+.workspace-register{--ws-blue:var(--ui-accent,#0066cc);--ws-line:#e2e7ee;--ws-muted:#626d7e;display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;overflow:hidden;background:var(--ui-bg,#f3f5f9);color:#172033}
 .workspace-register button,.workspace-register input,.workspace-register a,.workspace-dialog button,.workspace-dialog input,.workspace-dialog select,.workspace-dialog a{font:inherit;touch-action:manipulation}
 .workspace-register button,.workspace-dialog button,.workspace-dialog a{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:56px;border:1px solid #e2e7ee;background:#fff;color:#25334a;border-radius:14px;padding:10px 15px;font-size:16px;font-weight:600;cursor:pointer}
 .workspace-register button:disabled,.workspace-dialog button:disabled{opacity:1;background:#edf0f5!important;border-color:#e4e8ee!important;color:#8490a2!important;box-shadow:none!important;cursor:default}
@@ -30,7 +30,7 @@
 .workspace-search{display:flex;align-items:center;background:#fff;border:1px solid #e2e7ee;border-radius:16px;overflow:hidden;padding-left:14px;gap:8px;max-width:410px;width:48%;min-width:180px}
 .workspace-search>svg{flex-shrink:0;color:#7a8698}
 .workspace-search input{border:0;background:transparent;color:#172033;min-width:0;width:100%;min-height:54px;font-size:15px;outline-offset:-4px}
-.workspace-search input::placeholder{color:#788496}
+.workspace-search input::placeholder{color:#59687c}
 .workspace-search .workspace-icon{border:0;background:transparent;border-radius:12px;min-width:48px;width:48px}
 .workspace-menu-heading>.workspace-icon{background:#fff;color:#596579;box-shadow:0 2px 3px #22395503}
 .workspace-register .workspace-tickets{min-height:54px;padding-inline:12px;font-size:14px;color:#546176;flex-shrink:0}
@@ -79,7 +79,7 @@
 .workspace-total{display:flex;align-items:baseline;justify-content:space-between;font-size:16px;color:#506078}
 .workspace-total small{font-size:11px;font-weight:500;color:#7a8698;margin-left:3px}
 .workspace-total strong{font-size:31px;font-weight:700;letter-spacing:-1.1px;color:#172033;font-variant-numeric:tabular-nums}
-.workspace-order-footer .workspace-pay{min-height:62px;border-radius:16px;background:#007aff;border-color:#007aff;color:#fff;justify-content:center;font-size:18px;font-weight:650;box-shadow:0 4px 10px #007aff1a}
+.workspace-order-footer .workspace-pay{min-height:62px;border-radius:16px;background:var(--ui-accent,#0066cc);border-color:var(--ui-accent,#0066cc);color:#fff;justify-content:center;font-size:18px;font-weight:650;box-shadow:0 4px 10px #007aff1a}
 .workspace-order-footer .workspace-pay>svg{margin-left:auto}
 .workspace-order-footer .workspace-pay{padding-left:24px}
 .workspace-order-footer .workspace-pay:active:not(:disabled){background:#0066da}
@@ -97,7 +97,7 @@
 .workspace-dialog label{font-size:14px;display:block;font-weight:500;color:#516079}
 .workspace-dialog label>input{margin-top:7px}
 .workspace-dialog>footer{display:flex;gap:12px;justify-content:flex-end;align-items:center;padding:14px 24px;border-top:1px solid #edf0f5;position:sticky;bottom:0;background:#fff;z-index:2}
-.workspace-dialog .workspace-primary{min-height:58px;background:#007aff;border-color:#007aff;border-radius:15px;color:#fff;min-width:200px;font-size:17px;box-shadow:0 3px 9px #007aff10}
+.workspace-dialog .workspace-primary{min-height:58px;background:var(--ui-accent,#0066cc);border-color:var(--ui-accent,#0066cc);border-radius:15px;color:#fff;min-width:200px;font-size:17px;box-shadow:0 3px 9px #007aff10}
 .workspace-dialog .workspace-primary:active:not(:disabled){background:#0066da}
 .workspace-caption{color:#626d7e;font-size:14px;line-height:1.5;margin-bottom:12px}
 .workspace-input-row{display:flex;gap:8px;align-items:center}

@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { JSDOM } from 'jsdom';
 import { act, createElement, type ComponentType } from 'react';
-import { createRoot } from 'react-dom/client';
 import * as ts from 'typescript';
 import * as management from '../lib/catalog-management';
 import * as resource from '../lib/use-resource';
 import * as types from '../lib/pos-types';
+import CatalogEditor from '../app/admin/productos/CatalogEditor';
 
 test('actual catalog blocks double submit, restores uncertain save after reload and exposes failed extra deactivation', async () => {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://127.0.0.1' }), saved = new Map<string, PropertyDescriptor | undefined>();
@@ -16,8 +16,13 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage, navigator: dom.window.navigator, IS_REACT_ACT_ENVIRONMENT: true, confirm: () => true })) {
     saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, value });
   }
+  const { createRoot } = await import('react-dom/client');
   const id = '00000000-0000-4000-8000-000000000001';
-  const fixtures: Record<string, unknown[]> = { products: [{ id, name: 'Café', price: 55, category: 'Bebidas', customizable: false, wizard_steps: [], image_url: '', is_active: true }], extras: [{ id, name: 'Almendra', price: 10, phase: 'Leche', active: true }] };
+  const fixtures: Record<string, unknown[]> = { products: [
+    { id, name: 'Café', price: 55, category: 'Bebidas', customizable: false, wizard_steps: [], image_url: '', is_active: true },
+    { id: 'dessert', name: 'Pastel de nuez', price: 80, category: 'Postres', customizable: false, wizard_steps: [], image_url: '', is_active: true },
+    { id: 'inactive', name: 'Café retirado', price: 40, category: 'Bebidas', is_active: false },
+  ], extras: [{ id, name: 'Almendra', price: 10, phase: 'Leche', active: true }] };
   type Args = { p_request: string; p_payload: management.CatalogChange };
   const calls: Args[] = []; let release!: (value: unknown) => void;
   const firstResponse = new Promise(resolve => { release = resolve; });
@@ -29,7 +34,7 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
       return Object.assign(response, { abortSignal: () => response });
     } };
   const imports: Record<string, unknown> = { '@/components/ProductPhoto': { default: () => null, __esModule: true }, '@/lib/catalog-management': management, '@/lib/pos-types': types, '@/lib/use-resource': resource,
-    '@/lib/supabase': { supabase: client }, '@/app/LoadFailure': { default: () => null, __esModule: true } };
+    '@/lib/supabase': { supabase: client }, './CatalogEditor': { default: CatalogEditor, __esModule: true }, '@/app/LoadFailure': { default: () => null, __esModule: true } };
   const compiled = ts.transpileModule(readFileSync(new URL('../app/admin/productos/page.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true, target: ts.ScriptTarget.ES2020 } }).outputText;
   const exports: { default?: ComponentType } = {}, require = createRequire(import.meta.url);
   new Function('require', 'exports', compiled)((name: string) => imports[name] ?? require(name), exports);
@@ -38,7 +43,20 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
   const click = async (label: string) => { await act(async () => { button(label).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); }); };
   try {
     await act(async () => root.render(createElement(exports.default!)));
+    const search = dom.window.document.querySelector('input[type="search"]') as HTMLInputElement;
+    const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => { setValue.call(search, 'cafe'); search.dispatchEvent(new dom.window.Event('input', { bubbles: true })); });
+    assert.equal(dom.window.document.querySelectorAll('.catalog-row').length, 1, 'Search ignores accents and inactive records');
+    const category = dom.window.document.querySelector('select')!;
+    await act(async () => { category.value = 'Postres'; category.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
+    assert.match(dom.window.document.body.textContent!, /No hay resultados/);
+    await act(async () => { setValue.call(search, ''); search.dispatchEvent(new dom.window.Event('input', { bubbles: true })); });
+    assert.ok(button('Editar Pastel de nuez')); assert.equal(dom.window.document.querySelectorAll('.catalog-row').length, 1);
+    await act(async () => { category.value = ''; category.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
+    assert.equal(calls.length, 0, 'Finding products performs no catalog writes');
     await click('Editar Café');
+    const fields = [...dom.window.document.querySelectorAll('dialog input:not([type="checkbox"]),dialog select')];
+    assert.ok(fields.every(e => (e as HTMLInputElement).labels?.length), 'Every catalog field has a persistent label');
     await act(async () => { const form = dom.window.document.querySelector('form')!; form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); });
     assert.equal(calls.length, 1); assert.ok(dom.window.document.querySelector('fieldset')!.disabled);
     await act(async () => release({ error: { code: '', message: 'Respuesta perdida' } }));

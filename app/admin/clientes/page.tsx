@@ -79,27 +79,27 @@ export default function ClientesPage() {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="workspace-customers space-y-8">
+      <header className="workspace-admin-heading-row">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Clientes</h2>
-          <p className="text-slate-400 text-sm font-bold uppercase tracking-widest mt-1">Datos, puntos y compras</p>
+          <h1>Clientes</h1>
+          <p className="admin-description">Datos, puntos e historial de compras</p>
         </div>
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      </header>
+      <div className="admin-list-toolbar">
+        <label className="admin-field customer-search">Buscar cliente<span className="admin-search-field">
+          <Search size={18} aria-hidden="true"/>
           <input 
             type="text" 
-            placeholder="Buscar por nombre o teléfono..."
+            placeholder="Nombre o teléfono"
             aria-label="Buscar clientes por nombre o teléfono"
             maxLength={100}
-            className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 outline-none text-sm font-bold"
             value={query.search}
             onChange={event => setQuery({ search: event.target.value, page: 0 })}
           />
-        </div>
-      </header>
-
-      <button className="rounded-xl border bg-white p-3" onClick={() => setQuery({ ...query, page: 0 })}>Actualizar clientes</button>
+        </span></label>
+        <button className="admin-secondary-button" onClick={() => setQuery({ ...query, page: 0 })}>Actualizar clientes</button>
+      </div>
       <p className="text-sm text-slate-500">Las compras mostradas excluyen ventas canceladas y pendientes. Los puntos se muestran por separado.</p>
       {correctionError && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4">{correctionError}</p>}
       {correctionMessage && <p role="status" className="rounded-xl bg-emerald-50 p-4">{correctionMessage}</p>}
@@ -125,25 +125,21 @@ export default function ClientesPage() {
       <p className="text-sm">{report.summary.rows} clientes · Compras completadas {reportMoney(report.summary.sales)} · Actualizado {reportDate(report.captured_at)}</p>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map(customer => (
-          <div key={customer.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all group">
-            <div className="flex justify-between items-start mb-4">
-              <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 font-black text-xl">
-                {customer.name.charAt(0)}
-              </div>
-              <div className="bg-amber-50 text-amber-600 px-3 py-1 rounded-full flex items-center gap-1 text-[10px] font-black">
+          <div key={customer.id} className="customer-card">
+            <div className="customer-card-heading"><h2>{customer.name}</h2>
+              <div className="customer-points">
                 <Star size={12} fill="currentColor" /> {customer.points} puntos
               </div>
             </div>
-            <h4 className="text-lg font-bold text-slate-800">{customer.name}</h4>
             <button type="button" aria-label={`Corregir datos de ${customer.name}`} disabled={!actor || saving || !!pending || pendingUnreadable} className="mt-3 rounded-xl border px-3 py-2 text-sm font-bold disabled:opacity-50" onClick={() => {
               setEditing({ customer_id: customer.id, name: customer.name, phone: customer.phone ?? '' }); setCorrectionError(''); setCorrectionMessage('');
             }}>Corregir datos</button>
             <div className="space-y-2 mt-4">
               <p className="text-xs text-slate-400 flex items-center gap-2"><Phone size={14}/> {customer.phone || 'Sin teléfono'}</p>
             </div>
-            <div className="mt-6 pt-6 border-t border-slate-50 flex justify-between items-center">
+            <div className="customer-card-total">
                <div>
-                 <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Compras completadas</p>
+                 <p className="admin-description">Compras completadas</p>
                  <p className="text-xl font-black text-slate-900">{reportMoney(customer.completed_spent)}</p>
                </div>
                <button type="button" className="rounded-xl border px-3 py-2 text-sm font-bold" onClick={() => setHistoryCustomer({ id: customer.id, name: customer.name })}>Ver compras</button>
