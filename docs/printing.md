@@ -35,6 +35,97 @@ cashier retry still never resend an uncertain or accepted copy automatically.
 
 ## Exact machine profile
 
+### Owner's customer receipt reference — October 31
+
+New customer documents follow the two supplied WhatsApp references: the exact
+Cariñito Mío Taller Repostero logo, centered phone, divider rules, prominent
+TICKET DE VENTA and total, measured item columns, Instagram QR, closing phrase
+“Para el postre y una sonrisa, siempre hay espacio.” and `@_carinitomio`.
+RFC, regime and establishment address remain below payment. Per the owner's
+later instructions, new customer receipts omit the issuer's legal/personal
+name and both CFDI lines. The complete issuer profile remains stored locally
+for validation; the printed brand is Cariñito Mío.
+The large title/total use Arial Bold 14/15 pt; body/issuer stay at the accepted
+8.5 pt. The closing phrase uses bold italic serif type. Test samples remain
+explicitly marked. Existing saved documents retain their original text/design.
+
+`public/receipt-branding/carinito-logo-v1.jpg` is an unchanged copy of the
+supplied 12.47.19 PM logo JPEG (SHA-256
+`216050c4bfb1869e803bcbd7fd947c1ce6c62323be2f519b94022ad45c4d85df`).
+Only rendering crops its white margins and thresholds it for thermal contrast.
+Keep this versioned asset available to Windows helpers and browser reprints.
+Release packaging copies public assets; the standalone kit explicitly includes
+the same logo in its manifest. Missing required assets block preparation before
+the submission fence rather than silently dropping the logo.
+
+The user explicitly chose `https://www.instagram.com/_carinitomio/` for the
+“MENÚ E INSTAGRAM” QR. `config/receipt-branding.json` contains its precomputed
+37 × 37 matrix, including four-module quiet zones, generated with qrcode 8.2
+at error-correction M. The renderer draws five 203-dpi dots per module; browser
+reprints use the same matrix as inline SVG. No external image/QR service or
+runtime Python dependency is involved. New journal documents snapshot the QR
+matrix and target. The 203-dpi preview was independently decoded to that URL.
+The later PRUEBA-R8 café test physically passed paper readability/contrast,
+alignment, complete output and a phone scan of the printed QR. Its same-command
+repeat produced no extra paper and preserved prior journal history. See the
+[follow-up acceptance record](printer-acceptance-2026-10-31.md#follow-up-v8-customer-receipt-and-concurrent-dual-output).
+
+For a customer-only café check, use `scripts/printing/package-receipt-test.mjs`
+with a new absolute output directory. This separate package requires the
+ORIGINAL nonempty journal and existing issuer profile via `-ExistingKitRoot`.
+Inspection/preview is read-only; `-PrintTest` saves one new PRUEBA-R8
+sample in that original runtime and selects only the customer copy for ensure
+and dispatch. It creates no barista row and checks that unrelated jobs, source
+records and the recovery audit stay unchanged. Normal POS sales still ensure
+both copies atomically. Repeating the receipt command preserves its identity
+and submission fence. A missing original journal or missing sample for an
+already journaled receipt ticket stops the test instead of starting afresh.
+The ZIP includes `CAFE-PC-PROMPT.txt`; no journal, issuer data or old-case runner
+is packaged. Do not overlay the old café kit or run its full two-printer suite
+when checking only this new receipt.
+
+For remote testing of BOTH current outputs, build with
+`scripts/printing/package-current-tickets.mjs`. The separate V9 package includes
+`Test-CurrentTickets.ps1` and a Spanish AnyDesk/Codex prompt. It requires the same
+original nonempty journal and issuer profile in place. Its new PRUEBA-D2 sample
+uses the current no-CFDI receipt and reference-v2 sticker. Both documents are
+previewed first and must fit one page/label before dispatch. The wrapper checks
+both queue identities, forms, faults and pending jobs without changing them.
+Both new copies dispatch concurrently through the actual POS journal/adapter;
+old rows and recovery history are checked unchanged. Repeating the same sample
+preserves accepted/uncertain guards. The package contains no journal or issuer
+data. Physical approval requires the person at the café to confirm paper/photos;
+AnyDesk and Windows queue acceptance alone do not establish paper output.
+
+### Current label: black artwork on colored stock
+
+The user subsequently clarified that new stickers should match the supplied
+María López / Iced Matcha photo. Their blue/yellow/pink color comes from the
+physical stock. New POS documents explicitly select `labelLayout=reference-v2`:
+customer name and folio/cup identity at top, a larger drink name, dashed
+modifiers on individual lines, two black divider rules, and service opposite
+Matamoros date/time at bottom. No colored background or outside border is drawn.
+Arial Bold sizes are 9 pt name, 12 pt drink, 8.5 pt instructions, 8 pt service
+and 7 pt identity/date. The footer uses a two-line date and 12-hour time.
+
+The physical 57 × 32 mm form and 90-degree artwork rotation remain unchanged.
+Explicitly versioned per-cup metadata is saved with each new document. A long
+note continues onto identified labels repeating name, folio/cup, drink and
+service/date/time; instructions are not clipped. An oversized identity that
+cannot leave room for instructions blocks preparation instead of printing
+overlapping text. PNG preview export optionally supports transparency; physical
+printing draws only the black text/rules onto the pre-colored sticker.
+
+Existing documents without this version marker retain their physically approved
+flowing layout, text and footer. Obsolete `cupLabels` metadata stays ignored.
+No saved document, journal identity or accepted/uncertain state is reset to apply
+the new design. Normal confirmed POS sales still dispatch both copies together.
+The V8 customer receipt retains the owner's later no-CFDI/no-personal-name
+wording. After the remote V9 dual test, the user reported that both outputs
+worked and requested only removal of the individual issuer name. This is the
+user's reported physical result for the reference design, distinct from the
+earlier transferred flowing-label logs and from full POS installation.
+
 `config/cafe-printers.json` records the original supplied café discovery:
 
 | Destination | Exact queue / driver | Connection | Job paper form |
@@ -48,7 +139,8 @@ Bluetooth APIs reported conflicting 57 × 32 and approximately 100 × 150 mm
 defaults. The user subsequently supplied Hybsk packaging images specifying
 2.25 × 1.25 inches, equivalent to 57.15 × 31.75 mm, matching the advertised
 57 × 32 mm form. This stock is selected in the machine profile and test kit.
-Tomorrow still needs a physical check that this exact roll is loaded.
+The user physically confirmed this exact roll on October 31. Confirm it again
+after media changes; the recorded observation cannot inspect the current roll.
 
 The user confirms **Nulltonex** branding. Its [Y813BT support](https://nulltonex.com/pages/y813bt-video-tutorial-1)
 and [model-specific driver selection](https://nulltonex.com/pages/y813) take
@@ -88,7 +180,7 @@ POS_RECEIPT_ISSUER_FILE=C:\POS-Cafe-Data\receipt-issuer.json
 ```
 
 Those paths are deployment examples, not directories created by these changes.
-No café environment was modified. Use a permanent local disk path outside the
+The standalone kit did not configure the café POS server. Use a permanent local disk path outside the
 source/release folder. Give the signed-in POS account access; never use a
 network share or a shared journal across two physical PCs. Preserve the entire
 directory, including SQLite WAL/SHM files when active. Do not delete or roll
@@ -100,7 +192,8 @@ application stopped or through SQLite-aware backup.
 `POS_PRINT_MODE=mock` writes only synthetic spool records and uses a separate
 `mock-jobs.sqlite`; Windows uses `windows-jobs.sqlite`. Omission/disabled mode
 withholds dispatch and retains print intents. No real print mode was enabled
-on the development PC or café PC. Network/Auth/order-read failure retains the
+on the development PC or full café POS. The standalone kit did print marked
+samples on October 31. Network/Auth/order-read failure retains the
 print intent; the existing POS still depends on cloud access and does not gain
 offline sales or offline access authorization from this feature.
 
@@ -133,14 +226,19 @@ After configuration, retry the blocked customer copy. Only its unsubmitted
 placeholder document is replaced. Accepted/uncertain jobs never reset.
 
 No invented VAT rate, fiscal UUID, seal, invoicing portal or request deadline is
-printed. Customers are directed to the cashier to request a CFDI. Do not copy
+printed. The owner's later instruction removes CFDI wording from new receipts;
+previously stored snapshots are not rewritten. Do not copy
 dated or merchant-specific invoicing restrictions from the reference receipts.
 
-Barista labels use a Starbucks-inspired reading order: bold customer name,
-bold full menu drink name, milk/options, emphasized item instruction, order
+Barista labels use a Starbucks-inspired reading order: customer name,
+full menu drink name, milk/options, item instruction, order
 instruction, then a small folio/cup count/order type/time footer. Each unit has
 its own section. No Starbucks logo, invented size/recipe code or payment data
-is added. The actual Windows renderer uses styled fonts at the selected size.
+is added. Labels use uniform Arial Bold 8.5 pt. The accepted legacy receipts use
+Arial Bold 8.5 pt body/issuer/meta, 10 pt headings, 11 pt total and 12 pt brand;
+the newer logo receipt uses the title/total styles described above. Quantity,
+unit price and line amount use measured left/middle/right columns, rather
+than relying on spaces to align proportional type.
 No remote images or QR services are needed. Small labels continue onto further
 identified labels instead of clipping instructions. Every styled barista label,
 including each continuation, reserves its folio/cup-count footer. Long notes
@@ -194,9 +292,21 @@ and deleting the local journal are outside that guarantee. If a handoff outcome
 is uncertain, stopping for physical reconciliation is necessary to avoid a
 duplicate. Do not press charge again or bypass this guard by deleting files.
 
-## Tomorrow's physical test
+## Physical acceptance and subsequent tests
 
-The current kit is **V6**, superseding V5 and V4. Its runtime is Node 24.22.2 x64 with
+The October 31 standalone test passed after corrections to font weight,
+orientation, paper loading and label learning. Bluetooth recovered the existing
+Windows job after power-on; same-case repeats produced no extra paper. See
+[the acceptance record](printer-acceptance-2026-10-31.md) for approved settings,
+evidence hashes and the boundary between that renderer and the newer reference
+design. Later PRUEBA-R8 physically accepted the branded receipt/QR, and PRUEBA-D1
+passed concurrent V8 receipt plus the previously approved flowing Bluetooth
+label. The user later requested the versioned reference sticker layout described
+above; the earlier physical test did not exercise that design. These tests
+do not establish full-POS, cutter or drawer acceptance.
+
+The source builder now produces **V9**, incorporating the accepted V8 receipt
+and the newly requested black-only reference label. Its runtime is Node 24.22.2 x64 with
 SQLite 3.53.4. When upgrading an existing installation, preserve its persistent
 journal in place; never replace it with a fresh kit's empty journal to retry
 previous orders.
@@ -247,7 +357,7 @@ Windows UTF-8 BOM profiles and cup identity on every continuation label.
 The test kit is for hardware acceptance, not an already accepted production
 deployment. After hardware acceptance, the full POS must use the reviewed app,
 compatible schema, existing release/backup procedure and local machine
-configuration. No GitHub sync, café app deployment or live migration was done.
+configuration. The acceptance session did not deploy the café app or run live migrations.
 
 ## Verification
 

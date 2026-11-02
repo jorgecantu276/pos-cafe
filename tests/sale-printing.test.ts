@@ -31,15 +31,19 @@ test('a Windows UTF-8 BOM does not withhold an otherwise valid local issuer prof
   } finally { remove(directory); }
 });
 
-test('Mexican receipt separates issuer identity, unit/line amounts and CFDI request without invented tax or deadlines', () => {
+test('customer receipt omits issuer name and CFDI wording while preserving remaining issuer fields and amounts', () => {
   const docs = saleDocuments(sale(), { issuer:testIssuer,testOnly:true }), receipt=docs.customer.sections[0].join('\n');
-  for(const expected of [testIssuer.legalName,testIssuer.rfc,testIssuer.taxRegime,testIssuer.establishmentAddress,testIssuer.postalCode,'Folio: 1234','P.UNITARIO','$110.00','$220.00','TOTAL: $220.00 MXN','CFDI'])assert.ok(receipt.includes(expected));
+  for(const expected of [testIssuer.rfc,testIssuer.taxRegime,testIssuer.establishmentAddress,testIssuer.postalCode,'Folio: 1234','P.UNITARIO','$110.00','$220.00','TOTAL: $220.00 MXN'])assert.ok(receipt.includes(expected));
+  assert.ok(!receipt.includes(testIssuer.legalName));
   assert.equal(docs.customer.issuerComplete,true);assert.equal(docs.customer.testOnly,true);
-  assert.doesNotMatch(receipt,/IVA\s*(?:8|16)|mismo día|30 días|UUID|Sello Digital|representación impresa de un CFDI/i);
+  assert.doesNotMatch(receipt,/CFDI|CDFI|IVA\s*(?:8|16)|mismo día|30 días|UUID|Sello Digital/i);
   const draft=saleDocuments(sale()).customer;
-  assert.equal(draft.issuerComplete,false);assert.match(draft.sections.flat().join(' '),/\[NOMBRE O RAZÓN SOCIAL\].*\[RFC DEL EMISOR\].*\[RÉGIMEN FISCAL\].*\[DOMICILIO DEL ESTABLECIMIENTO\]/);
+  assert.equal(draft.issuerComplete,false);assert.match(draft.sections.flat().join(' '),/\[RFC DEL EMISOR\].*\[RÉGIMEN FISCAL\].*\[DOMICILIO DEL ESTABLECIMIENTO\]/);
+  assert.doesNotMatch(draft.sections.flat().join(' '),/NOMBRE O RAZÓN SOCIAL/);
   const label=docs.barista;
-  assert.equal(label.sections[0][0],'ANA & JOSÉ');assert.equal(label.styles?.[0][0],'name');assert.equal(label.styles?.[0][1],'drink');assert.equal(label.styles?.[0].at(-1),'footer');
+  assert.equal(label.sections[0][0],'Ana & José');assert.equal(label.styles?.[0][0],'name');assert.equal(label.styles?.[0][1],'drink');assert.equal(label.styles?.[0].at(-1),'footer');
+  assert.equal(label.cupLabels,undefined);assert.equal(label.labelLayout,'reference-v2');
+  assert.deepEqual(label.referenceLabels?.[0],{folio:'#1234',cup:'1/2',service:'Para Llevar',date:'30/10/26',time:'11:20 AM'});
 });
 
 test('completing fiscal placeholders upgrades only a withheld customer draft and never reprints the accepted barista job', async () => {
@@ -72,11 +76,11 @@ test('local issuer configuration cannot be supplied by the browser and incomplet
 
 test('one confirmed snapshot yields financial customer context and complete per-cup barista context', () => {
   const docs = saleDocuments(sale()), customer = docs.customer.sections.flat().join('\n'), barista = docs.barista.sections.flat().join('\n');
-  assert.match(customer, /TOTAL: \$220.00 MXN/); assert.match(customer, /Cambio: \$30.00 MXN/);
+  assert.match(customer, /TOTAL: \$220.00 MXN/); assert.match(customer, /Cambio: \$30.00/);
   assert.equal(docs.barista.sections.length, 2);
   for (const section of docs.barista.sections) {
     const text = section.join('\n');
-    for (const expected of ['1234', 'ANA & JOSÉ', 'Para Llevar', 'Iced coffee vainilla', 'Leche de avena', 'Sin hielo <urgente>', 'Entregar juntos']) assert.ok(text.includes(expected));
+    for (const expected of ['1234', 'Ana & José', 'Para Llevar', 'Iced coffee vainilla', 'Leche de avena', 'Sin hielo <urgente>', 'Entregar juntos']) assert.ok(text.includes(expected));
   }
   assert.doesNotMatch(barista, /\$|TOTAL|Cambio|efectivo/);
   assert.match(barista, /1\/2/); assert.match(barista, /2\/2/);
@@ -96,6 +100,24 @@ test('all 82 real menu presentations preserve their names and prices without cat
     const index = docs.customer.sections[0].indexOf(item.product.name);
     assert.ok(index >= 0); assert.ok(docs.customer.sections[0][index + 1].includes(item.product.price.toFixed(2)));
   }
+});
+
+test('receipt-only acceptance creates no barista copy and preserves prior journal jobs across retries', async () => {
+  const directory=scratch(),sent:PrintAudience[]=[],old=sale(),receipt={...sale(),ticket_number:'PRUEBA-R8'};
+  const journal=new PrintJournal(path.join(directory,'jobs.sqlite'),{async prepare(job){return{async submit(){sent.push(job.audience);},dispose(){}};}});
+  try {
+    journal.ensure('physical-test-only',old,queues);await journal.dispatch('physical-test-only',old.id);
+    const previous=journal.get('physical-test-only',old.id);
+    journal.ensure('physical-test-only',receipt,queues,{testOnly:true},'customer');
+    await journal.dispatch('physical-test-only',receipt.id,'customer');
+    journal.ensure('physical-test-only',receipt,queues,{testOnly:true},'customer');
+    await journal.dispatch('physical-test-only',receipt.id,'customer');
+    assert.deepEqual(sent.sort(),['barista','customer','customer']);
+    assert.deepEqual(journal.get('physical-test-only',old.id),previous);
+    const jobs=journal.get('physical-test-only',receipt.id);
+    assert.equal(jobs.length,1);assert.equal(jobs[0].audience,'customer');assert.equal(jobs[0].attempts,1);
+    assert.equal(jobs[0].state,'submitted');
+  } finally {journal.close();remove(directory);}
 });
 
 test('two workers, repeated POSTs, refresh and process restart cannot submit a successful copy twice', async () => {

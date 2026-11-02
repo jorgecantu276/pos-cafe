@@ -1,0 +1,27 @@
+Test ONLY the new Cariñito Mío customer receipt on this café PC.
+
+Locate Cafe-Receipt-Only-V8-2026-10-31.zip in the transfer folder, Desktop or Downloads. Extract it into a separate local folder such as D:\Cafe-Receipt-Only-V8-2026-10-31. If a verified extraction already exists, reuse it. Do not extract over the old test kit.
+
+The ORIGINAL kit root is D:\Cafe-Printer-Test-2026-10-31. Keep its complete runtime\windows folder, windows-jobs.sqlite, WAL/SHM files, saved samples and recovery history IN PLACE. This update contains no journal. If the original nonempty journal or receipt-issuer.json is missing, STOP and ask me for the correct original location. Never create a substitute journal, restore an older one, or use a copied journal as the active test journal.
+
+I authorize the new synthetic receipt test. No old case, Bluetooth label, driver/preference change, pairing, calibration, migration, app installation or live/cloud sale is authorized by this prompt. Do not run old recovery scripts, cancel Windows jobs, edit SQLite or force replacement. Avoid concurrent printer-test scripts.
+
+1. Read START-HERE.txt. Verify all manifest.json hashes and the bundled runtime (Node v24.22.2 / SQLite 3.53.4).
+
+2. From the NEW extracted folder, run the inspection/preview command without printing:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-NewReceipt.ps1 -ExistingKitRoot 'D:\Cafe-Printer-Test-2026-10-31'
+
+Confirm POS80 Printer / POS80 / CP001 and the approximately 72 x 210 mm form. Stop for mismatches, a known printer fault, or pending receipt jobs. Check that preview reports journalUnchanged=true and physicalPrints=0, and inspect preview/page-1.png. It must show the supplied Taller Repostero logo, phone, clear item columns/total, issuer details below payment, Instagram QR and closing phrase. Do not query or print the Bluetooth device for this test.
+
+3. Ask me to confirm receipt paper is loaded, cover latched and the printer ready. Then run ONCE:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-NewReceipt.ps1 -ExistingKitRoot 'D:\Cafe-Printer-Test-2026-10-31' -PrintTest
+
+Expected new folio: PRUEBA-R8. One Iced coffee caramelo with oat milk, ANA (PRUEBA), SIN HIELO / NO PREPARAR. Total MXN110, received MXN150, change MXN40. This adds only the new customer copy to the ORIGINAL journal; zero barista jobs. Its stable sample is runtime\windows\sample-receipt-branding-v8.json. Always retain and reuse that identity.
+
+4. Ask me to inspect actual paper for logo darkness, readable/complete text, alignment/feed, amounts, issuer, closing phrase and handle. Ask me to scan the QR and confirm it opens https://www.instagram.com/_carinitomio/. Windows 'submitted' alone is not a physical pass.
+
+5. After I confirm complete paper output and the receipt queue is empty, repeat the EXACT SAME -PrintTest command once to verify duplicate suppression. Compare the new customer job's attempts/timestamp; they must stay unchanged, with no extra paper and no barista output. Do not create a different sample identity.
+
+If paper is missing, output incomplete, or state uncertain: inspect paper/queue and STOP. Do not authorize recovery or resend by changing folders, deleting the sample, resetting the journal, or choosing another case. Ask me for the physical observation needed.
+
+Save a concise passed/failed/pending note in the NEW update folder. Preserve runtime\windows\result-receipt-branding-v8.json in the ORIGINAL kit and verify unrelatedJournalRowsUnchanged=true and baristaJobsCreated=0. Do not overwrite old results or ONSITE-RESULTS.txt. Finish with the receipt state, personal paper/QR confirmation, duplicate result and preserved journal path. Ask only for missing locations, physical readiness/observations or an actual blocker, not another blanket print approval.

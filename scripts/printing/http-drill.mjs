@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -94,7 +95,8 @@ try {
   assert.equal(receiptResponse.status, 200);
   const savedReceipt = await receiptResponse.json();
   assert.equal(savedReceipt.source, 'stored');
-  assert.match(savedReceipt.document.sections.flat().join(' '), /EMISOR FICTICIO.*AAA010101AAA.*Domicilio ficticio/);
+  assert.match(savedReceipt.document.sections.flat().join(' '), /AAA010101AAA.*Domicilio ficticio/);
+  assert.doesNotMatch(savedReceipt.document.sections.flat().join(' '), /EMISOR FICTICIO/);
   assert.match(savedReceipt.document.sections.flat().join(' '), /Entregar juntos/);
   assert.match(savedReceipt.document.sections.flat().join(' '), /Recibido MXN:.*250\.00.*Cambio:.*30\.00/);
   assert.match(receiptResponse.headers.get('cache-control'), /private.*no-store/);
@@ -115,6 +117,42 @@ try {
   const other = await (await http(null, cookies[1])).json(); assert.equal(other.jobs.length, 0);
   assert.equal((await http({ orderId: first }, cookies[1])).status, 404);
   pass('Cancelled preparation is withheld and another cashier cannot read or dispatch these sales');
+  const approved = newSale(4004), approvedSnapshot = orders.get(approved).receipt_snapshot;
+  approvedSnapshot.items[0].quantity = 1;
+  approvedSnapshot.items[0].product.note = 'SIN HIELO. NO PREPARAR.';
+  approvedSnapshot.customer_name = 'Ana (Prueba)'; approvedSnapshot.order_note = '';
+  approvedSnapshot.total = 110; approvedSnapshot.tender_mxn = 150; approvedSnapshot.change_mxn = 40;
+  const beforeApproved = (await spool()).length;
+  await writeFile(faults, '{}');
+  await Promise.all(Array.from({ length: 4 }, () => post({ orderId: approved })));
+  const approvedCopies = (await spool()).filter(job => job.orderId === approved);
+  assert.equal((await spool()).length, beforeApproved + 2); assert.equal(approvedCopies.length, 2);
+  const receiptDoc = approvedCopies.find(job => job.audience === 'customer').document;
+  const labelDoc = approvedCopies.find(job => job.audience === 'barista').document;
+  assert.equal(receiptDoc.receiptBranding.version, 1);
+  assert.equal(receiptDoc.receiptBranding.qrUrl, 'https://www.instagram.com/_carinitomio/');
+  assert.equal(receiptDoc.styles[0][0], 'logo'); assert.equal(receiptDoc.testOnly, false);
+  assert.match(receiptDoc.sections.flat().join(' '), /TOTAL: \$110\.00 MXN.*Recibido MXN: \$150\.00.*Cambio: \$40\.00/);
+  assert.equal(labelDoc.cupLabels, undefined);
+  assert.equal(labelDoc.labelLayout,'reference-v2');
+  assert.equal(labelDoc.referenceLabels[0].folio,'#4004');assert.equal(labelDoc.referenceLabels[0].cup,'1/1');
+  assert.deepEqual(labelDoc.sections[0].slice(0, 4), ['Ana (Prueba)', 'Iced coffee caramelo', 'Leche de avena', 'SIN HIELO. NO PREPARAR.']);
+  assert.match(labelDoc.sections[0].at(-1), /^#4004 · 1\/1 · Para Llevar ·/);
+  if (process.platform === 'win32') {
+    for (const audience of ['customer', 'barista']) {
+      const label = audience === 'barista';
+      const rendered = spawnSync(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+        ['-NoProfile','-NonInteractive','-File',path.join(app.app,'scripts/printing/windows-print.ps1'),'-LayoutOnly'],
+        {input:JSON.stringify({...approvedCopies.find(job=>job.audience===audience).document,verticalLabel:label,fontPoints:9,
+          widthMm:label?56.9:71.88,heightMm:label?32:210.06,previewDirectory:path.join(directory,'approved-pos-output',audience)})+'\n',
+        encoding:'utf8',windowsHide:true,timeout:30000});
+      assert.equal(rendered.status,0,rendered.stderr||rendered.stdout);
+      assert.equal(JSON.parse(rendered.stdout).length,1,'The production document fits its accepted single-page sample');
+    }
+  }
+  await app.restart(); await post({ orderId: approved });
+  assert.equal((await spool()).length, beforeApproved + 2);
+  pass('Confirmed POS sale uses the V8 receipt and versioned reference label; production renderers fit both and restart cannot duplicate them');
   if(process.env.POS_MULTI_ITEM_DB_EVIDENCE){
     const evidence=JSON.parse(await readFile(process.env.POS_MULTI_ITEM_DB_EVIDENCE,'utf8'));
     assert.equal(evidence.exactUiPayloadUsed,true);assert.equal(evidence.liveDataAccess,false);
@@ -130,11 +168,32 @@ try {
     assert.deepEqual(barista.sections.map(lines=>lines.find(line=>['sin hielo','extra hielo','sin tapa'].includes(line))),['sin hielo','sin hielo','extra hielo','sin tapa']);
     pass('Exact mixed-order UI payload, confirmed by real local SQL, yields one customer job and four cup sections through the production API without duplicate retries');
   }
+  if(process.env.POS_RECEIPT_CONTRACT_EVIDENCE){
+    const evidence=JSON.parse(await readFile(process.env.POS_RECEIPT_CONTRACT_EVIDENCE,'utf8'));
+    assert.equal(evidence.liveDataAccess,false);assert.equal(evidence.scenarios.length,6);
+    for(const scenario of evidence.scenarios){
+      const {receipt,documents}=scenario,before=(await spool()).length;
+      orders.set(receipt.id,{id:receipt.id,ticket_number:receipt.ticket_number,status:'completed',cashier_id:actors[0],receipt_snapshot:receipt});
+      await post({orderId:receipt.id});await post({orderId:receipt.id});
+      const printed=(await spool()).filter(job=>job.orderId===receipt.id);
+      assert.equal((await spool()).length,before+2);assert.equal(printed.length,2);
+      const customer=printed.find(job=>job.audience==='customer').document;
+      // Issuer comes from this installation's local profile, not sale SQL.
+      const saleLines=doc=>doc.sections[0].filter((_,index)=>doc.styles[0][index]!=='issuer');
+      assert.deepEqual(saleLines(customer),saleLines(documents.customer));
+      assert.deepEqual(printed.find(job=>job.audience==='barista').document,documents.barista);
+      const response=await fetch('http://127.0.0.1:3112/api/receipts?orderId='+receipt.id,{headers:{Cookie:cookies[0]}});
+      assert.equal(response.status,200);const saved=await response.json();
+      assert.equal(saved.source,'stored');assert.deepEqual(saved.document,customer);
+      assert.equal((await spool()).length,before+2);
+    }
+    pass('All six real local SQL receipts retain exact financial/preparation fields through the production print API and read-only receipt endpoint; duplicate requests add no copies');
+  }
   const privateResponse = await http(); assert.match(privateResponse.headers.get('cache-control'), /private.*no-store/);
   assert.equal(methods.some(method => method.includes('/rpc/') || /^(PATCH|DELETE) /.test(method) || (method.startsWith('POST ') && !method.includes('/auth/v1/token'))), false);
   pass('Print retries perform no checkout/stock/payment writes; responses are private and uncached');
   await mkdir(path.join(work, 'printing-acceptance'), { recursive: true });
-  const result = { date: '2026-10-30', passed: checks.length, checks,
+  const result = { date: '2026-10-31', passed: checks.length, checks,
     scope: 'Isolated production Next.js; own loopback Auth/PostgREST fixtures and simulated printers only. No live café or source-staging access.',
     simulatedSpoolJobs: (await spool()).length, buildId: (await readFile(path.join(app.app, '.next/BUILD_ID'), 'utf8')).trim(), directory };
   await writeFile(path.join(work, 'printing-acceptance/http-result.json'), JSON.stringify(result, null, 2));

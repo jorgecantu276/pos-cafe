@@ -34,10 +34,14 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:db
+        env:
+          POS_RECEIPT_CONTRACT_EVIDENCE: ${{ runner.temp }}/pos-receipt-contract.json
       - run: npm audit
       - run: npm audit --omit=dev
       - run: npm run build:verify
-      - run: node scripts/printing/http-drill.mjs
+      - run: npm run test:printing
+        env:
+          POS_RECEIPT_CONTRACT_EVIDENCE: ${{ runner.temp }}/pos-receipt-contract.json
       - name: Build and exercise a portable Windows release with loopback-only config
         shell: pwsh
         run: |

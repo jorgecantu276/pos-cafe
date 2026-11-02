@@ -38,7 +38,11 @@ function fixture() {
 const request = (query = `orderId=${order.id}`) => new Request(`http://127.0.0.1:3000/api/receipts?${query}`);
 
 test('reprint preserves the original saved document after issuer changes and adds only escaped reprint/cancellation context', async () => {
-  const f = fixture(), original = saleDocuments(order, { issuer }).customer, unchanged = JSON.stringify(original);
+  const f = fixture(), original = saleDocuments(order, { issuer }).customer;
+  // An older stored receipt still has the issuer name that newer templates omit.
+  const issuerIndex=original.sections[0].findIndex(line=>line.startsWith('RFC:'));
+  original.sections[0].splice(issuerIndex,0,issuer.legalName);original.styles![0].splice(issuerIndex,0,'issuer');
+  const unchanged = JSON.stringify(original);
   f.state.status = 'cancelled';
   const result = await handleReceiptRequest(request(), f.client, { stored: (owner, id) => {
     assert.equal(owner, 'cashier'); assert.equal(id, order.id); return original;
@@ -49,6 +53,10 @@ test('reprint preserves the original saved document after issuer changes and add
     const text = dom.window.document.body.textContent!;
     for (const value of [issuer.legalName, issuer.rfc, issuer.establishmentAddress, order.customer_name, order.order_note, 'Avena', 'Sin hielo', 'Recibido MXN: $100.00', 'Cambio: $20.00', 'REIMPRESIÓN', 'VENTA CANCELADA']) assert.ok(text.includes(value), value);
     assert.equal(dom.window.document.querySelector('script'), null);
+    assert.equal(dom.window.document.querySelector('svg[aria-label="QR de Instagram"]')?.getAttribute('viewBox'),'0 0 37 37');
+    assert.equal(dom.window.document.querySelector('image')?.getAttribute('href'),'/receipt-branding/carinito-logo-v1.jpg');
+    assert.match(text,/MENÚ E INSTAGRAM[\s\S]*Para el postre y una sonrisa,/);
+    assert.equal(result.document.receiptBranding?.qrUrl,'https://www.instagram.com/_carinitomio/');
     assert.equal(JSON.stringify(original), unchanged);
   } finally { dom.window.close(); }
 });

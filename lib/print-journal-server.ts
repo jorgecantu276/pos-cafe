@@ -106,7 +106,7 @@ export class PrintJournal {
     this.db.prepare(`UPDATE jobs SET state='cancelled',message='Venta cancelada. No enviar a preparación.',updated=?
       WHERE owner=? AND order_id=? AND state IN ('queued','blocked','preparing')`).run(this.now(), owner, orderId);
   }
-  ensure(owner: string, order: SavedOrder, queues: Record<PrintAudience, string>, options: ReceiptOptions = {}) {
+  ensure(owner: string, order: SavedOrder, queues: Record<PrintAudience, string>, options: ReceiptOptions = {}, only?: PrintAudience) {
     const documents = saleDocuments(order, options);
     const sourceHash = createHash('sha256').update(JSON.stringify(canonical(order))).digest('hex');
     this.db.exec('BEGIN IMMEDIATE');
@@ -114,7 +114,9 @@ export class PrintJournal {
       const source = this.db.prepare('SELECT * FROM sale_sources WHERE order_id=?').get(order.id) as { owner: string; source_hash: string } | undefined;
       if (source && (source.owner !== owner || source.source_hash !== sourceHash)) throw new Error('La identidad de impresión ya pertenece a otro comprobante.');
       if (!source) this.db.prepare('INSERT INTO sale_sources VALUES(?,?,?)').run(order.id, owner, sourceHash);
-      for (const audience of audiences) {
+      // Normal sales still create both copies atomically. The standalone
+      // receipt acceptance runner explicitly selects only the customer copy.
+      for (const audience of only ? [only] : audiences) {
         const old = this.db.prepare('SELECT * FROM jobs WHERE order_id=? AND audience=?').get(order.id, audience) as Row | undefined;
         if (old) {
           if (old.owner !== owner) throw new Error('La identidad de impresión ya pertenece a otro comprobante.');

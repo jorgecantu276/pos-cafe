@@ -20,11 +20,13 @@ await mkdir(destination); // Never overwrite a previously delivered kit/journal.
 await mkdir(path.join(destination, 'scripts/printing'), { recursive: true });
 const bundle = await build({ entryPoints: [path.join(root, 'scripts/printing/physical-test.ts')],
   outfile: path.join(destination, 'physical-test.mjs'), bundle: true, platform: 'node', format: 'esm', target: 'node24', metafile: true });
-const allowed = ['physical-test.ts', 'cafe-printers.json', 'print-journal-server.ts', 'windows-print-server.ts', 'sale-printing.ts', 'receipt-issuer-server.ts'];
+const allowed = ['physical-test.ts', 'cafe-printers.json', 'receipt-branding.json', 'print-journal-server.ts', 'windows-print-server.ts', 'sale-printing.ts', 'receipt-issuer-server.ts'];
 assert.ok(Object.keys(bundle.metafile.inputs).every(file => allowed.includes(path.basename(file))), 'Unexpected dependency in hardware kit');
 for (const file of ['windows-print.ps1', 'DesktopPrinter.cs']) await copyFile(path.join(root, 'scripts/printing', file), path.join(destination, 'scripts/printing', file));
 for (const file of ['Test-CafePrinters.ps1', 'Inspect-CafePrinters.ps1']) await copyFile(path.join(root, 'scripts/printing', file), path.join(destination, file));
 await copyFile(path.join(root, 'config/cafe-printers.json'), path.join(destination, 'machine-profile.json'));
+await mkdir(path.join(destination, 'public/receipt-branding'), { recursive: true });
+await copyFile(path.join(root, 'public/receipt-branding/carinito-logo-v1.jpg'), path.join(destination, 'public/receipt-branding/carinito-logo-v1.jpg'));
 if (issuerSource) {
   // Whitelist receipt fields; never package the entire fiscal document, CURP,
   // QR, idCIF, signature or unrelated personal information.
@@ -37,7 +39,7 @@ await copyFile(process.execPath, path.join(destination, 'node.exe'));
 const licenseUrl = 'https://raw.githubusercontent.com/nodejs/node/v24.22.2/LICENSE';
 const response = await fetch(licenseUrl); assert.ok(response.ok, 'Exact Node runtime license is required');
 await writeFile(path.join(destination, 'Node-LICENSE.txt'), await response.text());
-const instructions = `CARIÑITO MÍO: PRUEBA DE IMPRESORAS V6
+const instructions = `CARIÑITO MÍO: PRUEBA DE IMPRESORAS V9
 31 DE OCTUBRE DE 2026
 
 Este paquete usa el mismo servicio de impresión de la caja e incluye
@@ -46,7 +48,17 @@ No instala ni reemplaza el punto de venta. Guarda las pruebas en esta PC.
 No cobra, cambia inventario, instala controladores, empareja dispositivos,
 cambia ajustes predeterminados ni envía comandos de corte, cajón o RAW.
 
-V6 corrige la lectura del estado de las colas ocupadas o que están imprimiendo.
+V9 conserva el recibo V8: logotipo suministrado, QR local a Instagram, frase de cierre
+y el diseño de ticket solicitado el 31 de octubre. Conserva los datos del
+emisor debajo del pago y las protecciones del registro de impresión.
+Incluye tipografía Arial Bold uniforme, columnas explícitas en el ticket y
+etiquetas verticales con el diseño de referencia solicitado: nombre/folio,
+bebida destacada, opciones separadas y pie de tipo de entrega/fecha/hora.
+Solo se imprimen texto y líneas negros; el color viene del papel. El formato físico
+sigue en 57 x 32 mm; el dibujo se gira 90 grados dentro de cada etiqueta.
+La prueba física del 31 de octubre aprobó el recibo V8 y la etiqueta fluida
+anterior. El usuario pidió después este nuevo diseño, verificado localmente.
+Las pruebas anteriores no instalaron el POS completo ni probaron este diseño.
 Si ya usaste otro paquete, detén las pruebas antes de actualizarlo. Conserva
 completa su carpeta runtime, con las muestras guardadas, el registro de
 impresión y sus archivos asociados. Para reintentar una orden anterior,
@@ -60,6 +72,12 @@ BARRA: Nulltonex Y813BT Sticker / controlador Y813BT Label 1.1.3.1 observado
        VEVOR es el nombre observado en el paquete del controlador.
        Etiquetas Hybsk de 2.25 x 1.25 pulgadas = 57.15 x 31.75 mm.
        La impresión selecciona el formato anunciado de 57 x 32 mm.
+
+Ajustes observados/aprobados el 31 de octubre (este kit NO los cambia):
+POS80: densidad 16, velocidad 75 mm/s.
+Y813BT: Rotate Portrait, orientación Windows Vertical, densidad 8, velocidad 4,
+Label With Gaps, separación 3 mm, offset 0. Se aplicó Study Label y el usuario
+confirmó movimiento seguido de reposo. Revisa el papel antes de recalibrar.
 
 Extrae todo el ZIP a una carpeta local permanente. Usa la misma carpeta y
 conserva runtime entre reintentos. Evita carpetas de red o sincronizadas.
@@ -117,6 +135,8 @@ Abre PowerShell en esa carpeta. No debería requerir permisos de administrador.
 
    Para probar la recuperación Bluetooth: apaga la impresora de etiquetas,
    ejecuta -TestCase bluetooth-offline y revisa ambas colas de Windows.
+   Un caso Bluetooth nuevo usa un vaso compacto marcado ANA (PRUEBA), total
+   MXN110, recibido MXN150, cambio MXN40; conserva cualquier muestra ya guardada.
    Enciende la impresora y repite el mismo caso. Windows puede haber aceptado
    el trabajo mientras estaba desconectada; espera a que termine ese trabajo
    antes de crear una reposición.
@@ -144,23 +164,24 @@ programa antes de copiar o respaldar los archivos SQLite. Las reimpresiones
 manuales o históricas desde Windows no tienen la protección contra duplicados
 de este servicio.
 
-Todavía falta comprobar la impresión en papel. También deben verificarse en
-la cafetería la marca y modelo exactos del equipo USB, la conexión y salida
-Bluetooth, la alineación y la versión instalada de Node. Una simulación local
-no comprueba la salida en papel. ExecutionPolicy Bypass se aplica únicamente
+El usuario confirmó el recibo V8, la etiqueta vertical fluida y su salida
+conjunta el 31 de octubre, además de la recuperación Bluetooth anterior.
+El recibo permanece igual; la etiqueta usa el nuevo diseño pedido. La marca y modelo
+exactos del equipo USB siguen pendientes. Una simulación local no comprueba
+la salida en papel. ExecutionPolicy Bypass se aplica únicamente
 al proceso de PowerShell que ejecuta cada comando.
 
 ${issuerSource ? 'Este paquete incluye los datos del emisor transcritos de la constancia\nsuministrada. No incluye el PDF original, CURP, idCIF, QR ni sello electrónico.\nNo consulta al contribuyente ni envía facturas. Después puede copiarse el mismo\narchivo fuera de la carpeta de versión y configurarse en el servidor mediante\nPOS_RECEIPT_ISSUER_FILE. Este paquete no cambia la configuración de la aplicación\nen uso.\n' : ''}
 `;
 await writeFile(path.join(destination, 'START-HERE.txt'), instructions);
-const files = ['physical-test.mjs', 'node.exe', 'Node-LICENSE.txt', 'machine-profile.json', 'Test-CafePrinters.ps1', 'Inspect-CafePrinters.ps1', 'scripts/printing/windows-print.ps1', 'scripts/printing/DesktopPrinter.cs', 'START-HERE.txt'];
+const files = ['physical-test.mjs', 'node.exe', 'Node-LICENSE.txt', 'machine-profile.json', 'Test-CafePrinters.ps1', 'Inspect-CafePrinters.ps1', 'scripts/printing/windows-print.ps1', 'scripts/printing/DesktopPrinter.cs', 'public/receipt-branding/carinito-logo-v1.jpg', 'START-HERE.txt'];
 if (issuerSource) files.push('receipt-issuer.json');
 const hashes = [];
 for (const file of files) {
   const bytes = await readFile(path.join(destination, file));
   hashes.push({ file, bytes: (await stat(path.join(destination, file))).size, sha256: createHash('sha256').update(bytes).digest('hex') });
 }
-await writeFile(path.join(destination, 'manifest.json'), JSON.stringify({ builtOn: '2026-10-30', targetTestDate: '2026-10-31',
+await writeFile(path.join(destination, 'manifest.json'), JSON.stringify({ builtOn: new Date().toISOString().slice(0, 10), targetTestDate: '2026-10-31',
   platform: 'Windows x64', node: process.version, sqlite, sourceModules: Object.keys(bundle.metafile.inputs),
   runtimeLicenseSource: licenseUrl, labelSource: 'User-supplied Hybsk packaging images', issuerProfile: issuerSource ? 'receipt-issuer.json' : null, files: hashes }, null, 2));
 console.log('Prepared exact-machine physical test kit: ' + destination);

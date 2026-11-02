@@ -34,7 +34,11 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
     if (params.get('scope') === 'all') {
       if (!administrator) throw new AccessError('El responsable debe revisar las copias de otros cajeros.',403);
       const jobs = journal.listAll(), history = journal.recoveryHistory();
-      const ids = [...new Set([...jobs.map(job => job.cashierId),...history.flatMap(item=>[item.owner,item.actor])])];
+      // Hardware acceptance shares this preserved journal, but its local owner
+      // and review identities are not Supabase UUIDs. Keep those rows/history;
+      // sending them to profiles.id would reject the entire manager read.
+      const ids = [...new Set([...jobs.map(job => job.cashierId),...history.flatMap(item=>[item.owner,item.actor])])]
+        .filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
       const names = ids.length ? await withDeadline(() => client.from('profiles').select('id,full_name').in('id',ids).abortSignal(signal),{signal}) : {data:[],error:null};
       if (names.error) throw new AccessError('No se pudieron consultar los nombres de los cajeros. Actualiza la lista.',503);
       return { mode: config.mode, canManage: true, actorId: user.id, jobs, history, cashiers:names.data??[] };
