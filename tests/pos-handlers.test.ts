@@ -9,8 +9,9 @@ import {withDeadline} from '../lib/request-deadline';
 import {savedShiftHtml} from '../lib/shift-printing';
 import {confirmClosingPrints} from '../lib/closing-print-check';
 import { rememberSalePrint } from '../lib/sale-printing';
-import {beginPhoneRequest,completePhoneRequest,phoneRequestKey,readPhoneRequest,submitPhoneRequest,validPhoneContact,type PhoneOrder,type PhoneRequest} from '../lib/phone-orders';
-import { customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
+import {beginPhoneRequest,completePhoneRequest,getPhoneOrder,phoneRequestKey,readPhoneRequest,submitPhoneRequest,validPhoneContact,type PhoneOrder,type PhoneRequest} from '../lib/phone-orders';
+import { createCartStore,customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
+import {bindCartDraft,cartDraftKey} from '../lib/cart-draft';
 
 test('quick loyalty enrollment selects the new customer for the current order with required phone and optional birthday',async()=>{
   const person={id:'new-member',name:'Ana',points:50};let selected:unknown,hidden=false,saving=false;
@@ -212,9 +213,9 @@ test('a phone request from another window blocks the new save; only explicit rec
   const storage={getItem:(key:string)=>memory.get(key)??null,setItem:(key:string,value:string)=>{memory.set(key,value);},removeItem:(key:string)=>{memory.delete(key);}};
   const order:PhoneOrder={id:'old-phone',folio:1,status:'pending',contact_name:'Ana',contact_phone:'528681234567',customer_id:null,created_by:actor,created_at:'2026-11-02T18:00:00Z',revision:0,paid_order_id:null,snapshot:{items:[{id:'line',quantity:1,product:{id:'old',name:'Original',price:40,category:'Bebidas'}}],total:40,customer_name:'Ana',order_type:'Para Llevar',order_note:'',created_at:'2026-11-02T18:00:00Z',source:'phone',inventory_reserved:false}};
   let pending:unknown,paymentReview:unknown,calls=0,retired=0,printed=0;const locks:string[]=[];
-  const run=handler('handlePhoneRequest',{phoneInFlight:{current:false},checkoutInFlight:{current:false},checkoutReview:null,closingShift:{current:false},draftOwner:{current:actor},cartDraft:{current:{requestId:()=>assert.fail('Must not generate a new identity'),complete:()=>retired++}},
+  const run=handler('handlePhoneRequest',{phoneInFlight:{current:false},checkoutInFlight:{current:false},checkoutReview:null,closingShift:{current:false},draftOwner:{current:actor},cartDraft:{current:{requestId:()=>assert.fail('Must not generate a new identity'),retireRequest:(id:string)=>{assert.equal(id,request.request);if(JSON.parse(memory.get('current-draft')!).id===id)retired++;}}},
     setPhoneBusy:()=>{},setPhoneError:()=>{},setCheckoutReview:(value:unknown)=>paymentReview=value,withCheckoutLock:async(key:string,action:()=>Promise<unknown>)=>{locks.push(key);return action();},withPhoneLock:async(_actor:string,action:()=>Promise<unknown>)=>action(),readPhoneRequest,localStorage:storage,setPhonePending:(value:unknown)=>pending=value,beginPhoneRequest,submitPhoneRequest,completePhoneRequest,
-    supabase:{rpc:async(name:string,args:unknown)=>{calls++;assert.equal(name,'pos_phone_save');assert.deepEqual(args,{p_request:request.request,p_payload:request.payload});return{data:order,error:null};}},
+    getPhoneOrder,supabase:{rpc:async(name:string,args:unknown)=>{if(name==='pos_phone_get'){assert.deepEqual(args,{p_id:order.id});return{data:order,error:null};}calls++;assert.equal(name,'pos_phone_save');assert.deepEqual(args,{p_request:request.request,p_payload:request.payload});return{data:order,error:null};}},
     rememberPhonePrint:()=>{printed++;return'phone:old-phone';},cartDraftKey:()=> 'current-draft',setPhonePrintId:()=>{},setPhonePrintNotice:()=>{},setSavedPhone:()=>{},setShowPhoneContact:()=>{},setShowPhoneOrders:()=>{},
     validPhoneContact,items:[{id:'new-line',quantity:2}],phoneOrder:true,phoneName:'Bea',phoneContact:'8685551234',draftError:null,customerRestoring:false,customerError:null,getTotal:()=>80,customerId:null,orderType:'En Local',orderNote:'Nuevo',
   });
@@ -227,6 +228,30 @@ test('a phone request from another window blocks the new save; only explicit rec
 });
 test('legacy uncertain sale cannot be converted into a new transaction by refresh',async()=>{
   const h=checkoutHarness(new Map([['test-user',JSON.stringify({startedAt:'old',total:60,orderId:'existing'})]]));await h.fn();assert.equal(h.calls,0);assert.equal(h.storage.size,1);
+});
+
+for(const status of ['paid','cancelled'] as const)for(const newerCart of [false,true])test(`phone save replay reads today's ${status} state in a new shift, with ${newerCart?'a newer counter draft':'the old phone draft'}, and never schedules preparation`,async()=>{
+  const actor='test-user',request:PhoneRequest={actor,kind:'save',request:crypto.randomUUID(),payload:{items:[{product_id:'coffee',quantity:1,extra_ids:[],note:'Original'}],expected_total:40,contact_name:'Ana',contact_phone:'8681234567',customer_id:null,order_type:'Para Llevar',order_note:''}};
+  const initial:PhoneOrder={id:'phone',folio:1,status:'pending',contact_name:'Ana',contact_phone:'528681234567',customer_id:null,created_by:actor,created_at:'2026-11-02T18:00:00Z',revision:0,paid_order_id:null,snapshot:{items:[{id:'line',quantity:1,product:{id:'coffee',name:'Café',price:40,category:'Bebidas'}}],total:40,customer_name:'Ana',order_type:'Para Llevar',order_note:'',created_at:'2026-11-02T18:00:00Z',source:'phone',inventory_reserved:false}};
+  const current:PhoneOrder={...initial,status,revision:1,paid_order_id:status==='paid'?'paid-sale':null},memory=new Map<string,string>();
+  const storage={getItem:(key:string)=>memory.get(key)??null,setItem:(key:string,value:string)=>{memory.set(key,value);},removeItem:(key:string)=>{memory.delete(key);}};
+  const store=createCartStore(),product={...initial.snapshot.items[0].product,is_active:true};
+  const bind=(registerId:string)=>bindCartDraft({storage,userId:actor,registerId,products:[product],extras:[],store,onError:message=>assert.fail(message),onRepriced:()=>assert.fail()});
+  const oldBinding=bind('old-shift');store.getState().addItem(customizeProduct(product,[],'Original'));store.getState().setPhoneOrder(true);request.request=oldBinding.requestId();oldBinding.disconnect();beginPhoneRequest(storage,request);
+  const binding=bind('new-shift');assert.equal(store.getState().items.length,0);
+  if(newerCart)store.getState().addItem({...product,id:'counter',price:70});
+  const before=memory.get(cartDraftKey(actor));let readFails=true,shown:PhoneOrder|undefined,error='',pending:unknown;const saves:unknown[]=[];
+  const run=handler('handlePhoneRequest',{phoneInFlight:{current:false},checkoutInFlight:{current:false},checkoutReview:null,closingShift:{current:false},draftOwner:{current:actor},cartDraft:{current:binding},
+    setPhoneBusy:()=>{},setPhoneError:(value:string)=>error=value,setPhonePending:(value:unknown)=>pending=value,withPhoneLock:async(_actor:string,action:()=>Promise<unknown>)=>action(),localStorage:storage,readPhoneRequest,submitPhoneRequest,completePhoneRequest,getPhoneOrder,
+    supabase:{rpc:async(name:string,args:unknown)=>{if(name==='pos_phone_save'){saves.push(args);return{data:initial,error:null};}assert.equal(name,'pos_phone_get');return readFails?{data:null,error:{message:'Lectura interrumpida'}}:{data:current,error:null};}},
+    rememberPhonePrint:()=>assert.fail('A paid/cancelled order must not schedule a new preparation'),setPhonePrintId:()=>assert.fail(),setPhonePrintNotice:()=>{},setSavedPhone:(value:PhoneOrder)=>shown=value,setShowPhoneContact:()=>{},setShowPhoneOrders:()=>{},
+  });
+  // Saving committed on A; the acknowledgment was lost. B has now resolved it.
+  assert.equal(await run(true),false);assert.match(error,/Lectura interrumpida/);assert.equal(memory.get(cartDraftKey(actor)),before);assert.deepEqual(pending,request);assert.equal(shown,undefined);
+  readFails=false;assert.equal(await run(true),true);assert.equal(memory.has(phoneRequestKey(actor)),false);assert.deepEqual(shown,current);assert.deepEqual(saves[0],saves[1]);
+  if(newerCart){assert.equal(memory.get(cartDraftKey(actor)),before);assert.equal(store.getState().getTotal(),70);}
+  else{assert.equal(memory.has(cartDraftKey(actor)),false);assert.equal(store.getState().items.length,0);store.getState().addItem(product);assert.equal(JSON.parse(memory.get(cartDraftKey(actor))!).registerId,'new-shift');assert.notEqual(binding.requestId(),request.request);}
+  binding.disconnect();
 });
 test('a cancelled committed sale resolves its recovery marker without reporting a new sale',async()=>{
   const h=checkoutHarness(new Map([['test-user',JSON.stringify({startedAt:'old',total:60,requestId:'saved',payload:{}})]]));

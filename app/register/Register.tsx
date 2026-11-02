@@ -626,12 +626,14 @@ const handleSaveAndClose = async () => {
           }
           beginPhoneRequest(localStorage,request);if(draftOwner.current===actor)setPhonePending(request);
         }
-        const order=await submitPhoneRequest(supabase,localStorage,request!);
+        const acknowledged=await submitPhoneRequest(supabase,localStorage,request!);
+        // A save replay confirms its original snapshot, not today's payment
+        // state. Keep recovery intact until the current shared order is read.
+        const order=request!.kind==='save'?await getPhoneOrder(supabase,acknowledged.id):acknowledged;
         if(request!.kind==='save'){
-          const latest=rememberPhonePrint(localStorage,`mi_cafe_checkout_review:${actor}`,order);
-          const raw=localStorage.getItem(cartDraftKey(actor));
-          if(raw&&JSON.parse(raw).id===request!.request)binding?.complete();
-          if(draftOwner.current===actor){setPhonePrintId(latest);setPhonePrintNotice('');setSavedPhone(order);setShowPhoneContact(false);setShowPhoneOrders(false);}
+          const latest=order.status==='pending'?rememberPhonePrint(localStorage,`mi_cafe_checkout_review:${actor}`,order):null;
+          binding?.retireRequest(request!.request);
+          if(draftOwner.current===actor){if(latest)setPhonePrintId(latest);setPhonePrintNotice('');setSavedPhone(order);setShowPhoneContact(false);setShowPhoneOrders(false);}
         }else if(draftOwner.current===actor){setPhonePrintNotice('');setSavedPhone(order);setShowPhoneOrders(false);}
         completePhoneRequest(localStorage,request!);
         if(draftOwner.current===actor){setPhonePending(null);setPhoneError('');}
@@ -830,7 +832,7 @@ const handleSaveAndClose = async () => {
   const PaymentView=selectedPhoneOrder?WorkspaceCheckout:CheckoutView;
   const CustomizationView = appearance === 'workspace' ? WorkspaceCustomization : PrototypeCustomization;
   const drawerBlocked = Boolean(showApertura && drawer && (drawer.handoff || (drawer.active && drawer.active.cashier_id !== drawerActor) || drawer.rate === null));
-  const phoneNotice=<>{(phonePending||phoneError)&&<div role="alert" className="phone-order-notice"><div><strong>{phonePending?'Pedido sin confirmar':'Revisa el pedido'}</strong><span>{phoneError||'Comprueba si se guardó antes de volver a enviarlo.'}</span></div>{phonePending&&<button type="button" disabled={phoneBusy||isProcessingCheckout} onClick={()=>void handlePhoneRequest(true)}>Comprobar pedido</button>}{!phonePending&&<button type="button" onClick={()=>void fetchData()}>Revisar pedido</button>}</div>}{savedPhone&&<div role="status" className="phone-order-notice"><span>{phonePrintNotice||(savedPhone.status==='cancelled'?`Pedido #${savedPhone.folio} cancelado. Avisa a barra.`:`Pedido #${savedPhone.folio} guardado · Sin pagar`)}</span><button type="button" onClick={()=>{setSavedPhone(null);setShowPhoneOrders(true);}}>Ver pedidos</button><button type="button" aria-label="Cerrar aviso de pedido guardado" onClick={()=>setSavedPhone(null)}>×</button></div>}</>;
+  const phoneNotice=<>{(phonePending||phoneError)&&<div role="alert" className="phone-order-notice"><div><strong>{phonePending?'Pedido sin confirmar':'Revisa el pedido'}</strong><span>{phoneError||'Comprueba si se guardó antes de volver a enviarlo.'}</span></div>{phonePending&&<button type="button" disabled={phoneBusy||isProcessingCheckout} onClick={()=>void handlePhoneRequest(true)}>Comprobar pedido</button>}{!phonePending&&<button type="button" onClick={()=>void fetchData()}>Revisar pedido</button>}</div>}{savedPhone&&<div role="status" className="phone-order-notice"><span>{phonePrintNotice||(savedPhone.status==='paid'?`Pedido #${savedPhone.folio} pagado`:savedPhone.status==='cancelled'?`Pedido #${savedPhone.folio} cancelado. Avisa a barra.`:`Pedido #${savedPhone.folio} guardado · Sin pagar`)}</span><button type="button" onClick={()=>{setSavedPhone(null);setShowPhoneOrders(true);}}>Ver pedidos</button><button type="button" aria-label="Cerrar aviso de pedido guardado" onClick={()=>setSavedPhone(null)}>×</button></div>}</>;
 
   return (
     <div className={`flex h-screen bg-[#F5F5F7] text-[#1D1D1F] font-sans antialiased overflow-hidden ${appearance==='workspace'?'pos-workspace':appearance==='prototype'?'pos-prototype':''}`}>

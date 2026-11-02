@@ -12,9 +12,12 @@ import {work} from '../staging/runtime.mjs';
 let local, app; const sessions = [];
 const ok = result => { assert.ifError(result.error && Error(result.error.message)); return result.data; };
 const pass = message => console.log('PASS ' + message);
+const requestedPort=process.env.POS_ADMIN_TEST_PORT??'3111';
+assert.ok(['3111','3112'].includes(requestedPort),'Only dedicated local admin test app ports 3111 and 3112 are allowed');
+const port=Number(requestedPort),url=`http://127.0.0.1:${port}`,portBase=port===3112?55501:55481;
 try {
   console.log('Starting a new isolated synthetic Auth/PostgREST/PostgreSQL stack…');
-  local = await freshLocalApi({portBase:55481});
+  local = await freshLocalApi({portBase});
   const { config, db, service } = local;
   const actors = {};
   for (const role of ['admin', 'cashier']) {
@@ -131,33 +134,33 @@ try {
   // This preview must exercise a working print endpoint without reaching hardware.
   // Each drill owns a separate mock journal; no Windows journal is reused.
   const printDirectory=await mkdtemp(path.join(work,'admin-printing-'));
-  app = await startApp(config,{port:3111,printing:{directory:printDirectory}}); await app.ready();
-  const printStatus=await fetch('http://127.0.0.1:3111/api/printing',{headers:{cookie:employee.cookie(),'X-Pos-Print':'1'}});
+  app = await startApp(config,{port,printing:{directory:printDirectory}}); await app.ready();
+  const printStatus=await fetch(url+'/api/printing',{headers:{cookie:employee.cookie(),'X-Pos-Print':'1'}});
   assert.equal(printStatus.status,200);
   assert.deepEqual(await printStatus.json(),{mode:'mock',canManage:false,jobs:[]});
-  assert.equal((await fetch('http://127.0.0.1:3111/api/printing',{headers:{'X-Pos-Print':'1'}})).status,401);
+  assert.equal((await fetch(url+'/api/printing',{headers:{'X-Pos-Print':'1'}})).status,401);
   pass('Preview printing: authenticated mock endpoint with an isolated journal, no false unavailable warning and no hardware output');
   for (const route of ['/admin', '/admin/ventas', '/admin/cortes', '/admin/productos', '/admin/clientes', '/admin/favoritos', '/admin/configuracion','/admin/caja','/admin/usuarios','/admin/respaldos','/admin/impresion','/admin/clip','/admin/inventario']) {
-    const response = await fetch('http://127.0.0.1:3111' + route, { headers: { cookie: owner.cookie() }, redirect: 'manual' });
+    const response = await fetch(url + route, { headers: { cookie: owner.cookie() }, redirect: 'manual' });
     assert.equal(response.status, 200, route); assert.ok((await response.text()).length > 100);
-    const denied = await fetch('http://127.0.0.1:3111' + route, { headers: { cookie: employee.cookie() }, redirect: 'manual' });
+    const denied = await fetch(url + route, { headers: { cookie: employee.cookie() }, redirect: 'manual' });
     assert.equal(denied.status, 307, `cashier ${route}`);
   }
   pass('Isolated production build: all four administration routes render with real owner cookies and reject cashier cookies');
-  const endpoint='http://127.0.0.1:3111/api/payments/clip';
+  const endpoint=url+'/api/payments/clip';
   const status=await fetch(endpoint,{headers:{cookie:owner.cookie()}});
   assert.equal(status.status,200);assert.deepEqual(await status.json(),{enabled:false,payments:[]});
   assert.equal((await fetch(endpoint,{headers:{cookie:employee.cookie()}})).status,403);
   assert.equal((await fetch(endpoint)).status,401);
-  const blocked=await fetch(endpoint,{method:'POST',headers:{cookie:employee.cookie(),Origin:'http://127.0.0.1:3111','Content-Type':'application/json'},body:JSON.stringify({requestId:randomUUID(),payload:{payment_method:'tarjeta'}})});
+  const blocked=await fetch(endpoint,{method:'POST',headers:{cookie:employee.cookie(),Origin:url,'Content-Type':'application/json'},body:JSON.stringify({requestId:randomUUID(),payload:{payment_method:'tarjeta'}})});
   assert.equal(blocked.status,503,JSON.stringify(await blocked.json()));
   assert.equal((await db.query('select count(*)::int n from cafe_private.clip_payments')).rows[0].n,0);
   pass('CLIP stays off through real cookie/API boundaries: owner status, cashier/anonymous denial and blocked dispatch with no payment journal writes');
   assert.equal((await db.query('select count(*)::int n from orders')).rows[0].n, 1);
-  if(process.env.POS_BROWSER_QUALITY==='1') await browserQualityReview({url:'http://127.0.0.1:3111',actors,db,appDirectory:app.app});
+  if(process.env.POS_BROWSER_QUALITY==='1') await browserQualityReview({url,actors,db,appDirectory:app.app});
   if(process.env.POS_KEEP_ADMIN_PREVIEW==='1') {
     const target=path.join(app.app,'inventory-preview.private.json');
-    await writeFile(target,JSON.stringify({url:'http://127.0.0.1:3111',admin:actors.admin,cashier:actors.cashier,config},null,2));
+    await writeFile(target,JSON.stringify({url,admin:actors.admin,cashier:actors.cashier,config},null,2));
     console.log('Synthetic inventory preview ready; private fixture login: '+target);
     await new Promise(resolve=>{process.once('SIGINT',resolve);process.once('SIGTERM',resolve);});
   }

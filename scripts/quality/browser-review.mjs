@@ -10,7 +10,7 @@ import {seedQualityMenu} from './menu-fixture.mjs';
 
 // Only called with the fresh disposable backend owned by the HTTP drill.
 export async function browserQualityReview({url,actors,db,appDirectory}) {
-  assert.equal(url,'http://127.0.0.1:3111');
+  assert.ok(['http://127.0.0.1:3111','http://127.0.0.1:3112'].includes(url),'Only dedicated local quality app URLs are allowed');
   const menu=JSON.parse(await readFile(path.join(root,'tests/fixtures/real-menu.json'),'utf8'));
   await seedQualityMenu(db,menu);
   const executablePath=process.env.POS_QUALITY_BROWSER || [

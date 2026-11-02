@@ -119,6 +119,16 @@ export function bindCartDraft(options: { storage: Storage; userId: string; regis
     try { flush(); } catch (error) { unsubscribe(); throw error; }
     options.onRepriced();
   }
+  const complete=()=>{
+    // Only retire this sale's draft. Another window's newer draft is protected.
+    const raw = storage.getItem(key);
+    if (raw && JSON.parse(raw).id !== id) throw Error('Hay otro pedido abierto. Revisa la venta pendiente antes de continuar.');
+    storage.removeItem(key); expected = null;
+    // A delayed response after logout may retire its own persisted record,
+    // but must never clear the next cashier's visible store.
+    if (connected) { muted = true; store.getState().clearCart(); muted = false; }
+    id = crypto.randomUUID();
+  };
   return {
     key, scope: `${userId}:${registerId}`, customerId: draft?.customerId ?? null,
     get conflicted() { return conflicted; },
@@ -126,15 +136,24 @@ export function bindCartDraft(options: { storage: Storage; userId: string; regis
     flush,
     checkCurrent: assertCurrent,
     requestId() { flush(); return id; },
-    complete() {
-      // Only retire this sale's draft. Another window's newer draft is protected.
-      const raw = storage.getItem(key);
-      if (raw && JSON.parse(raw).id !== id) throw Error('Hay otro pedido abierto. Revisa la venta pendiente antes de continuar.');
-      storage.removeItem(key); expected = null;
-      // A delayed response after logout may retire its own persisted record,
-      // but must never clear the next cashier's visible store.
-      if (connected) { muted = true; store.getState().clearCart(); muted = false; }
-      id = crypto.randomUUID();
+    complete,
+    retireRequest(requestId:string) {
+      if(!uuid.test(requestId))throw Error('No se pudo confirmar el pedido original.');
+      const raw=storage.getItem(key);
+      if(!raw){
+        if(id===requestId)complete();
+        else if(expected){const previous=JSON.parse(expected) as Draft;if(previous.userId===userId&&previous.id===requestId)expected=null;}
+        return;
+      }
+      const saved=JSON.parse(raw) as Draft;
+      if(saved.userId!==userId)throw Error('El pedido pertenece a otra sesión.');
+      if(saved.id!==requestId)return; // A newer order is unrelated to this acknowledgment.
+      assertCurrent();
+      readCartDraft(raw,userId,saved.registerId); // Validate the original actor and scope, including an earlier shift.
+      if(id===requestId){complete();return;}
+      storage.removeItem(key);expected=null;
+      // This binding belongs to a newer shift. Keep its current store and fresh
+      // identity, and synchronize its storage expectation after retiring the old draft.
     },
   };
 }

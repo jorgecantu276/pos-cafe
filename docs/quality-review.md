@@ -20,7 +20,7 @@ En ese recorrido, el LCP observado estuvo entre **84 y 308 ms**, la suma local d
 
 ## Pruebas de esta revisión
 
-- **236 pruebas** de aplicación: UI real, recuperación, permisos, borradores, inventario, CLIP simulado, controles e impresión Windows. Incluyen bloqueo entre ventanas, teléfono sin control con pago al recoger, preservación del carrito de mostrador y recuperación de la comanda desde otro cajero.
+- **242 pruebas** de aplicación: UI real, recuperación, permisos, borradores, inventario, CLIP simulado, controles e impresión Windows. Incluyen bloqueo entre ventanas, teléfono sin control con pago al recoger, preservación del carrito de mostrador y recuperación de la comanda desde otro cajero.
 - **2,700 comprobaciones PostgreSQL**: transacciones, revisiones obsoletas, lotes CSV atómicos, última pieza concurrente, venta/replay, devoluciones parciales, inventario apagado y reservas/liquidación CLIP. Incluyen 121 de teléfono: precio acordado, turno/tasa del pago, concurrencia, cancelación/merma y respaldo tipado de pedidos y reservas. No equivalen a certificar una restauración operativa completa de Auth, Windows y sus dispositivos.
 - **Auth/PostgREST y producción local**: roles reales, activación protegida, conteo, venta con control 30, no doble descuento, cancelación sin reposición automática, devolución/replay y pausa. Backend nuevo, sin acceder al cliente alojado.
 - **Navegador real** con los **82 productos** del menú de referencia: login, administración, Catálogo, inventario, Ventas, Caja, Clientes, Configuración, Equipo, respaldos, impresión y CLIP; detalle/conteo cero de inventario y diálogos de cobro/cierre. axe WCAG 2.2 AA y comprobación de desbordamiento. Las pantallas de configuración sin rutas privadas se revisan en su estado de configuración faltante, no como un respaldo físico ya instalado.
@@ -52,10 +52,10 @@ La aceptación pendiente debe comprobar desde arranque de Windows hasta venta mi
 
 La aceptación física anterior distingue el ticket V8 y las versiones de etiqueta efectivamente impresas. Ver [registro físico](printer-acceptance-2026-10-31.md). El diseño `reference-v2` y el control nuevo tienen render verificado; necesitan su propia confirmación en papel para afirmar aceptación completa. Se mantienen los ajustes de controladores y el diario histórico; no se cambia ni reenvía un documento viejo para aplicar un diseño nuevo.
 
-Inventario inicia **apagado**, CLIP continúa **apagado** y el token es un placeholder. La migración 017 está validada localmente, pendiente de despliegue alojado autorizado. El código publicado no instala ni certifica la nueva app en la PC del café.
+Inventario inicia **apagado**, CLIP continúa **apagado** y el token es un placeholder. Las migraciones 017–019 están validadas localmente, pendientes de despliegue alojado autorizado. El código publicado no instala ni certifica la nueva app en la PC del café.
 
 ## Repetir la revisión
 
-`npm test`, `npm run test:db`, `npm run lint` y `npm run typecheck` son independientes de datos del café. Para el recorrido de navegador, usar `POS_BROWSER_QUALITY=1` con `npm run test:admin-http`; requiere Docker Linux y Chromium/Edge instalado. GitHub ejecuta este modo en el job de integración.
+`npm test`, `npm run test:db`, `npm run lint` y `npm run typecheck` son independientes de datos del café. Para el recorrido de navegador, usar `POS_BROWSER_QUALITY=1` con `npm run test:admin-http` y `npm run test:phone-http`; requieren Docker Linux y Chromium/Edge instalado. GitHub ejecuta ambos en el job de integración. La revisión local puede usar `POS_ADMIN_TEST_PORT=3112` para conservar intacta una vista existente en 3111.
 
 Los reportes JSON y capturas quedan en `.staging-local/quality/<identidad>/`, ignorados por Git. El reporte conserva hallazgos y comprobaciones pendientes de axe, tamaños, viewport y métricas de laboratorio; no incluye contraseñas ni claves. `POS_RECEIPT_CONTRACT_EVIDENCE` enlaza los seis comprobantes de `test:db` con `test:printing`. Ninguna prueba cobra tarjetas o envía papel.

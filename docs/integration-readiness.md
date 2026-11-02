@@ -34,7 +34,7 @@ Código: [checkout](../lib/checkout.ts), [CLIP](../lib/clip-server.ts), [RPC fin
 
 | Verificación | Resultado registrado |
 | --- | --- |
-| `npm test` | 236 pruebas: UI real, recuperación, teléfono entre turnos, inventario, CLIP, controles y render Windows. |
+| `npm test` | 242 pruebas: UI real, recuperación, teléfono entre turnos, inventario, CLIP, controles y render Windows. |
 | `npm run test:db` | 2,700 comprobaciones; incluye 121 de teléfono, control presencial, recuperación histórica, inventario apagado/activo, reservas CLIP y gateway con proveedor simulado. |
 | TypeScript y lint | Sin errores ni advertencias. |
 | Producción / paquete Windows | Build aislado y paquete reubicado; 2,276 hashes de archivos verificados. |

@@ -56,6 +56,20 @@ test('cashier switches and closed shifts never inherit another user or shift dra
   assert.throws(()=>readCartDraft(original!,'bob','shift'),/No se pudo abrir el pedido/);
 });
 
+test('retiring a confirmed phone draft from a prior shift preserves the new binding identity and later counter order',()=>{
+  const f=fixture();let binding=f.bind('alice','old-shift');useCartStore.getState().addItem(coffee);useCartStore.getState().setPhoneOrder(true);useCartStore.getState().setPhoneName('Ana');useCartStore.getState().setPhoneContact('8681234567');
+  const oldRequest=binding.requestId();binding.disconnect();binding=f.bind('alice','new-shift');assert.equal(useCartStore.getState().items.length,0);assert.ok(f.values.has(cartDraftKey('alice')));
+  binding.retireRequest(oldRequest);assert.equal(f.values.has(cartDraftKey('alice')),false);assert.equal(useCartStore.getState().items.length,0);
+  useCartStore.getState().addItem(coffee);const newRequest=binding.requestId(),newRaw=f.values.get(cartDraftKey('alice'))!;assert.notEqual(newRequest,oldRequest);assert.equal(JSON.parse(newRaw).registerId,'new-shift');assert.deepEqual(f.errors,[]);
+  binding.retireRequest(oldRequest);assert.equal(f.values.get(cartDraftKey('alice')),newRaw);assert.equal(useCartStore.getState().getTotal(),50);assert.equal(binding.requestId(),newRequest);binding.disconnect();
+});
+
+test('a prior-shift phone draft already retired in another window does not leave the new binding storage expectation stale',()=>{
+  const f=fixture();let binding=f.bind('alice','old-shift');useCartStore.getState().addItem(coffee);const oldRequest=binding.requestId();binding.disconnect();binding=f.bind('alice','new-shift');
+  f.values.delete(cartDraftKey('alice'));binding.retireRequest(oldRequest);useCartStore.getState().addItem(coffee);
+  assert.deepEqual(f.errors,[]);assert.equal(JSON.parse(f.values.get(cartDraftKey('alice'))!).registerId,'new-shift');binding.disconnect();
+});
+
 test('corrupt drafts, invalid quantities and missing catalog choices are blocked without overwriting the saved draft',()=>{
   const f=fixture(); const b=f.bind(); useCartStore.getState().addItem(customizeProduct(coffee,[{...milk,price:10}],'')); b.disconnect();
   const raw=f.values.get(cartDraftKey('alice'))!;

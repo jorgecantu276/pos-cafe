@@ -33,7 +33,7 @@ export async function listPhoneOrders(client:Client,search='',signal?:AbortSigna
   if(error)throw new Error(error.message);if(!Array.isArray(data))throw new Error('No se pudieron cargar los pedidos.');return data.map(readPhoneOrder);
 }
 export async function getPhoneOrder(client:Client,id:string):Promise<PhoneOrder> {
-  const {data,error}=await withDeadline(()=>client.rpc('pos_phone_get',{p_id:id}));if(error)throw new Error(error.message);return readPhoneOrder(data);
+  const {data,error}=await withDeadline(()=>client.rpc('pos_phone_get',{p_id:id}));if(error)throw new Error(error.message);const order=readPhoneOrder(data);if(order.id!==id)throw new Error('No se pudo confirmar este pedido. Actualiza la lista.');return order;
 }
 export function readPhoneRequest(storage:Memory,actor:string):PhoneRequest|null {
   const raw=storage.getItem(phoneRequestKey(actor));if(!raw)return null;

@@ -84,7 +84,7 @@ El POS requiere conexión al backend. La PWA no habilita ventas offline: el serv
 | `npm run build:verify` | Compilación de producción aislada de la vista previa en ejecución. |
 | `npm audit` / `npm audit --omit=dev` | Dependencias completas y de ejecución. |
 
-La integración pasó localmente **236 pruebas y 2,700 comprobaciones de PostgreSQL**. GitHub Actions repite los checks Windows y los ensayos Auth/PostgREST y teléfono en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
+La integración pasó localmente **242 pruebas y 2,700 comprobaciones de PostgreSQL**. GitHub Actions repite los checks Windows y los ensayos Auth/PostgREST y teléfono en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
 
 Con `POS_BROWSER_QUALITY=1`, el ensayo HTTP también abre Chromium/Edge aislado y ejecuta axe WCAG 2.2 AA, navegación real, conteo cero por UI y revisión de desbordamiento sobre 82 productos de referencia. CI ejecuta este modo. Necesita un navegador Chromium instalado; no usa un perfil personal ni envía papel. Las mediciones locales de carga/eventos se registran como laboratorio, sin atribuirles cumplimiento de Core Web Vitals en campo.
 

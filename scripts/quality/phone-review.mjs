@@ -37,9 +37,10 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
   const ok=result=>{assert.ifError(result.error&&Error(result.error.message));return result.data;};
   const loginClient=async actor=>{const client=createClient(config.api,config.anon,{auth:{persistSession:false,autoRefreshToken:false}});clients.push(client);
     ok(await client.auth.signInWithPassword({email:`${actor.username}@carinitomio.local`,password:actor.password}));return client;};
-  const login=async actor=>{const context=await browser.newContext({viewport:{width:1366,height:768}});contexts.push(context);const page=await context.newPage();
+  const login=async(actor,savedStorage={})=>{const context=await browser.newContext({viewport:{width:1366,height:768}});contexts.push(context);const page=await context.newPage();
     page.on('dialog',dialog=>dialog.accept());
-    await page.goto(url+'/login');await page.getByRole('button',{name:actor.name||actor.full_name,exact:true}).click();
+    await page.goto(url+'/login');await page.evaluate(entries=>{for(const[key,value]of Object.entries(entries))localStorage.setItem(key,value);},savedStorage);
+    await page.getByRole('button',{name:actor.name||actor.full_name,exact:true}).click();
     await page.getByRole('textbox',{name:'Contraseña',exact:true}).fill(actor.password);await page.getByRole('button',{name:'Acceder',exact:true}).click();
     await page.waitForURL(url+'/');await page.locator('.workspace-product').first().waitFor();return page;};
   const spool=async()=>{try{return(await readFile(path.join(printDirectory,'mock-spool.jsonl'),'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line));}
@@ -127,6 +128,7 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     await pageA.reload();await pageA.getByRole('button',{name:'Comprobar pedido',exact:true}).waitFor();await audit(pageA,'phone-saved-reloaded');
     check('Reload does not silently resubmit or print an unknown save',(await spool()).filter(row=>row.orderId===prepId).length,0);
     check('Save request commits once',(await db.query("select count(*)::int n from pos_phone_orders where contact_name='QA teléfono cobro'")).rows[0].n,1);
+    const originalSaveStorage=await pageA.evaluate(()=>Object.fromEntries(Object.entries(localStorage).filter(([key])=>key.includes('cart_draft')||key.startsWith('pos_phone_request:'))));
     const firstContext=pageA.context();await firstContext.close();contexts.splice(contexts.indexOf(firstContext),1);
     const summary=ok(await actorA.rpc('pos_shift_summary',{p_register:initialRegister.id}));
     ok(await actorA.rpc('pos_close_shift',{p_register:initialRegister.id,p_counted:summary.expected_cash,p_expenses:summary.expenses,
@@ -203,7 +205,7 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     check('One resalable unit returns; one unit is waste',(await db.query('select quantity from pos_inventory_items where product_id=$1',[product])).rows[0].quantity,8);
     check('Cancellation never creates a paid sale',(await db.query('select count(*)::int n from orders where phone_order_id=$1',[cancellable.id])).rows[0].n,0);
     check('Cancellation does not modify member loyalty',(await db.query('select points,(total_spent*100)::integer spent_cents from customers where id=$1',[member])).rows[0],{points:61,spent_cents:11000});
-    await cancelQueue.getByRole('button',{name:'Cerrar Pedidos por cobrar',exact:true}).click();
+    await cancelQueue.waitFor({state:'hidden'});
     await pageB.route('**/rest/v1/rpc/pos_phone_list',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Prueba: no se pudo cargar la lista.'})}));
     const errorQueue=await openQueue(pageB);await errorQueue.getByRole('alert').filter({hasText:/Prueba/}).waitFor();await audit(pageB,'phone-list-error');
     await pageB.unroute('**/rest/v1/rpc/pos_phone_list');await errorQueue.getByRole('button',{name:'Actualizar pedidos',exact:true}).click();await errorQueue.getByText('No hay pedidos por cobrar.',{exact:true}).waitFor();
@@ -217,6 +219,18 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     check('Pagination sends previous folio cursor',pages.map(value=>value===null?null:String(value)),[null,'10000']);
     check('Pagination retains all distinct loaded orders',await paged.getByRole('button',{name:/^Abrir pedido /}).count(),201);
     await audit(pageB,'phone-list-pagination');await pageB.unroute('**/rest/v1/rpc/pos_phone_list');
+    const finalB=ok(await actorB.rpc('pos_shift_summary',{p_register:newRegister.id}));
+    ok(await actorB.rpc('pos_close_shift',{p_register:newRegister.id,p_counted:finalB.expected_cash,p_expenses:finalB.expenses,
+      p_preview:{cash_sales:finalB.cash_sales,total_sales:finalB.total_sales,expenses_revision:finalB.expenses_revision}}));
+    ok(await actorA.rpc('pos_open_shift',{p_request:randomUUID(),p_cash:100,p_rate:16}));
+    const returningA=await login(actors.cashier,originalSaveStorage);
+    await returningA.getByRole('button',{name:'Comprobar pedido',exact:true}).click();
+    await returningA.getByText(`Pedido #${phone.folio} pagado`,{exact:true}).waitFor();
+    check('Old save request retires after another cashier paid',await returningA.evaluate(actor=>localStorage.getItem(`pos_phone_request:v1:${actor}`),actors.cashier.id),null);
+    check('Old save recovery does not repeat preparation',(await spool()).filter(row=>row.orderId===prepId).length,2);
+    check('Old save recovery does not create another paid receipt',(await spool()).filter(row=>row.orderId===paid.id).length,1);
+    check('Old save recovery does not change sale count',(await db.query('select count(*)::int n from orders where phone_order_id=$1',[phone.id])).rows[0].n,1);
+    await twoSizes(returningA,'phone-old-save-after-payment');
     report.journalRows=journal().length;report.mockSpoolRows=(await spool()).length;report.pass=true;
   }catch(error){report.pass=false;report.error=error.message;throw error;}
   finally{await writeFile(path.join(directory,'report.json'),JSON.stringify(report,null,2));for(const context of contexts)await context.close();for(const client of clients)client.auth.stopAutoRefresh();await browser.close();console.log('Phone quality evidence: '+path.join(directory,'report.json'));}
