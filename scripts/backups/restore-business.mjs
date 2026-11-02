@@ -32,6 +32,10 @@ export async function restoreBusinessArchive(db,archive,{failBeforeCommit}={}){
     const actual=(await db.query(`select n.nspname||'.'||c.relname name from pg_class c join pg_namespace n on n.oid=c.relnamespace
       where c.relkind in ('r','p') and not c.relispartition and (n.nspname in ('public','cafe_private') or (n.nspname='auth' and c.relname in ('users','identities'))) order by 1`)).rows.map(row=>row.name);
     assert.deepEqual(actual,names,'El esquema de destino no coincide con las tablas del respaldo. Prepara el contrato correcto antes de restaurar.');
+    if(Object.hasOwn(archive.contract.files,'migrations/202611020021_staff_revision_read.sql')){
+      const projection=(await db.query("select has_column_privilege('authenticated','public.profiles','management_revision','SELECT') allowed")).rows[0].allowed;
+      assert.equal(projection,true,'Falta aplicar la migración 021 de lectura de Equipo en el destino.');
+    }
     await db.query('lock table '+tables.join(',')+' in access exclusive mode');
     for(const name of names){
       const columns=(await db.query(`select a.attname name,format_type(a.atttypid,a.atttypmod) type,a.attnotnull not_null,a.attidentity identity,a.attgenerated generated

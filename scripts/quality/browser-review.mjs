@@ -54,9 +54,11 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     });
     const screenshot=name.replaceAll('/','-')+'-'+layout.width+'x'+layout.height+'.png';
     await page.screenshot({path:path.join(directory,screenshot),fullPage:false});
-    const entry={name,layout,lab,violations:result.violations.map(v=>({id:v.id,impact:v.impact,description:v.description,helpUrl:v.helpUrl,nodes:v.nodes.map(n=>({target:n.target,summary:n.failureSummary}))})),incomplete:result.incomplete.map(v=>v.id),screenshot};
+    const loadFailures=await page.getByRole('alert').filter({has:page.getByRole('button',{name:'Volver a intentar',exact:true})}).allTextContents();
+    const entry={name,layout,lab,loadFailures,violations:result.violations.map(v=>({id:v.id,impact:v.impact,description:v.description,helpUrl:v.helpUrl,nodes:v.nodes.map(n=>({target:n.target,summary:n.failureSummary}))})),incomplete:result.incomplete.map(v=>v.id),screenshot};
     report.views.push(entry);console.log(`QUALITY ${name} ${layout.width}x${layout.height}: ${entry.violations.length} axe violations; ${layout.under44.length} targets below 44px; overflow=${layout.overflow}`);
     if(layout.overflow)console.log('Overflow diagnostics: '+JSON.stringify(layout.overflowElements));
+    assert.deepEqual(loadFailures,[],`${name} rendered a load failure instead of its usable content`);
   }
   try {
     const context=await browser.newContext({viewport:{width:1366,height:768}});await context.addInitScript(instrument);const page=await context.newPage();

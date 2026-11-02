@@ -1,6 +1,6 @@
 # Revisión de integración y preparación
 
-Fecha: **2 de noviembre de 2026**, America/Matamoros. Alcance: UI actual, CLIP, controles 1–30, inventario y pedidos por teléfono con pago al recoger; migraciones 017–020 y preparación de entrega.
+Fecha: **2 de noviembre de 2026**, America/Matamoros. Alcance: UI actual, CLIP, controles 1–30, inventario y pedidos por teléfono con pago al recoger; migraciones 017–021 y preparación de entrega.
 
 ## Dictamen
 
@@ -8,7 +8,7 @@ Fecha: **2 de noviembre de 2026**, America/Matamoros. Alcance: UI actual, CLIP, 
 
 **No activar el cobro automático CLIP todavía.** Faltan la habilitación efectiva de PinPad, el token privado, la configuración de la app instalada y una transacción real de aceptación autorizada. El receptor desplegado no inicia cargos.
 
-El inventario de la rama anterior está integrado en Catálogo, con activación inicial apagada, reservas CLIP y devoluciones explícitas. **017–020 ya están desplegadas al cliente, con respaldo previo/posterior y huellas conservadas de las 31 tablas existentes.** El control 1–30 se exige en mostrador; el pedido por teléfono persistido permite preparar sin pagar y cobrar al recoger sin control. Ver [pedidos por teléfono](phone-orders.md), [inventario](inventory.md) y [calidad frente a benchmarks](quality-review.md).
+El inventario de la rama anterior está integrado en Catálogo, con activación inicial apagada, reservas CLIP y devoluciones explícitas. **017–021 ya están desplegadas al cliente, con respaldo previo/posterior y huellas conservadas de las 31 tablas existentes.** El control 1–30 se exige en mostrador; el pedido por teléfono persistido permite preparar sin pagar y cobrar al recoger sin control. Ver [pedidos por teléfono](phone-orders.md), [inventario](inventory.md) y [calidad frente a benchmarks](quality-review.md).
 
 ## Conexiones revisadas
 
@@ -35,7 +35,7 @@ Código: [checkout](../lib/checkout.ts), [CLIP](../lib/clip-server.ts), [RPC fin
 | Verificación | Resultado registrado |
 | --- | --- |
 | `npm test` | Pruebas del commit: UI real, recuperación, teléfono entre turnos, inventario, CLIP, controles y render Windows. |
-| `npm run test:db` | 2,766 comprobaciones; incluye 121 de teléfono, control presencial, recuperación histórica, inventario apagado/activo, reservas CLIP y gateway con proveedor simulado. |
+| `npm run test:db` | 2,792 comprobaciones; incluye 121 de teléfono, control presencial, recuperación histórica, inventario apagado/activo, reservas CLIP y gateway con proveedor simulado. |
 | TypeScript y lint | Sin errores ni advertencias. |
 | Producción / paquete Windows | Build aislado y paquete reubicado; verificar el manifiesto y las huellas del candidato exacto, sin reutilizar cifras de otro paquete. |
 | Dependencias | Auditorías completas y de runtime: 0 vulnerabilidades al revisar este cambio. |
@@ -51,11 +51,11 @@ La revisión encontró y corrigió un rechazo incorrecto en el POST de CLIP cuan
 
 Se verificaron el enlace CLI y el destino privado del cliente; no se migró el backend histórico de `.env.local`.
 
-- Las 19 migraciones retenidas están sincronizadas; el último despliegue agrega **017–020** con huellas verificadas de las 31 tablas previas. El dry-run posterior no encuentra pendientes.
+- Las 20 migraciones retenidas están sincronizadas; el último despliegue agrega **017–021** con huellas verificadas de las 31 tablas previas. El dry-run posterior no encuentra pendientes.
 - `clip-webhook` v1 está activo. La excepción de JWT corresponde solo a ese receptor con nonce; no abre las RPC financieras al navegador.
 - GET devuelve 405; sin nonce, 400; una solicitud/nonce desconocidos devuelve 200 sin guardar pagos ni pistas.
 - Solo el servicio puede liquidar CLIP; anónimos/autenticados no pueden aprobar pagos ni leer el diario privado.
-- El despliegue 013–016 preservó las 28 tablas que existían entonces. El posterior 017–020 tuvo sus propios respaldos cifrados previo/posterior y preservó las **31 tablas existentes**; después hay 39 tablas. Venta, 82 productos, snapshots y configuración se conservan.
+- El despliegue 013–016 preservó las 28 tablas que existían entonces. El posterior 017–021 tuvo sus propios respaldos cifrados previo/posterior y preservó las **31 tablas existentes**; después hay 39 tablas. Venta, 82 productos, snapshots y configuración se conservan.
 - CLIP permanece **apagado**, el token sigue como placeholder y las tablas de pagos/pistas están vacías. No se cambió la app/configuración de la PC del café.
 
 Ver [registro de despliegue](clip-payments.md#authorized-cloud-deployment--november-2-2026).

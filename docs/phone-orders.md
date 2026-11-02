@@ -32,6 +32,6 @@ Con inventario apagado no se inventan cantidades ni movimientos. La activación 
 
 La migración `202611020019_phone_orders.sql` agrega pedidos, solicitudes recuperables, vínculo único a la venta y reservas. Guardar y cancelar conservan una identidad por operación; cobrar usa además el bloqueo global del pedido. Los respaldos nuevos incluyen pedidos, reservas, revisiones y secuencia de folios. Los archivos anteriores a esta migración siguen siendo legibles.
 
-Esta versión requiere las migraciones 017–020, ya desplegadas al cliente después de respaldo y comparación de huellas. Esto no instala el POS en el café ni certifica los nuevos documentos en papel; ver [entrega](delivery-readiness.md).
+Esta versión requiere las migraciones 017–021, ya desplegadas al cliente después de respaldo y comparación de huellas. Esto no instala el POS en el café ni certifica los nuevos documentos en papel; ver [entrega](delivery-readiness.md).
 
 Verificación: `npm test`, `npm run test:db`, `npm run test:printing` y `POS_BROWSER_QUALITY=1 npm run test:phone-http`. El último ensayo usa una base nueva en loopback 55501/55502, producción aislada en 3112, cuentas ficticias y cola simulada; conserva la vista de prueba existente en 3111.

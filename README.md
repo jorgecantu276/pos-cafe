@@ -9,7 +9,7 @@ Punto de venta para una cafetería con una sola caja física. Next.js 16.4.3, Re
 | Área | Estado |
 | --- | --- |
 | Ventas, Caja, Catálogo y Clientes | Conectados al backend; pruebas con datos sintéticos y Auth/PostgREST local. |
-| Backend del cliente | Las 19 migraciones retenidas, incluidas **017–020**, están aplicadas. Respaldo previo/posterior y huellas de las 31 tablas existentes conservadas. |
+| Backend del cliente | Las 20 migraciones retenidas, incluidas **017–021**, están aplicadas. Respaldo previo/posterior y huellas de las 31 tablas existentes conservadas. |
 | Receptor CLIP | `clip-webhook` v1 desplegado y verificado. Recibir un aviso no crea ni aprueba un cobro. |
 | Cobro automático CLIP | **Apagado. Token como placeholder.** Pendiente de habilitación de PinPad, token real y aceptación con la terminal. |
 | Controles de entrega 1–30 | Obligatorios en mostrador. **Pedido por teléfono** permite guardar sin control y cobrar al recoger. |
@@ -85,7 +85,7 @@ El POS requiere conexión al backend. La PWA no habilita ventas offline: el serv
 | `npm run build:verify` | Compilación de producción aislada de la vista previa en ejecución. |
 | `npm audit` / `npm audit --omit=dev` | Dependencias completas y de ejecución. |
 
-La integración incluye **2,766 comprobaciones de PostgreSQL**, pruebas de aplicación/recuperación y restauración operativa de un respaldo cifrado. GitHub Actions repite los checks Windows y los ensayos Auth/PostgREST, teléfono y restauración en los PR y en `main`; consultar el resultado del commit. El [plan de entrega](docs/delivery-readiness.md) conserva los límites de hardware y puesta en marcha.
+La integración incluye **2,792 comprobaciones de PostgreSQL**, pruebas de aplicación/recuperación y restauración operativa de un respaldo cifrado. GitHub Actions repite los checks Windows y los ensayos Auth/PostgREST, teléfono y restauración en los PR y en `main`; consultar el resultado del commit. El [plan de entrega](docs/delivery-readiness.md) conserva los límites de hardware y puesta en marcha.
 
 Con `POS_BROWSER_QUALITY=1`, el ensayo HTTP también abre Chromium/Edge aislado y ejecuta axe WCAG 2.2 AA, navegación real, conteo cero por UI y revisión de desbordamiento sobre 82 productos de referencia. CI ejecuta este modo. Necesita un navegador Chromium instalado; no usa un perfil personal ni envía papel. Las mediciones locales de carga/eventos se registran como laboratorio, sin atribuirles cumplimiento de Core Web Vitals en campo.
 
@@ -99,6 +99,6 @@ La PC de desarrollo prepara el paquete; la del café recibe una versión revisad
 
 Las migraciones 013–016 y el receptor CLIP ya están desplegados. Un respaldo cifrado previo y las huellas de las 28 tablas existentes confirmaron datos conservados. **No reinstalar estas migraciones ni activar CLIP para probar el despliegue.**
 
-La instalación conserva el POS anterior, configuración privada, respaldos y diario de impresión. **017–020 ya están desplegadas**; sus huellas conservaron las 31 tablas existentes y se verificaron respaldos cifrados antes/después. Inventario sigue apagado y no limita ni descuenta ventas; al activarlo se deberán registrar conteos físicos reales. La instalación y aceptación de la app completa en el café siguen siendo pasos separados.
+La instalación conserva el POS anterior, configuración privada, respaldos y diario de impresión. **017–021 ya están desplegadas**; sus huellas conservaron las 31 tablas existentes y se verificaron respaldos cifrados antes/después. Inventario sigue apagado y no limita ni descuenta ventas; al activarlo se deberán registrar conteos físicos reales. La instalación y aceptación de la app completa en el café siguen siendo pasos separados.
 
 Ver [contrato de base de datos](supabase/README.md), [instalación Windows](docs/windows-deployment.md), [respaldos](docs/business-backups.md) y [revisión de preparación](docs/integration-readiness.md).

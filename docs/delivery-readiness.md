@@ -14,7 +14,9 @@ Las pruebas incluyen el contraejemplo telefónico que antes faltaba: guardar con
 
 ## Backend y respaldos
 
-El cliente tiene aplicadas las 19 migraciones retenidas hasta **020**. El despliegue de 017–020 tuvo respaldo cifrado previo y posterior; las huellas conservaron las **31 tablas existentes**. Después hay 39 tablas. El inventario permanece apagado; no hubo cargos ni cambio del receptor CLIP.
+El cliente tiene aplicadas las 20 migraciones retenidas hasta **021**. El despliegue de 017–021 tuvo respaldo cifrado previo y posterior; las huellas conservaron las **31 tablas existentes**. Después hay 39 tablas. El inventario permanece apagado; no hubo cargos ni cambio del receptor CLIP.
+
+La migración 021 completa la lectura de la revisión de Equipo mediante la misma política de administrador/propio perfil; no amplía la lectura a columnas privadas. Las 26 comprobaciones nuevas reproducen el error anterior y verifican las proyecciones reales de la UI. La auditoría del navegador ahora rechaza una pantalla con fallo de carga, aunque no tenga infracciones de axe.
 
 El tipo guardado es **16 MXN/USD**. El turno histórico abierto a 18 requiere resolución por el responsable antes de la primera apertura nueva. No se altera retroactivamente ni se inventa un arqueo físico.
 
@@ -32,7 +34,7 @@ La configuración privada va fuera de las carpetas de versión. Debe tener el de
 
 ## Cambio de versión y vuelta atrás
 
-Conservar una versión corregida, compatible con 020, además del candidato de entrega. El respaldo de versión conserva la corrección telefónica, los bloqueos de pagos inciertos y el editor de equipo protegido. No usar como rollback una versión anterior que omita el control obligatorio o conserve el defecto de comanda.
+Conservar una versión corregida, compatible con 021, además del candidato de entrega. El respaldo de versión conserva la corrección telefónica, los bloqueos de pagos inciertos y el editor de equipo protegido. No usar como rollback una versión anterior que omita el control obligatorio o conserve el defecto de comanda.
 
 Para cambiar: resolver ventas/papel inciertos, detener la app, seleccionar la carpeta de versión validada y abrirla con la misma configuración privada y **el diario actual**. No retroceder migraciones, restaurar un diario viejo ni reenviar papel automáticamente. Las variantes `POS_REGISTER_UI=owner` y `prototype` conservan los handlers actuales; un cambio visual no restaura datos.
 

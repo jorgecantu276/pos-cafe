@@ -64,6 +64,10 @@ try{
   const beforeSequences=(await target.db.query("select pos_business_backup() raw")).rows[0].raw;
   const targetConfig={database:restoreConnection.href,confirmEmptyTarget:'RESTORE EMPTY LOCAL POS'};
   assert.throws(()=>restoreTarget({...targetConfig,database:'postgresql://postgres:fake@example.invalid/postgres'}));
+  await restoreDb.query('revoke select(management_revision) on public.profiles from authenticated');
+  await assert.rejects(restoreBusinessArchive(restoreDb,archive),/migración 021/);
+  await restoreDb.query('grant select(management_revision) on public.profiles to authenticated');
+  check('Restore refuses an incomplete staff projection contract',Number((await target.db.query('select count(*)::text n from profiles')).rows[0].n),0);
   const invalid=structuredClone(archive);
   invalid.snapshotJson=(await source.db.query("select jsonb_set($1::jsonb,array['tables','public.orders','rows','0','customer_id'],to_jsonb($2::text))::text raw",[archive.snapshotJson,randomUUID()])).rows[0].raw;
   await assert.rejects(restoreBusinessArchive(restoreDb,invalid),error=>error.code==='23503');

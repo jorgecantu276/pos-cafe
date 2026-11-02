@@ -15,6 +15,7 @@ cpSync(folder,relocated,{recursive:true});
 const hashes=JSON.parse(readFileSync(path.join(relocated,'SHA256.json'),'utf8'));
 for(const entry of hashes)assert.equal(createHash('sha256').update(readFileSync(path.join(relocated,entry.file))).digest('hex'),entry.sha256,entry.file);
 assert.ok(existsSync(path.join(relocated,'database-migrations/202611020020_delivery_readiness.sql')));
+assert.ok(existsSync(path.join(relocated,'database-migrations/202611020021_staff_revision_read.sql')));
 const example=JSON.parse(readFileSync(path.join(relocated,'pos-cafe-config.example.json'),'utf8'));
 assert.equal(example.ClipEnabled,false);assert.equal(example.ClipTokenFile,'');assert.equal(example.SupabaseServiceRoleKey,'');
 assert.equal(createHash('sha256').update(example.SupabaseAnonKey).digest('hex'),manifest.publicKeySha256);
