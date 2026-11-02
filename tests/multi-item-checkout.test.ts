@@ -94,7 +94,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
   };
   async function add(name:string,milk:string,note:string){
     const product=[...dom.window.document.querySelectorAll('.workspace-product')].find(p=>p.querySelector('strong')?.textContent===name);assert.ok(product);
-    await click(product);await click(button(milk));await click(button('Nota de preparación'));await typeNote(note);await click(button('Agregar'));
+    await click(product);await click(button(milk));await click(button('Nota de preparación'));await typeNote(note);await click(button('Agregar a la orden'));
   }
   cart.useCartStore.getState().clearCart();
   try{

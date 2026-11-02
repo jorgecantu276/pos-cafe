@@ -4,10 +4,10 @@ import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type R
 import ProductPhoto from '@/components/ProductPhoto';
 import { Keyboard, Minus, Plus, Search, X, Pencil, Trash2, Printer, UserRound, ChevronRight, Coffee, Settings2, ArrowRight } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/pos-types';
-import { hasPreparationNote, preparationNoteChoices, togglePreparationNote } from '@/lib/register-shortcuts';
 
 type RegisterProps = ComponentProps<typeof import('./PrototypeRegister').default> & {
   orderNote: string; onOrderNote: (value: string) => void;
+  catalogLoading?: boolean;
   favoriteProductIds?: readonly string[]; favoritesError?: string; favoritesLoading?: boolean; onRetryFavorites?: () => void; recentTicketsContent?: ReactNode;
 };
 type CheckoutProps = ComponentProps<typeof import('./PrototypeRegister').PrototypeCheckout>;
@@ -54,7 +54,7 @@ const ProductButton = memo(function ProductButton({ product, disabled, onProduct
 }) {
   return <button className="workspace-product has-photo" disabled={disabled}
     onClick={() => onProduct(product)} title={product.name} aria-label={`${product.name}, ${money(Number(product.price))}`}>
-    <ProductPhoto product={product} width={72} height={72} />
+    <ProductPhoto product={product} width={56} height={56} illustrativeFallback={false} />
     <span className="workspace-product-copy"><strong>{product.name}</strong><span>{money(Number(product.price))}</span></span>
   </button>;
 });
@@ -63,25 +63,31 @@ export default function WorkspaceRegister(p: RegisterProps) {
   const [panel, setPanel] = useState<'customer' | 'ticket' | null>(null);
   const [keyboard, setKeyboard] = useState(false);
   const [ticket, setTicket] = useState('');
+  const [category, setCategory] = useState<string | null>(null);
   const catalogRef = useRef<HTMLDivElement>(null);
   const favorites = useMemo(() => {
     const active = new Map(p.products.filter(product => product.is_active).map(product => [product.id, product]));
     return [...new Set(p.favoriteProductIds ?? [])].slice(0, 8).map(id => active.get(id)).filter((product): product is CatalogProduct => Boolean(product));
   }, [p.products, p.favoriteProductIds]);
+  const categories = useMemo(() => [...new Set(p.products.filter(product => product.is_active)
+    .map(product => product.category || 'Otros'))].sort((a, b) => a.localeCompare(b, 'es')), [p.products]);
+  const selectedCategory = category !== null && categories.includes(category) ? category : null;
   const groups = useMemo(() => {
     const active = p.products.filter(product => product.is_active);
     const groups = new Map<string, CatalogProduct[]>();
     const term = normalize(p.search.trim());
     for (const product of active) {
       const group = product.category || 'Otros';
+      if (selectedCategory !== null && group !== selectedCategory) continue;
       if (!normalize(product.name).includes(term)) continue;
       const rows = groups.get(group) ?? []; rows.push(product); groups.set(group, rows);
     }
     for (const rows of groups.values()) rows.sort((a, b) => a.name.localeCompare(b.name, 'es'));
     return [...groups].sort(([a], [b]) => a.localeCompare(b, 'es'));
-  }, [p.products, p.search]);
+  }, [p.products, p.search, selectedCategory]);
   const count = groups.reduce((sum, [, products]) => sum + products.length, 0);
   const filter = (value: string) => { p.onSearch(value); catalogRef.current?.scrollTo?.({ top: 0 }); };
+  const chooseCategory = (value: string | null) => { setCategory(value); catalogRef.current?.scrollTo?.({ top: 0 }); };
   return <div className="workspace-register">
     <div className="workspace-notices">{p.notices}</div>
     <main className="workspace-body">
@@ -97,18 +103,19 @@ export default function WorkspaceRegister(p: RegisterProps) {
             {p.search && <button type="button" aria-label="Limpiar búsqueda" className="workspace-icon" onClick={() => filter('')}><X size={20} /></button>}
             <button type="button" className="workspace-icon" aria-label="Teclado de búsqueda" aria-pressed={keyboard} onClick={() => setKeyboard(!keyboard)}><Keyboard size={22} /></button>
           </div>
-          <button type="button" aria-label="Tickets" className="workspace-icon" onClick={() => setPanel('ticket')}><Printer size={21} /></button>
+          <button type="button" aria-label="Tickets" className="workspace-tickets" onClick={() => setPanel('ticket')}><Printer size={20} /><span>Tickets</span></button>
         </div>
+        <nav className="workspace-categories" aria-label="Categorías del menú"><button type="button" aria-pressed={selectedCategory === null} onClick={() => chooseCategory(null)}>Todos</button>{categories.map(name => <button type="button" key={name} aria-pressed={selectedCategory === name} onClick={() => chooseCategory(name)}>{name}</button>)}{p.isAdmin && !p.search.trim() && !favorites.length && !p.favoritesLoading && !p.favoritesError && <a href="/admin/favoritos">Elegir favoritos</a>}</nav>
         <div className="workspace-catalog-scroll" ref={catalogRef}>
-          {!p.search.trim() && (favorites.length > 0 || p.isAdmin || p.favoritesError || p.favoritesLoading) && <section className="workspace-product-group workspace-favorites-group" aria-label="Favoritos" aria-busy={p.favoritesLoading || undefined}><div className="workspace-favorites-heading"><h2>Favoritos</h2>{p.isAdmin && <a href="/admin/favoritos">Elegir favoritos</a>}</div>
+          {!p.search.trim() && selectedCategory === null && (favorites.length > 0 || p.favoritesError || p.favoritesLoading) && <section className="workspace-product-group workspace-favorites-group" aria-label="Favoritos" aria-busy={p.favoritesLoading || undefined}>{favorites.length > 0 && <div className="workspace-favorites-heading"><h2>Favoritos</h2>{p.isAdmin && <a href="/admin/favoritos">Elegir favoritos</a>}</div>}
             {p.favoritesLoading && <p role="status" className="workspace-favorites-message">Cargando favoritos…</p>}
             {p.favoritesError && <div role="status" className="workspace-favorites-message"><span>{p.favoritesError}</span>{p.onRetryFavorites && <button type="button" disabled={p.favoritesLoading} onClick={p.onRetryFavorites}>Reintentar favoritos</button>}</div>}
-            {favorites.length > 0 ? <div className="workspace-product-grid">{favorites.map(product => <ProductButton key={product.id} product={product} disabled={p.disabled} onProduct={p.onProduct}/>)}</div> : !p.favoritesError && !p.favoritesLoading && <p className="workspace-favorites-message">Elige hasta 8 productos para tenerlos a la mano.</p>}
+            {favorites.length > 0 && <div className="workspace-product-grid">{favorites.map(product => <ProductButton key={product.id} product={product} disabled={p.disabled} onProduct={p.onProduct}/>)}</div>}
           </section>}
           {groups.map(([name, products]) => <section key={name} className="workspace-product-group" aria-label={name}>
             <h2>{name}</h2><div className="workspace-product-grid">{products.map(product => <ProductButton key={product.id} product={product} disabled={p.disabled} onProduct={p.onProduct} />)}</div>
           </section>)}
-          {!count && <p className="workspace-empty">{p.search ? 'No se encontraron productos.' : 'Cargando menú…'}</p>}
+          {!count && <p className="workspace-empty" role="status">{p.catalogLoading ? 'Cargando menú…' : p.search ? 'No se encontraron productos. Prueba otro nombre o categoría.' : 'No hay productos disponibles.'}</p>}
         </div>
         {keyboard && <div className="workspace-search-keys"><div><button type="button" onClick={() => setKeyboard(false)}>Listo</button></div><WorkspaceKeyboard value={p.search} onChange={filter} /></div>}
       </section>
@@ -116,7 +123,7 @@ export default function WorkspaceRegister(p: RegisterProps) {
         <span className="workspace-order-count">{p.items.reduce((sum, item) => sum + item.quantity, 0)}</span><button type="button" className="workspace-icon" aria-label="Vaciar orden" disabled={!p.items.length || p.disabled} onClick={() => { if (confirm('¿Vaciar esta orden?')) p.onClear(); }}><Trash2 size={20} /></button></header>
         <button type="button" className="workspace-order-client" disabled={p.disabled} onClick={() => setPanel('customer')}><UserRound size={19} /><span>{p.customer?.name ?? 'Cliente (opcional)'}</span><ChevronRight size={18} /></button>
         <div className="workspace-order-lines">{p.items.map(item => <button type="button" className="workspace-order-line" key={item.id} aria-label={`Editar ${item.product.name}`} disabled={p.disabled} onClick={() => p.onEdit(item)}>
-          <span><span className="workspace-line-count">{item.quantity} × </span>{item.product.name}</span><strong>{money(Math.round(item.quantity * item.product.price * 100) / 100)}</strong>
+          <span><span className="workspace-line-count">{item.quantity} × </span>{item.product.name}</span><strong>{money(Math.round(item.quantity * item.product.price * 100) / 100)}</strong><Pencil className="workspace-line-edit" size={16} aria-hidden="true" />
           {(item.product.displayExtras?.length || item.product.note) ? <small>{[...(item.product.displayExtras ?? []).map(extra => extra.name), item.product.note].filter(Boolean).join(' · ')}</small> : null}
         </button>)}{!p.items.length && <div className="workspace-empty-order"><Coffee size={34} aria-hidden="true" /><strong>Orden vacía</strong><p>Toca un producto del menú.</p></div>}</div>
         <footer className="workspace-order-footer"><div className="workspace-total"><span>Total <small>MXN</small></span><strong>{money(p.total)}</strong></div>
@@ -124,7 +131,7 @@ export default function WorkspaceRegister(p: RegisterProps) {
       </aside>
     </main>
     {panel === 'ticket' && <WorkspaceDialog title="Reimprimir ticket" onClose={() => setPanel(null)} className="workspace-ticket-dialog"><div className="workspace-dialog-content">{p.recentTicketsContent}<label>Folio<input aria-label="Folio del ticket" inputMode="numeric" value={ticket} onChange={event => setTicket(event.target.value.replace(/\D/g, ''))} /></label><WorkspaceKeyboard numeric value={ticket} onChange={value => { if (/^\d*$/.test(value)) setTicket(value); }} />
-      <div className="workspace-actions"><button type="button" onClick={() => p.onReprint()}>Último ticket</button><button type="button" className="workspace-primary" disabled={!ticket} onClick={() => p.onReprint(ticket)}>Buscar ticket</button></div></div></WorkspaceDialog>}
+      <div className="workspace-actions"><button type="button" onClick={() => p.onReprint()}>Reimprimir último</button><button type="button" className="workspace-primary" disabled={!ticket} onClick={() => p.onReprint(ticket)}>Reimprimir folio</button></div></div></WorkspaceDialog>}
     {panel === 'customer' && <WorkspaceDialog title="Cliente" onClose={() => setPanel(null)}><div className="workspace-dialog-content"><div className="workspace-input-row"><input aria-label="Buscar cliente" placeholder="Teléfono del cliente" value={p.customerSearch} onChange={event => p.onCustomerSearch(event.target.value)} /><button type="button" onClick={() => { setPanel(null); p.onNewCustomer(); }}>Nuevo cliente</button></div>
       {p.customerSearching?<p role="status">Buscando cliente…</p>:p.customerSearchError?<p role="alert">{p.customerSearchError} <button type="button" onClick={p.onRetryCustomerSearch}>Reintentar búsqueda</button></p>:p.customerSearch.trim().length>=2&&!p.suggestions.length?<p>No hay coincidencias. Revisa el teléfono antes de registrar.</p>:null}
       <div className="workspace-customer-results">{p.suggestions.map(customer => <button type="button" key={customer.id} onClick={() => { p.onCustomer(customer); setPanel(null); }}>{customer.name}<span>{customer.phone || customer.customer_code}</span></button>)}</div><WorkspaceKeyboard value={p.customerSearch} onChange={p.onCustomerSearch} />
@@ -137,15 +144,14 @@ export function WorkspaceCustomization(p: CustomizationProps) {
   const choices = p.steps.map((step, index) => ({ step, index })).filter(({ step }) => step.id !== 'notes');
   return <WorkspaceDialog title={p.product.name} onClose={p.onClose} className="workspace-customization"><div className="workspace-dialog-content">
     {p.quantity !== undefined && <div className="workspace-edit-quantity"><span>Cantidad</span><button type="button" aria-label="Reducir cantidad" disabled={p.quantity <= 1} onClick={() => p.onQuantity?.(p.quantity! - 1)}><Minus size={22} /></button><strong>{p.quantity}</strong><button type="button" aria-label="Aumentar cantidad" onClick={() => p.onQuantity?.(p.quantity! + 1)}><Plus size={22} /></button></div>}
-    {choices.map(({ step, index }) => <fieldset className="workspace-modifier-group" key={step.id}><legend>{step.title}</legend><div>{step.options.map(name => {
+    {choices.map(({ step, index }) => <fieldset className="workspace-modifier-group" key={step.id}><legend>{step.title.replace(/^Seleccionar /, '')}</legend><p className="workspace-modifier-help">Opcional · {step.exclusive ? 'elige una opción' : 'puedes elegir varias'}. Sin selección no se agrega este modificador.</p><div>{step.options.map(name => {
       const extra = p.dbExtras.find(extra => extra.name === name && extra.phase === step.id);
       const selected = p.extras.some(extra => extra.name === name && (!extra.phase || extra.phase === step.id));
       return <button type="button" key={name} aria-pressed={selected} onClick={() => p.onOption(name, index)}>{name}{Number(extra?.price) > 0 && <span>+{money(Number(extra?.price))}</span>}</button>;
     })}</div></fieldset>)}
-    <div className="workspace-preparation-chips" role="group" aria-label="Notas rápidas de preparación">{preparationNoteChoices.map(choice => <button type="button" key={choice} aria-pressed={hasPreparationNote(p.note, choice)} disabled={!hasPreparationNote(p.note, choice) && togglePreparationNote(p.note, choice) === p.note} onClick={() => p.onNote(togglePreparationNote(p.note, choice))}>{choice}</button>)}</div>
     <button type="button" className="workspace-note-toggle" aria-expanded={notes} onClick={() => setNotes(!notes)}><Pencil size={17} />{p.note || 'Nota de preparación'}</button>
     {notes && <><textarea aria-label="Notas de preparación" rows={2} value={p.note} maxLength={1000} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
-  </div><footer>{p.onRemove && <button type="button" onClick={p.onRemove}>Quitar</button>}<span className="workspace-custom-price">{money((p.quantity ?? 1) * (Number(p.product.basePrice ?? p.product.price) + p.extras.reduce((sum, extra) => sum + extra.price, 0)))}</span><button type="button" className="workspace-primary" onClick={p.onConfirm}>{p.quantity !== undefined ? 'Listo' : 'Agregar'}</button></footer></WorkspaceDialog>;
+  </div><footer>{p.onRemove && <button type="button" onClick={p.onRemove}>Quitar</button>}<span className="workspace-custom-price">{money((p.quantity ?? 1) * (Number(p.product.basePrice ?? p.product.price) + p.extras.reduce((sum, extra) => sum + extra.price, 0)))}</span><button type="button" className="workspace-primary" onClick={p.onConfirm}>{p.quantity !== undefined ? 'Guardar cambios' : 'Agregar a la orden'}</button></footer></WorkspaceDialog>;
 }
 
 export function WorkspaceCheckout(p: CheckoutProps) {

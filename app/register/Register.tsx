@@ -141,6 +141,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [activeExtras, setActiveExtras] = useState<CartExtra[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingQuantity, setEditingQuantity] = useState(1);
   const [productNote, setProductNote] = useState('');
   const [customizationStep, setCustomizationStep] = useState(0);
 
@@ -513,6 +514,7 @@ const handleSaveAndClose = async () => {
     setActiveExtras(item.product.displayExtras || []);
     setProductNote(item.product.note || '');
     setEditingItemId(item.id);
+    setEditingQuantity(item.quantity);
     setDynamicSteps(steps);
     setCustomizationStep(0);
   };
@@ -520,7 +522,7 @@ const handleSaveAndClose = async () => {
   const handleConfirmAdd = () => {
     if (!selectedProduct) return;
     const productWithExtras = customizeProduct(selectedProduct, activeExtras, productNote);
-    if (editingItemId) replaceItem(editingItemId, productWithExtras);
+    if (editingItemId) replaceItem(editingItemId, productWithExtras, editingQuantity);
     else addItem(productWithExtras);
     setEditingItemId(null);
     setSelectedProduct(null);
@@ -910,6 +912,7 @@ const handleSaveAndClose = async () => {
         favoriteProductIds={favoriteProductIds} favoritesError={favoritesError} favoritesLoading={favoritesLoading} onRetryFavorites={()=>{setFavoritesLoading(true);setFavoritesError('');setFavoritesAttempt(value=>value+1);}}
         recentTicketsContent={<RecentTickets key={drawerActor} onReprint={ticket=>void reprintHistoricalTicket(ticket)} disabled={isProcessingCheckout || isClosingShift}/>}
         userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout}
+        {...(appearance === 'workspace' ? { catalogLoading: loading } : {})}
         onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={updateQuantity} onRemove={removeItem} onClear={handleClearOrder} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
         onHandoff={()=>void handleOpenCierre('handoff')}
         customerSearchError={customerSearchError} customerSearching={customerSearching} onRetryCustomerSearch={()=>void handleCustomerSearchInput(customerSearch)} customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
@@ -1205,8 +1208,8 @@ const handleSaveAndClose = async () => {
         onMXN={setAmountReceivedMXN} onUSD={setAmountReceivedUSD} onOrderType={setOrderType} onNote={setOrderNote} onConfirm={()=>void processCheckout()} onClose={()=>setShowCheckoutModal(false)}/>}
       {selectedProduct&&dynamicSteps.length>0&&appearance!=='owner'&&<CustomizationView product={selectedProduct} steps={dynamicSteps} index={customizationStep} extras={activeExtras} dbExtras={dbExtras}
         note={productNote} onNote={setProductNote} onStep={setCustomizationStep}
-        quantity={editingItemId?items.find(item=>item.id===editingItemId)?.quantity:undefined}
-        onQuantity={quantity=>{if(editingItemId)updateQuantity(editingItemId,quantity);}}
+        quantity={editingItemId?editingQuantity:undefined}
+        onQuantity={setEditingQuantity}
         onRemove={editingItemId?()=>{removeItem(editingItemId);setSelectedProduct(null);setEditingItemId(null);setActiveExtras([]);setProductNote('');}:undefined}
         onOption={(optName:string,stepIndex:number=customizationStep)=>{
           const step=dynamicSteps[stepIndex],matches=(extra:CartExtra)=>extra.name===optName&&(!extra.phase||extra.phase===step.id);

@@ -36,7 +36,7 @@ interface CartStore {
   setCustomerId: (value: string | null) => void;
   addItem: (product: Product) => void;
   removeItem: (itemId: string) => void;
-  replaceItem: (itemId: string, product: Product) => void;
+  replaceItem: (itemId: string, product: Product, quantity?: number) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   clearCart: () => void;
   getTotal: () => number;
@@ -100,9 +100,10 @@ export const createCartStore = () => create<CartStore>((set, get) => ({
     items: state.items.filter(i => i.id !== itemId) 
   })),
 
-  // Editing replaces only the chosen line and preserves its quantity.
-  replaceItem: (itemId, product) => set(state => ({
-    items: state.items.map(item => item.id === itemId ? { ...item, product } : item),
+  // Commit the edited product and quantity together so draft persistence sees one change.
+  replaceItem: (itemId, product, quantity) => set(state => ({
+    items: state.items.map(item => item.id === itemId ? { ...item, product,
+      quantity: quantity !== undefined && Number.isFinite(quantity) ? Math.max(1, Math.floor(quantity)) : item.quantity } : item),
   })),
 
   updateQuantity: (itemId, qty) => set((state) => ({

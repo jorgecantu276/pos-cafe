@@ -81,16 +81,27 @@ test('favorites display owner order, hide inactive items and keep the entire sea
   let retries=0;
   await render(async(screen,click)=>{assert.match(screen.querySelector('[aria-label="Favoritos"]')!.textContent!,/No se pudieron cargar/);await click('Reintentar favoritos');assert.equal(retries,1);await click('Latte, $70.00');assert.equal(added,second);},createElement(WorkspaceRegister,{...props,favoriteProductIds:[],favoritesError:'No se pudieron cargar los favoritos.',onRetryFavorites:()=>{retries++;}}));
   await render(async(screen)=>{assert.match(screen.querySelector('[aria-label="Favoritos"]')!.textContent!,/Cargando favoritos/);assert.equal(screen.querySelectorAll('.workspace-product').length,2);},createElement(WorkspaceRegister,{...props,favoriteProductIds:[],favoritesLoading:true}));
+  await render(async(screen,click)=>{
+    assert.equal(screen.querySelector('[aria-label="Favoritos"]'),null);
+    assert.equal(screen.querySelectorAll('.workspace-product img').length,0);
+    assert.equal(screen.querySelector('[aria-label="Categorías del menú"] a')?.textContent,'Elegir favoritos');
+    await click('Postres');
+    assert.deepEqual([...screen.querySelectorAll('.workspace-product strong')].map(node=>node.textContent),['Brownie']);
+    await click('Brownie, $30.00');assert.equal(added,'dessert');
+    assert.equal(screen.querySelector('.workspace-total strong')?.textContent,'$0.00');
+    await click('Todos');assert.equal(screen.querySelectorAll('.workspace-product').length,3);
+  },createElement(WorkspaceRegister,{...props,isAdmin:true,favoriteProductIds:[],products:[...props.products,{id:'dessert',name:'Brownie',price:30,category:'Postres',is_active:true}]}));
 });
 
-test('preparation chips use only ordinary notes and preserve charged milk modifiers and their total',async()=>{
-  let selected=0,note='Para Ana';
+test('preparation notes remain editable without universal shortcuts or changes to paid modifiers',async()=>{
+  let selected=0,note='Para Ana\nSin hielo\nSin azúcar';
   function Customization(){const [value,setValue]=useState(note);return createElement(WorkspaceCustomization,{product:{id:first,name:'Latte',price:70,category:'Bebidas'},steps:[],index:0,extras:[{id:'milk',name:'Almendra',price:15,phase:'Leche'}],dbExtras:[],note:value,onNote:text=>{note=text;setValue(text);},onStep:()=>{},onOption:()=>{selected++;},onConfirm:()=>{},onClose:()=>{}});}
   await render(async(screen,click)=>{
-    await click('Sin hielo');await click('Sin azúcar');assert.equal(note,'Para Ana\nSin hielo\nSin azúcar');assert.match(screen.querySelector('.workspace-custom-price')!.textContent!,/85\.00/);
+    assert.equal(screen.querySelector('[aria-label="Notas rápidas de preparación"]'),null);
+    assert.match(screen.querySelector('.workspace-custom-price')!.textContent!,/85\.00/);
     await click('Para Ana\nSin hielo\nSin azúcar');
     const editor=screen.querySelector<HTMLTextAreaElement>('[aria-label="Notas de preparación"]')!;
     assert.equal(editor.tagName,'TEXTAREA');assert.equal(editor.value,'Para Ana\nSin hielo\nSin azúcar');assert.equal(editor.maxLength,1000);
-    await click('Sin hielo');assert.equal(note,'Para Ana\nSin azúcar');assert.equal(editor.value,'Para Ana\nSin azúcar');assert.equal(selected,0);
+    assert.equal(note,'Para Ana\nSin hielo\nSin azúcar');assert.equal(selected,0);
   },createElement(Customization));
 });
