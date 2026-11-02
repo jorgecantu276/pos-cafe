@@ -44,12 +44,15 @@ export async function browserQualityReview({url,actors,db}) {
         const target=e.matches('input[type=checkbox],input[type=radio],input[type=file]')?(e.closest('label')||e):e;
         const r=target.getBoundingClientRect();return {name:(e.getAttribute('aria-label')||e.textContent||e.getAttribute('placeholder')||e.tagName).trim().slice(0,90),width:Math.round(r.width),height:Math.round(r.height)};
       });
-      return {width:innerWidth,height:innerHeight,overflow:document.documentElement.scrollWidth>innerWidth+1,controls:controls.length,under44:controls.filter(c=>c.width<44||c.height<44),under24:controls.filter(c=>c.width<24||c.height<24)};
+      const overflow=document.documentElement.scrollWidth>innerWidth+1;
+      const overflowElements=overflow?[...document.querySelectorAll('body *')].filter(visible).filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,12).map(e=>({tag:e.tagName,class:e.className,right:Math.round(e.getBoundingClientRect().right),width:Math.round(e.getBoundingClientRect().width)})):[];
+      return {width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,overflow,overflowElements,controls:controls.length,under44:controls.filter(c=>c.width<44||c.height<44),under24:controls.filter(c=>c.width<24||c.height<24)};
     });
     const screenshot=name.replaceAll('/','-')+'-'+layout.width+'x'+layout.height+'.png';
     await page.screenshot({path:path.join(directory,screenshot),fullPage:false});
     const entry={name,layout,lab,violations:result.violations.map(v=>({id:v.id,impact:v.impact,description:v.description,helpUrl:v.helpUrl,nodes:v.nodes.map(n=>({target:n.target,summary:n.failureSummary}))})),incomplete:result.incomplete.map(v=>v.id),screenshot};
     report.views.push(entry);console.log(`QUALITY ${name} ${layout.width}x${layout.height}: ${entry.violations.length} axe violations; ${layout.under44.length} targets below 44px; overflow=${layout.overflow}`);
+    if(layout.overflow)console.log('Overflow diagnostics: '+JSON.stringify(layout.overflowElements));
   }
   try {
     const context=await browser.newContext({viewport:{width:1366,height:768}});await context.addInitScript(instrument);const page=await context.newPage();

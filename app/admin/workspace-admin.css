@@ -142,7 +142,8 @@
   .workspace-sales-total { gap: 6px; }
 }
 @media (max-width: 540px) {
-  .workspace-admin > header { gap: 8px; }
+  .workspace-admin > header { gap: 8px; flex-wrap:wrap; }
+  .workspace-admin-location > a.workspace-admin-parent { display:none; }
   .workspace-admin-location > a { font-size: 14px; gap: 8px; }
   .workspace-admin-back { font-size: 12px; padding-inline: 10px; }
   .workspace-admin main > div > header { align-items: flex-start; gap: 16px; flex-wrap: wrap; }

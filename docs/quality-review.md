@@ -29,6 +29,8 @@ En ese recorrido, el LCP observado estuvo entre **64 y 264 ms**, la suma local d
 
 La inspección encontró problemas que las pruebas funcionales anteriores no detectaban: contraste, enlaces superiores pequeños, foco de una región desplazable a menor altura y el contrato de tickets que se probaba antes de algunas migraciones. La suite ahora incluye esas condiciones.
 
+El primer recorrido de CI en Linux también detectó un desbordamiento a 320 px que no aparecía en Edge/Windows. La cabecera móvil permite envolver sus enlaces y omite la ruta padre redundante, que sigue disponible en la navegación de Catálogo. El check de 320 px se conserva: no se oculta el desbordamiento para forzar un aprobado.
+
 ## PC y display del café
 
 | Dato conocido | Qué permite concluir / qué falta |
