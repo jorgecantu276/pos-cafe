@@ -2,6 +2,7 @@
 
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {SalePrintJob,PrintAudience} from '@/lib/sale-printing';
+import {printRequestTarget} from '@/lib/sale-printing';
 import type {PrintRecoveryAudit,PrintRecoveryAction} from '@/lib/print-journal-server';
 import {SettingsGroup,SettingsNotice} from '../Settings';
 
@@ -33,7 +34,9 @@ export default function PrintRecoveryPage(){
       if(recover&&!saved)throw Error('No hay una revisión pendiente.');
       const request:Recovery=recover?JSON.parse(saved!):input;
       localStorage.setItem(key(data.actorId),JSON.stringify(request));setPending(request);
-      const response=await fetch('/api/printing',{method:'POST',headers:{'X-Pos-Print':'1','Content-Type':'application/json'},body:JSON.stringify(request),signal:AbortSignal.timeout(70_000)});
+      const target=printRequestTarget(request.orderId);
+      const {orderId:_orderId,...fields}=request;
+      const response=await fetch(target.url,{method:'POST',headers:{'X-Pos-Print':'1','Content-Type':'application/json'},body:JSON.stringify(target.url==='/api/printing'?request:{...fields,...target.body}),signal:AbortSignal.timeout(70_000)});
       const reply=await response.json();
       if(!response.ok){
         if([400,403,404,409].includes(response.status)){localStorage.removeItem(key(data.actorId));setPending(null);}

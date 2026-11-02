@@ -34,7 +34,16 @@ test('draft survives a fresh store with quantities, extras, both notes and order
   assert.equal(useCartStore.getState().orderType,'Para Llevar'); assert.equal(useCartStore.getState().orderNote,'Puerta');
   assert.equal(useCartStore.getState().customerId,'member-id'); assert.equal(f.notices,1);
   const raw=f.values.get(cartDraftKey('alice'))!;
-  assert.ok(!raw.includes('customer_name') && !raw.includes('phone')); binding.disconnect();
+  assert.ok(!raw.includes('customer_name'));assert.equal(JSON.parse(raw).phoneName,'');assert.equal(JSON.parse(raw).phoneContact,'');binding.disconnect();
+});
+
+test('phone contact and source survive a draft restart, while payment of a saved phone order preserves a separate counter draft',()=>{
+  const f=fixture();let binding=f.bind();useCartStore.getState().addItem(coffee);useCartStore.getState().setPhoneOrder(true);useCartStore.getState().setPhoneName('Ana');useCartStore.getState().setPhoneContact('8681234567');binding.disconnect();
+  binding=f.bind();assert.equal(useCartStore.getState().phoneOrder,true);assert.equal(useCartStore.getState().phoneName,'Ana');assert.equal(useCartStore.getState().phoneContact,'8681234567');
+  useCartStore.getState().setPagerNumber(1);assert.equal(useCartStore.getState().phoneOrder,false);const identity=binding.requestId();binding.disconnect();
+  f.values.set('mi_cafe_checkout_review:alice',JSON.stringify({requestId:crypto.randomUUID(),payload:{phone_order_id:'saved-phone'}}));
+  binding=f.bind();assert.equal(useCartStore.getState().getTotal(),50);assert.equal(useCartStore.getState().pagerNumber,1);assert.equal(binding.requestId(),identity);
+  useCartStore.getState().clearCart();assert.equal(useCartStore.getState().phoneOrder,false);assert.equal(useCartStore.getState().phoneName,'');assert.equal(useCartStore.getState().phoneContact,'');binding.disconnect();
 });
 
 test('cashier switches and closed shifts never inherit another user or shift draft',()=>{

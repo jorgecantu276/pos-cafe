@@ -49,6 +49,28 @@ test('AES-GCM archive validates key/content/contract and preserves exact databas
   assert.throws(() => encryptBusinessArchive({ ...archive, snapshotJson: JSON.stringify(partialRow) }, key), /incompleta/);
 });
 
+test('phone backup contract requires durable state without rejecting archives made before migration 019', () => {
+  const key=randomBytes(32);
+  assert.deepEqual(decryptBusinessArchive(encryptBusinessArchive(archive,key),key),archive);
+  const current=structuredClone(archive);
+  const content='-- Synthetic migration 019 contract';
+  Object.assign(current.contract.files,{'migrations/202611020019_phone_orders.sql':{content,sha256:sha256(Buffer.from(content))}});
+  assert.throws(()=>encryptBusinessArchive(current,key),/pedidos por teléfono/);
+  const state=JSON.parse(current.snapshotJson);
+  for(const name of ['public.pos_phone_orders','cafe_private.phone_requests','cafe_private.inventory_reservations']) {
+    state.tables[name]={columns:[{name:'id',type:'uuid'}],rows:[]};
+  }
+  current.snapshotJson=JSON.stringify(state);
+  assert.throws(()=>encryptBusinessArchive(current,key),/secuencia/);
+  state.sequences['public.pos_phone_orders_folio_seq']={last_value:'1',is_called:true};
+  current.snapshotJson=JSON.stringify(state);
+  assert.deepEqual(decryptBusinessArchive(encryptBusinessArchive(current,key),key),current);
+  for(const name of ['public.pos_phone_orders','cafe_private.phone_requests','cafe_private.inventory_reservations']) {
+    const incomplete=structuredClone(state);delete incomplete.tables[name];
+    assert.throws(()=>encryptBusinessArchive({...current,snapshotJson:JSON.stringify(incomplete)},key),/pedidos por teléfono/);
+  }
+});
+
 test('daily backups publish verified bytes once per Matamoros day and retain the last good archive after failure', async () => {
   const f = await fixture();
   try {

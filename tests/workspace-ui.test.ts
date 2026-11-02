@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { act, createElement, useState, type ReactNode } from 'react';
+import { act, createElement, useState, type ReactNode, type ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
-import { WorkspaceOpening, WorkspaceCustomization, WorkspaceCheckout } from '../app/register/WorkspaceRegister';
+import WorkspaceRegister,{ WorkspaceOpening, WorkspaceCustomization, WorkspaceCheckout } from '../app/register/WorkspaceRegister';
 
 async function render(work: (screen: Document, click: (label: string) => Promise<void>) => Promise<void>, component: ReactNode) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
@@ -24,6 +24,17 @@ async function render(work: (screen: Document, click: (label: string) => Promise
     for (const [key, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
   }
 }
+
+test('catalog scrolling remains keyboard-accessible while an uncertain payment disables every product',async()=>{
+  const product={id:'coffee',name:'Café',price:50,category:'Bebidas',is_active:true};
+  const props:ComponentProps<typeof WorkspaceRegister>={products:[product],items:[],total:0,search:'',onSearch:()=>{},userName:'Ana',isAdmin:false,disabled:true,onProduct:()=>assert.fail('Uncertain payment must keep the product gate'),onEdit:()=>{},onQuantity:()=>{},onRemove:()=>{},onClear:()=>{},onCheckout:()=>{},onCloseShift:()=>{},customer:null,customerSearch:'',onCustomerSearch:()=>{},suggestions:[],onCustomer:()=>{},onNewCustomer:()=>{},onRemoveCustomer:()=>{},orderType:'En Local',onOrderType:()=>{},orderNote:'',onOrderNote:()=>{},onReprint:()=>{},notices:createElement('p',{role:'alert'},'Venta sin confirmar. No vuelvas a cobrar.')};
+  await render(async screen=>{
+    const region=screen.querySelector<HTMLElement>('.workspace-catalog-scroll')!;
+    assert.equal(region.getAttribute('role'),'region');assert.equal(region.getAttribute('aria-label'),'Productos del menú');assert.equal(region.tabIndex,0);
+    assert.ok([...region.querySelectorAll('button')].every(button=>button.disabled));region.focus();assert.equal(screen.activeElement,region);
+    assert.match(screen.body.textContent!,/No vuelvas a cobrar/);
+  },createElement(WorkspaceRegister,props));
+});
 
 for(const isAdmin of [false,true]) test(`workspace ${isAdmin?'admin':'cashier'} opening preserves role navigation, fractional dollars and denomination counts`, async () => {
   let dollars = 0, opened = false;

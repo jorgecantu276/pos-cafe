@@ -4,7 +4,26 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { saleDocuments } from '../lib/sale-printing';
+import { phoneOrderDocuments,saleDocuments } from '../lib/sale-printing';
+
+test('phone preparation keeps its unpaid identity on every rendered continuation without a payment receipt', {skip:process.platform!=='win32'},()=>{
+  const documents=phoneOrderDocuments({id:'phone-layout',folio:43,contact_name:'Ana de prueba',contact_phone:'8682345678',
+    snapshot:{items:[{id:'cup',quantity:1,product:{id:'iced',name:'Iced coffee caramelo',price:110,category:'Bebidas',note:'Sin azúcar. '.repeat(80)}}],
+      total:110,customer_name:'Ana de prueba',order_type:'Para Llevar',order_note:'',created_at:'2026-11-02T17:00:00Z'}});
+  for(const audience of ['customer','barista'] as const){
+    const result=spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
+      {input:JSON.stringify({...documents[audience],verticalLabel:audience==='barista',fontPoints:9,widthMm:audience==='barista'?56.9:71.88,heightMm:audience==='barista'?32:210.06})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
+    assert.equal(result.status,0,result.stderr||result.stdout);
+    const pages:{lines:string[]}[]=JSON.parse(result.stdout);
+    if(audience==='barista'){
+      assert.ok(pages.length>1);
+      for(const page of pages){assert.match(page.lines.join(' '),/T0043/);assert.match(page.lines.join(' '),/SIN PAGAR/);}
+    }else{
+      const output=pages.flatMap(page=>page.lines).join(' ');assert.match(output,/PENDIENTE DE PAGO/);assert.doesNotMatch(output,/TICKET DE VENTA|Recibido MXN/);
+    }
+  }
+});
 
 test('pager identity repeats on every physical barista continuation and is prominent on the customer receipt', {skip:process.platform!=='win32'},()=>{
   const docs=saleDocuments({id:'pager',ticket_number:1288,status:'completed',total:50,pager_number:30,

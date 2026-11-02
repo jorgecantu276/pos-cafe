@@ -23,11 +23,13 @@ import { useRouter } from 'next/navigation';
 import { openPrintWindow } from '@/lib/printing';
 import PrintDispatch from './PrintDispatch';
 import PagerPicker from './PagerPicker';
+import PhoneOrders,{PhoneOrderContact} from './PhoneOrders';
+import {beginPhoneRequest,completePhoneRequest,getPhoneOrder,readPhoneRequest,submitPhoneRequest,validPhoneContact,withPhoneLock,type PhoneOrder,type PhoneRequest,type PhoneReturn} from '@/lib/phone-orders';
 import { printSavedShift } from '@/lib/shift-printing';
 import { confirmClosingPrints } from '@/lib/closing-print-check';
 import { printHistoricalReceipt } from '@/lib/receipt-reprint';
 import './printing.css';
-import { rememberSalePrint } from '@/lib/sale-printing';
+import { rememberSalePrint,rememberPhonePrint } from '@/lib/sale-printing';
 import { saveShiftBeforeExit, type ShiftReport } from '@/lib/shift';
 import { closeShift, expenseRequestKey, loadShiftSummary, recoverPendingExpenses, recoverShiftClose, restoreShiftExpenses, saveShiftExpenses, type ShiftSummary } from '@/lib/shift-state';
 import { CheckoutRejected, ClipPaymentPending, checkoutPayload, executeCheckout, readCheckoutReview, withCheckoutLock, type CheckoutReview, type SavedOrder } from '@/lib/checkout';
@@ -44,7 +46,7 @@ const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.50];
 
 export default function POSPage({appearance='workspace',clipEnabled=false}:{appearance?:'owner'|'prototype'|'workspace';clipEnabled?:boolean}={}) {
   const { items, addItem, removeItem, replaceItem, updateQuantity, getTotal, clearCart,
-    orderType, orderNote, pagerNumber, customerId, setOrderType, setOrderNote, setPagerNumber, setCustomerId } = useCartStore();
+    orderType, orderNote, pagerNumber, phoneOrder,phoneName,phoneContact,setPhoneOrder,setPhoneName,setPhoneContact,customerId, setOrderType, setOrderNote, setPagerNumber, setCustomerId } = useCartStore();
   const router = useRouter();
   const cartDraft = useRef<CartDraftBinding | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -57,6 +59,11 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   const checkoutReviewKey = useRef('');
   const [printCheckoutKey, setPrintCheckoutKey] = useState('');
   const [sessionActor, setSessionActor] = useState<string | null>(null);
+  const [phonePending,setPhonePending]=useState<PhoneRequest|null>(null),[phoneError,setPhoneError]=useState(''),[phoneBusy,setPhoneBusy]=useState(false);
+  const phoneInFlight=useRef(false);
+  const [showPhoneContact,setShowPhoneContact]=useState(false),[showPhoneOrders,setShowPhoneOrders]=useState(false),[selectedPhoneOrder,setSelectedPhoneOrder]=useState<PhoneOrder|null>(null);
+  const [phonePrintId,setPhonePrintId]=useState(''),[savedPhone,setSavedPhone]=useState<PhoneOrder|null>(null);
+  const [phonePrintNotice,setPhonePrintNotice]=useState('');
 
 
   // 🟢 FUNCIÓN ROBUSTA PARA PARSEAR DINERO (Evita errores de NaN y comas decimales)
@@ -173,6 +180,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       shiftSaved.current = false; closedShiftReport.current = null;
       useCartStore.getState().clearCart(); setActiveCustomer(null); setCheckoutReview(null);
       setIsProcessingCheckout(false); setShowCheckoutModal(false); setShowPostSaleModal(false); setSelectedProduct(null); setSavedSale(null);
+      setPhonePending(null);setPhoneError('');setPhoneBusy(false);phoneInFlight.current=false;setShowPhoneContact(false);setShowPhoneOrders(false);setSelectedPhoneOrder(null);setSavedPhone(null);setPhonePrintId('');setPhonePrintNotice('');
       setProducts([]); setFavoriteProductIds([]); setFavoritesError(''); setFavoritesLoading(true); setDbExtras([]); setDraftError(null); setCustomerError(null);
       router.replace('/login'); router.refresh();
     });
@@ -224,6 +232,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     draftStorageKey.current = cartDraftKey(data.user.id);
     try { setCheckoutReview(readCheckoutReview(localStorage.getItem(checkoutReviewKey.current))); }
     catch { setCheckoutReview({ startedAt:'Registro pendiente ilegible', total:0 }); }
+    try {setPhonePending(readPhoneRequest(localStorage,data.user.id));setPhoneError('');}catch(error){setPhoneError(errorMessage(error));}
     setProducts(data.products);
     setDbExtras(data.extras);
     setCatalogStale(false); setCatalogCheckError('');
@@ -586,12 +595,77 @@ const handleSaveAndClose = async () => {
       return;
     }
     if (items.length === 0) return;
+    if(phonePending||phoneBusy||phoneError){alert('Comprueba el pedido sin confirmar antes de continuar.');return;}
+    if(phoneOrder){setShowPhoneContact(true);return;}
     if (!validPagerNumber(pagerNumber)) { alert('Elige un control del 1 al 30 antes de cobrar.'); return; }
+    setSelectedPhoneOrder(null);
     setPaymentMethod('Efectivo');
     setAmountReceivedMXN('');
     setAmountReceivedUSD('');
     setCheckoutStep(1);
     setShowCheckoutModal(true);
+  };
+
+  const handlePhoneRequest = async (recover=false,cancellation?:{order:PhoneOrder;reason:string;returns:PhoneReturn[]}) => {
+    if(phoneInFlight.current||checkoutInFlight.current||checkoutReview||closingShift.current)return false;
+    const actor=draftOwner.current,binding=cartDraft.current;
+    phoneInFlight.current=true;setPhoneBusy(true);setPhoneError('');
+    try {
+      return await withPhoneLock(actor,()=>withCheckoutLock(`mi_cafe_checkout_review:${actor}`,async()=>{
+        const payment=readCheckoutReview(localStorage.getItem(`mi_cafe_checkout_review:${actor}`));
+        if(payment){if(draftOwner.current===actor)setCheckoutReview(payment);throw new Error('Hay una venta sin confirmar. Compruébala antes de guardar otro pedido.');}
+        let request=readPhoneRequest(localStorage,actor);
+        if(recover){if(!request)throw new Error('No hay un pedido sin confirmar.');}
+        else {
+          if(request){setPhonePending(request);throw new Error('Comprueba el pedido sin confirmar antes de guardar otro.');}
+          if(cancellation)request={actor,request:crypto.randomUUID(),kind:'cancel',id:cancellation.order.id,revision:cancellation.order.revision,reason:cancellation.reason.trim(),returns:cancellation.returns};
+          else {
+            if(!binding||!items.length||draftError||catalogStale||customerRestoring||customerError)throw new Error('Revisa el pedido antes de guardarlo.');
+            if(!phoneOrder||!validPhoneContact(phoneName,phoneContact))throw new Error('Escribe el nombre y un teléfono de 10 a 15 dígitos.');
+            request={actor,request:binding.requestId(),kind:'save',payload:{items:items.map(line=>({product_id:line.product.id,quantity:line.quantity,extra_ids:(line.product.displayExtras??[]).map(extra=>extra.id??''),note:line.product.note??''})),expected_total:getTotal(),contact_name:phoneName.trim(),contact_phone:phoneContact,customer_id:customerId,order_type:orderType,order_note:orderNote}};
+          }
+          beginPhoneRequest(localStorage,request);if(draftOwner.current===actor)setPhonePending(request);
+        }
+        const order=await submitPhoneRequest(supabase,localStorage,request!);
+        if(request!.kind==='save'){
+          const latest=rememberPhonePrint(localStorage,`mi_cafe_checkout_review:${actor}`,order);
+          const raw=localStorage.getItem(cartDraftKey(actor));
+          if(raw&&JSON.parse(raw).id===request!.request)binding?.complete();
+          if(draftOwner.current===actor){setPhonePrintId(latest);setPhonePrintNotice('');setSavedPhone(order);setShowPhoneContact(false);setShowPhoneOrders(false);}
+        }else if(draftOwner.current===actor){setPhonePrintNotice('');setSavedPhone(order);setShowPhoneOrders(false);}
+        completePhoneRequest(localStorage,request!);
+        if(draftOwner.current===actor){setPhonePending(null);setPhoneError('');}
+        return true;
+      }));
+    }catch(error){if(draftOwner.current===actor){setPhoneError(errorMessage(error));try{setPhonePending(readPhoneRequest(localStorage,actor));}catch{/* Keep the unreadable operation blocked. */}}return false;}
+    finally{if(draftOwner.current===actor){phoneInFlight.current=false;setPhoneBusy(false);}}
+  };
+
+  const handlePayPhone = async (order:PhoneOrder) => {
+    if(checkoutInFlight.current||checkoutReview||phonePending||phoneBusy||phoneError||isClosingShift||!registerId)return;
+    const actor=draftOwner.current,binding=cartDraft.current;
+    setPhoneBusy(true);
+    try {
+      if(readPhoneRequest(localStorage,actor))throw new Error('Comprueba el pedido sin confirmar antes de cobrar.');
+      const current=await getPhoneOrder(supabase,order.id);
+      if(draftOwner.current!==actor||cartDraft.current!==binding)return;
+      if(current.status!=='pending')throw new Error('Este pedido ya no está por cobrar. Actualiza la lista.');
+      setSelectedPhoneOrder(current);setShowPhoneOrders(false);setPaymentMethod('Efectivo');setAmountReceivedMXN('');setAmountReceivedUSD('');setShowCheckoutModal(true);
+    }catch(error){if(draftOwner.current===actor)alert(errorMessage(error));}finally{if(draftOwner.current===actor)setPhoneBusy(false);}
+  };
+
+  const handlePrintPhone = async (order:PhoneOrder) => {
+    if(phoneBusy||isProcessingCheckout||isClosingShift||checkoutReview||phonePending)return false;
+    const actor=draftOwner.current;setPhoneBusy(true);
+    try {
+      const current=await getPhoneOrder(supabase,order.id);
+      if(draftOwner.current!==actor)return false;
+      if(current.status!=='pending')throw new Error('Este pedido ya no está por cobrar. Actualiza la lista.');
+      const id=rememberPhonePrint(localStorage,`mi_cafe_checkout_review:${actor}`,current);
+      setPhonePrintId(id);setSavedPhone(current);setPhonePrintNotice(`Pedido #${current.folio} · Comprueba el estado de impresión`);setShowPhoneOrders(false);
+      return true;
+    }catch(error){if(draftOwner.current===actor)alert(errorMessage(error));return false;}
+    finally{if(draftOwner.current===actor)setPhoneBusy(false);}
   };
 
   const changeQuantity = (id: string, quantity: number) => {
@@ -625,25 +699,29 @@ const handleSaveAndClose = async () => {
       await withCheckoutLock(checkoutKey, async () => {
         if (!stillCurrent()) return;
         const existing = readCheckoutReview(localStorage.getItem(checkoutKey));
+        if(selectedPhoneOrder&&existing&&existing.payload?.phone_order_id!==selectedPhoneOrder.id){setCheckoutReview(existing);setSelectedPhoneOrder(null);throw new Error('Hay otra venta sin confirmar. Compruébala antes de cobrar este pedido.');}
         wasRecovery = Boolean(existing);
         if (!navigator.onLine) throw new Error('Sin conexión. La venta no se envió; conserva la orden e intenta cuando vuelva internet.');
         setIsProcessingCheckout(true);
 
         let review = existing;
         if (!review) {
-          if (!validPagerNumber(pagerNumber)) throw new Error('Elige un control del 1 al 30 antes de cobrar.');
-          if (catalogStale) throw new Error('El menú cambió. Cierra el cobro, actualiza y revisa el pedido.');
-          if (!binding || draftError || customerRestoring || (activeCustomer?.id ?? null) !== customerId)
+          if(!selectedPhoneOrder&&!validPagerNumber(pagerNumber)) throw new Error('Elige un control del 1 al 30 antes de cobrar.');
+          if (!selectedPhoneOrder&&catalogStale) throw new Error('El menú cambió. Cierra el cobro, actualiza y revisa el pedido.');
+          if (!selectedPhoneOrder&&(!binding || draftError || customerRestoring || (activeCustomer?.id ?? null) !== customerId))
             throw new Error('Revisa el pedido y el cliente antes de cobrar.');
-          const orderTotal = getTotal();
-          if (!registerId || !items.length || !Number.isFinite(orderTotal) || orderTotal <= 0 || isPaymentInsufficient) throw new Error('Revisa la orden, el turno y el importe recibido.');
+          if(phonePending||phoneBusy||phoneError)throw new Error('Comprueba el pedido sin confirmar antes de cobrar.');
+          if(readPhoneRequest(localStorage,draftOwner.current))throw new Error('Comprueba el pedido sin confirmar antes de cobrar.');
+          const orderTotal = selectedPhoneOrder?.snapshot.total??getTotal(),orderItems=selectedPhoneOrder?.snapshot.items??items;
+          if (!registerId || !orderItems.length || !Number.isFinite(orderTotal) || orderTotal <= 0 || isPaymentInsufficient) throw new Error('Revisa la orden, el turno y el importe recibido.');
           const cash = ['Efectivo','Mixto'].includes(paymentMethod);
-          review = { startedAt: new Date().toISOString(), total: orderTotal, requestId: binding.requestId(),
+          review = { startedAt: new Date().toISOString(), total: orderTotal, requestId: selectedPhoneOrder?crypto.randomUUID():binding!.requestId(),
             ...(clipEnabled && paymentMethod==='Tarjeta' ? {provider:'clip' as const} : {}),
-            payload: checkoutPayload(items, {
+            payload: checkoutPayload(orderItems, {
               register_id: registerId, expected_total: orderTotal, payment_method: paymentMethod.toLowerCase(),
               tender_mxn: cash ? parseAmount(amountReceivedMXN) : 0, tender_usd: cash ? parseAmount(amountReceivedUSD) : 0,
-              customer_id: customerId, order_type: orderType, order_note: orderNote, pager_number:pagerNumber,
+              customer_id: selectedPhoneOrder?selectedPhoneOrder.customer_id??null:customerId, order_type: selectedPhoneOrder?.snapshot.order_type??orderType, order_note: selectedPhoneOrder?.snapshot.order_note??orderNote, pager_number:selectedPhoneOrder?null:pagerNumber,
+              ...(selectedPhoneOrder?{phone_order_id:selectedPhoneOrder.id,phone_order_revision:selectedPhoneOrder.revision}:{}),
             }),
           };
           // Persist the exact identity and payload before the first request.
@@ -652,18 +730,19 @@ const handleSaveAndClose = async () => {
         }
         setCheckoutReview(review);
         const order = await executeCheckout(supabase, review);
+        const phonePayment=Boolean(review.payload?.phone_order_id);
         if (order.status === 'cancelled') {
-          binding?.complete();
+          if(!phonePayment)binding?.complete();
           localStorage.removeItem(checkoutKey);
           if (!stillCurrent()) return;
-          setCheckoutReview(null); clearCart(); setShowCheckoutModal(false);
+          setCheckoutReview(null); if(!phonePayment)clearCart();setSelectedPhoneOrder(null); setShowCheckoutModal(false);
           alert('La venta fue cancelada por el responsable. No vuelvas a cobrarla; revisa cualquier devolución de dinero.');
           return;
         }
         if (order.status !== 'completed') throw new Error('El estado de esta venta requiere revisión del responsable.');
         // Save the print intent before retiring checkout recovery. Retrying uses the same sale.
         rememberSalePrint(localStorage, checkoutKey, order);
-        binding?.complete(); // Retire only the original cashier's unpaid record.
+        if(!phonePayment)binding?.complete(); // A phone payment must preserve the cashier's separate draft.
         localStorage.removeItem(checkoutKey);
         if (!stillCurrent()) return;
         setSavedSale(order);
@@ -701,10 +780,10 @@ const handleSaveAndClose = async () => {
         if (!stillCurrent()) return;
         const { error } = await supabase.rpc('pos_abandon_checkout', { p_request: checkoutReview.requestId });
         if (error) throw new Error(errorMessage(error));
-        binding?.complete();
+        if(!checkoutReview.payload?.phone_order_id)binding?.complete();
         localStorage.removeItem(checkoutKey);
         if (!stillCurrent()) return;
-        setCheckoutReview(null); clearCart(); setShowCheckoutModal(false);
+        setCheckoutReview(null); if(!checkoutReview.payload?.phone_order_id)clearCart();setSelectedPhoneOrder(null); setShowCheckoutModal(false);
       });
     } catch (error) { if (stillCurrent()) alert(error instanceof Error ? errorMessage(error) : 'No se pudo quitar el pedido. Revisa la venta pendiente.'); }
     finally { if (stillCurrent()) { checkoutInFlight.current = false; setIsProcessingCheckout(false); } }
@@ -716,6 +795,7 @@ const handleSaveAndClose = async () => {
   };
 
   const handleNextOrder = () => {
+    if(savedSale?.phone_order_id){setSavedSale(null);setShowPostSaleModal(false);setSelectedPhoneOrder(null);return;}
     setSavedSale(null);
     setShowPostSaleModal(false);
     clearCart();
@@ -740,17 +820,22 @@ const handleSaveAndClose = async () => {
 
   // 🟢 LA MATEMÁTICA PROTEGIDA DEL CAMBIO
   const totalReceivedCombinedMXN = parseAmount(amountReceivedMXN) + (parseAmount(amountReceivedUSD) * parseAmount(exchangeRate));
-  const isPaymentInsufficient = (paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && totalReceivedCombinedMXN < getTotal();
+  const checkoutTotal=selectedPhoneOrder?.snapshot.total??getTotal();
+  const isPaymentInsufficient = (paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && totalReceivedCombinedMXN < checkoutTotal;
 
   const catalogNotice = (catalogStale || catalogCheckError) && <div role="status" className="relative z-10 flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950"><span>{catalogStale ? 'El menú cambió. Actualiza y revisa el pedido antes de cobrar.' : catalogCheckError} {(selectedProduct || showCheckoutModal) && 'Cierra la ventana actual para actualizar.'}{checkoutReview && 'Primero resuelve la venta pendiente.'}</span><button type="button" className="rounded-xl border bg-white px-4 py-2 font-semibold disabled:opacity-50" disabled={loading || !!selectedProduct || showCheckoutModal || !!checkoutReview || isProcessingCheckout || isClosingShift || savingExpense || openingShift} onClick={refreshCatalog}>Actualizar menú</button></div>;
-  const printStatus = <PrintDispatch key={printCheckoutKey} checkoutKey={printCheckoutKey} latestOrderId={savedSale?.id} />;
+  const printStatus = <PrintDispatch key={printCheckoutKey} checkoutKey={printCheckoutKey} latestOrderId={savedSale?.id??phonePrintId} />;
   const RegisterView = appearance === 'workspace' ? WorkspaceRegister : PrototypeRegister;
   const CheckoutView = appearance === 'workspace' ? WorkspaceCheckout : PrototypeCheckout;
+  const PaymentView=selectedPhoneOrder?WorkspaceCheckout:CheckoutView;
   const CustomizationView = appearance === 'workspace' ? WorkspaceCustomization : PrototypeCustomization;
   const drawerBlocked = Boolean(showApertura && drawer && (drawer.handoff || (drawer.active && drawer.active.cashier_id !== drawerActor) || drawer.rate === null));
+  const phoneNotice=<>{(phonePending||phoneError)&&<div role="alert" className="phone-order-notice"><div><strong>{phonePending?'Pedido sin confirmar':'Revisa el pedido'}</strong><span>{phoneError||'Comprueba si se guardó antes de volver a enviarlo.'}</span></div>{phonePending&&<button type="button" disabled={phoneBusy||isProcessingCheckout} onClick={()=>void handlePhoneRequest(true)}>Comprobar pedido</button>}{!phonePending&&<button type="button" onClick={()=>void fetchData()}>Revisar pedido</button>}</div>}{savedPhone&&<div role="status" className="phone-order-notice"><span>{phonePrintNotice||(savedPhone.status==='cancelled'?`Pedido #${savedPhone.folio} cancelado. Avisa a barra.`:`Pedido #${savedPhone.folio} guardado · Sin pagar`)}</span><button type="button" onClick={()=>{setSavedPhone(null);setShowPhoneOrders(true);}}>Ver pedidos</button><button type="button" aria-label="Cerrar aviso de pedido guardado" onClick={()=>setSavedPhone(null)}>×</button></div>}</>;
 
   return (
     <div className={`flex h-screen bg-[#F5F5F7] text-[#1D1D1F] font-sans antialiased overflow-hidden ${appearance==='workspace'?'pos-workspace':appearance==='prototype'?'pos-prototype':''}`}>
+      {showPhoneContact&&<PhoneOrderContact name={phoneName} phone={phoneContact} total={getTotal()} orderType={orderType} onOrderType={setOrderType} busy={phoneBusy} pending={!!phonePending} onRecover={()=>void handlePhoneRequest(true)} error={phoneError} onName={setPhoneName} onPhone={setPhoneContact} onSave={()=>void handlePhoneRequest()} onClose={()=>setShowPhoneContact(false)}/>}
+      {showPhoneOrders&&<PhoneOrders client={supabase} disabled={isProcessingCheckout||isClosingShift||phoneBusy||!!phonePending||!!checkoutReview||!registerId} pending={!!phonePending} pendingError={phoneError} onRecover={()=>handlePhoneRequest(true)} onClose={()=>setShowPhoneOrders(false)} onPay={order=>void handlePayPhone(order)} onPrint={handlePrintPhone} onCancel={(order,reason,returns)=>handlePhoneRequest(false,{order,reason,returns})}/>}
 
       {/* MODAL: APERTURA DE TURNO */}
       {drawerBlocked && drawer && <DrawerGate client={supabase} status={drawer} actor={drawerActor} isAdmin={isAdmin} reload={fetchData} logout={()=>void handleLogout()}/>}
@@ -993,13 +1078,14 @@ const handleSaveAndClose = async () => {
       {appearance!=='owner' ? <RegisterView products={products} items={items} total={getTotal()} search={searchTerm} onSearch={setSearchTerm}
         favoriteProductIds={favoriteProductIds} favoritesError={favoritesError} favoritesLoading={favoritesLoading} onRetryFavorites={()=>{setFavoritesLoading(true);setFavoritesError('');setFavoritesAttempt(value=>value+1);}}
         recentTicketsContent={<RecentTickets key={drawerActor} onReprint={ticket=>void reprintHistoricalTicket(ticket)} disabled={isProcessingCheckout || isClosingShift}/>}
-        userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout}
+        userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout||phoneBusy||!!phonePending||!!phoneError}
         {...(appearance === 'workspace' ? { catalogLoading: loading } : {})}
         onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={changeQuantity} onRemove={removeItem} onClear={handleClearOrder} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
         onHandoff={()=>void handleOpenCierre('handoff')}
         customerSearchError={customerSearchError} customerSearching={customerSearching} onRetryCustomerSearch={()=>void handleCustomerSearchInput(customerSearch)} customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
         onNewCustomer={handleOpenCustomerModal} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
-        orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} pagerNumber={pagerNumber} onPagerNumber={setPagerNumber} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
+        orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} pagerNumber={pagerNumber} onPagerNumber={setPagerNumber} phoneOrder={phoneOrder} onPhoneOrder={()=>{setPhoneOrder(true);if(items.length)setShowPhoneContact(true);}} onPhoneOrders={()=>setShowPhoneOrders(true)} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
+        {phoneNotice}
         {catalogNotice}
         {!showPostSaleModal && printStatus}
         {loadError && (
@@ -1057,6 +1143,7 @@ const handleSaveAndClose = async () => {
         </>}/> : <>
       {/* POS PRINCIPAL */}
       <div className="flex-1 flex flex-col p-8 overflow-hidden">
+        {phoneNotice}<button type="button" className="workspace-tickets" onClick={()=>setShowPhoneOrders(true)}>Pedidos por cobrar</button>
         {catalogNotice}
         {!showPostSaleModal && printStatus}
         {loadError && (
@@ -1155,7 +1242,7 @@ const handleSaveAndClose = async () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto space-y-12 pr-4 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto space-y-12 pr-4 custom-scrollbar" role="region" aria-label="Productos del menú" tabIndex={0}>
           {Object.keys(groupedProducts).sort().map(cat => (
             <section key={cat}>
               <h2 className="text-[11px] font-black uppercase text-slate-400 mb-5 px-2 tracking-[0.2em]">{cat}</h2>
@@ -1235,7 +1322,7 @@ const handleSaveAndClose = async () => {
           </div>
         </div>
 
-        <div className="flex-1 px-8 overflow-y-auto py-6 space-y-4">
+        <div className="flex-1 px-8 overflow-y-auto py-6 space-y-4" role="region" aria-label="Artículos del pedido" tabIndex={0}>
           {items.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-60 space-y-4">
               <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center">
@@ -1277,23 +1364,23 @@ const handleSaveAndClose = async () => {
         </div>
 
         <div className="p-8 bg-white border-t border-slate-50 space-y-6">
-          <PagerPicker value={pagerNumber} onChange={setPagerNumber} disabled={loading || !!checkoutReview || isProcessingCheckout || isClosingShift}/>
-          {!validPagerNumber(pagerNumber)&&items.length>0&&<p className="pos-pager-required-note">Elige un control para cobrar.</p>}
+          <PagerPicker value={pagerNumber} onChange={setPagerNumber} phoneOrder={phoneOrder} onPhoneOrder={()=>{setPhoneOrder(true);if(items.length)setShowPhoneContact(true);}} disabled={loading || !!checkoutReview || isProcessingCheckout || isClosingShift||phoneBusy||!!phonePending}/>
+          {!validPagerNumber(pagerNumber)&&!phoneOrder&&items.length>0&&<p className="pos-pager-required-note">Elige un control para cobrar.</p>}
           <div className="flex justify-between items-baseline">
             <span className="text-[13px] font-semibold text-[#86868b] uppercase tracking-tight">Total</span>
             <span className="text-4xl font-semibold text-[#1d1d1f] tracking-tighter">${getTotal().toFixed(2)}</span>
           </div>
-          <button onClick={handleOpenCheckout} disabled={items.length === 0 || !validPagerNumber(pagerNumber) || loading || !!loadError || !!draftError || !!customerError || customerRestoring || !!checkoutReview || isClosingShift} className="w-full bg-[#0071e3] text-white h-16 rounded-[22px] font-semibold text-lg shadow-xl shadow-blue-100 hover:bg-[#0077ed] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:shadow-none">
-             <CreditCard size={22}/> Pagar Ahora
+          <button onClick={handleOpenCheckout} disabled={items.length === 0 || (!phoneOrder&&!validPagerNumber(pagerNumber)) || loading || !!loadError || !!draftError || !!customerError || customerRestoring || !!checkoutReview || isClosingShift||phoneBusy||!!phonePending||!!phoneError} className="w-full bg-[#0071e3] text-white h-16 rounded-[22px] font-semibold text-lg shadow-xl shadow-blue-100 hover:bg-[#0077ed] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:shadow-none">
+             <CreditCard size={22}/> {phoneOrder?'Guardar pedido':'Pagar Ahora'}
           </button>
         </div>
       </div>
 
       </>}
-      {showCheckoutModal&&appearance!=='owner'&&<CheckoutView total={getTotal()} method={paymentMethod} mxn={amountReceivedMXN} usd={amountReceivedUSD} exchangeRate={parseAmount(exchangeRate)}
-        pagerNumber={pagerNumber} onPagerNumber={setPagerNumber} clipEnabled={clipEnabled}
-        orderType={orderType} note={orderNote} busy={isProcessingCheckout} insufficient={isPaymentInsufficient} onMethod={method=>{setPaymentMethod(method);setAmountReceivedMXN('');setAmountReceivedUSD('');}}
-        onMXN={setAmountReceivedMXN} onUSD={setAmountReceivedUSD} onOrderType={setOrderType} onNote={setOrderNote} onConfirm={()=>void processCheckout()} onClose={()=>setShowCheckoutModal(false)}/>}
+      {showCheckoutModal&&(appearance!=='owner'||selectedPhoneOrder)&&<PaymentView total={checkoutTotal} method={paymentMethod} mxn={amountReceivedMXN} usd={amountReceivedUSD} exchangeRate={parseAmount(exchangeRate)}
+        pagerNumber={selectedPhoneOrder?null:pagerNumber} onPagerNumber={selectedPhoneOrder?undefined:setPagerNumber} clipEnabled={clipEnabled} phoneOrderLabel={selectedPhoneOrder?`Pedido por teléfono #${selectedPhoneOrder.folio} · ${selectedPhoneOrder.contact_name}`:undefined}
+        orderType={selectedPhoneOrder?.snapshot.order_type??orderType} note={selectedPhoneOrder?.snapshot.order_note??orderNote} busy={isProcessingCheckout} insufficient={isPaymentInsufficient} onMethod={method=>{setPaymentMethod(method);setAmountReceivedMXN('');setAmountReceivedUSD('');}}
+        onMXN={setAmountReceivedMXN} onUSD={setAmountReceivedUSD} onOrderType={selectedPhoneOrder?()=>{}:setOrderType} onNote={selectedPhoneOrder?()=>{}:setOrderNote} onConfirm={()=>void processCheckout()} onClose={()=>{setShowCheckoutModal(false);setSelectedPhoneOrder(null);}}/>}
       {selectedProduct&&dynamicSteps.length>0&&appearance!=='owner'&&<CustomizationView product={selectedProduct} steps={dynamicSteps} index={customizationStep} extras={activeExtras} dbExtras={dbExtras}
         note={productNote} onNote={setProductNote} onStep={setCustomizationStep}
         quantity={editingItemId?editingQuantity:undefined}
@@ -1306,7 +1393,7 @@ const handleSaveAndClose = async () => {
           if(appearance==='prototype'&&!selected&&step.exclusive)setCustomizationStep(Math.min(customizationStep+1,lastStepIndex));
         }} onConfirm={handleConfirmAdd} onClose={()=>{setSelectedProduct(null);setEditingItemId(null);setActiveExtras([]);setProductNote('');}}/>}
       {/* 🟢 CHECKOUT DIVIDIDO EN 2 PASOS */}
-      {showCheckoutModal && appearance==='owner' && (
+      {showCheckoutModal && appearance==='owner'&&!selectedPhoneOrder && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
           <div className="bg-white rounded-[32px] w-full max-w-[500px] shadow-2xl p-8 animate-in zoom-in-95 duration-200">
 
@@ -1447,7 +1534,7 @@ const handleSaveAndClose = async () => {
 
              <h2 className="text-[32px] font-semibold tracking-tight text-[#1d1d1f] mb-2">Venta guardada</h2>
              <p className="text-[#86868b] text-[17px] mb-10 font-medium leading-relaxed">
-               El ticket y las etiquetas se envían a sus impresoras.
+               {savedSale?.phone_order_id?'El comprobante de pago se envía a la impresora.':'El ticket y las etiquetas se envían a sus impresoras.'}
              </p>
 
              {printStatus}

@@ -9,6 +9,7 @@ import {withDeadline} from '../lib/request-deadline';
 import {savedShiftHtml} from '../lib/shift-printing';
 import {confirmClosingPrints} from '../lib/closing-print-check';
 import { rememberSalePrint } from '../lib/sale-printing';
+import {beginPhoneRequest,completePhoneRequest,phoneRequestKey,readPhoneRequest,submitPhoneRequest,validPhoneContact,type PhoneOrder,type PhoneRequest} from '../lib/phone-orders';
 import { customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
 
 test('quick loyalty enrollment selects the new customer for the current order with required phone and optional birthday',async()=>{
@@ -106,7 +107,7 @@ test('a cashier can stop closing when unfinished printing needs attention',async
 // Exercise the actual page handlers with browser/network dependencies replaced;
 // no request reaches Supabase and no print dialog is opened by these checks.
 function handler(name: string, context: Record<string, unknown>, file='../app/register/Register.tsx'): (...args: unknown[]) => unknown {
-  context = { clipEnabled:false,pagerNumber:1,validPagerNumber,ClipPaymentPending,catalogStale:false, withDeadline,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
+  context = { clipEnabled:false,pagerNumber:1,validPagerNumber,phonePending:null,phoneBusy:false,phoneError:'',phoneOrder:false,selectedPhoneOrder:null,setSelectedPhoneOrder:()=>{},readPhoneRequest,readCheckoutReview,setCheckoutReview:()=>{},draftOwner:{current:'test-user'},ClipPaymentPending,catalogStale:false, withDeadline,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
   const source=ts.createSourceFile('page.tsx',readFileSync(new URL(file,import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
   let body='';
   function visit(node: ts.Node) {
@@ -204,6 +205,25 @@ test('the actual checkout handler rejects a new sale without a valid control bef
     const h=checkoutHarness(undefined,true,undefined,12_000,number);await h.fn();
     assert.equal(h.calls,0);assert.equal(h.storage.size,0);assert.equal(h.successful,false);assert.match(h.alerts[0],/Elige un control del 1 al 30/);
   }
+});
+
+test('a phone request from another window blocks the new save; only explicit recovery sends its frozen payload and never retires another draft',async()=>{
+  const actor='test-user',memory=new Map<string,string>(),request:PhoneRequest={actor,kind:'save',request:crypto.randomUUID(),payload:{items:[{product_id:'old',quantity:1,extra_ids:[],note:'Original'}],expected_total:40,contact_name:'Ana',contact_phone:'8681234567',customer_id:null,order_type:'Para Llevar',order_note:''}};
+  const storage={getItem:(key:string)=>memory.get(key)??null,setItem:(key:string,value:string)=>{memory.set(key,value);},removeItem:(key:string)=>{memory.delete(key);}};
+  const order:PhoneOrder={id:'old-phone',folio:1,status:'pending',contact_name:'Ana',contact_phone:'528681234567',customer_id:null,created_by:actor,created_at:'2026-11-02T18:00:00Z',revision:0,paid_order_id:null,snapshot:{items:[{id:'line',quantity:1,product:{id:'old',name:'Original',price:40,category:'Bebidas'}}],total:40,customer_name:'Ana',order_type:'Para Llevar',order_note:'',created_at:'2026-11-02T18:00:00Z',source:'phone',inventory_reserved:false}};
+  let pending:unknown,paymentReview:unknown,calls=0,retired=0,printed=0;const locks:string[]=[];
+  const run=handler('handlePhoneRequest',{phoneInFlight:{current:false},checkoutInFlight:{current:false},checkoutReview:null,closingShift:{current:false},draftOwner:{current:actor},cartDraft:{current:{requestId:()=>assert.fail('Must not generate a new identity'),complete:()=>retired++}},
+    setPhoneBusy:()=>{},setPhoneError:()=>{},setCheckoutReview:(value:unknown)=>paymentReview=value,withCheckoutLock:async(key:string,action:()=>Promise<unknown>)=>{locks.push(key);return action();},withPhoneLock:async(_actor:string,action:()=>Promise<unknown>)=>action(),readPhoneRequest,localStorage:storage,setPhonePending:(value:unknown)=>pending=value,beginPhoneRequest,submitPhoneRequest,completePhoneRequest,
+    supabase:{rpc:async(name:string,args:unknown)=>{calls++;assert.equal(name,'pos_phone_save');assert.deepEqual(args,{p_request:request.request,p_payload:request.payload});return{data:order,error:null};}},
+    rememberPhonePrint:()=>{printed++;return'phone:old-phone';},cartDraftKey:()=> 'current-draft',setPhonePrintId:()=>{},setPhonePrintNotice:()=>{},setSavedPhone:()=>{},setShowPhoneContact:()=>{},setShowPhoneOrders:()=>{},
+    validPhoneContact,items:[{id:'new-line',quantity:2}],phoneOrder:true,phoneName:'Bea',phoneContact:'8685551234',draftError:null,customerRestoring:false,customerError:null,getTotal:()=>80,customerId:null,orderType:'En Local',orderNote:'Nuevo',
+  });
+  // The page was rendered with no pending operation; another window writes it now.
+  beginPhoneRequest(storage,request);memory.set('current-draft',JSON.stringify({id:'other-current-order'}));
+  assert.equal(await run(),false);assert.equal(calls,0);assert.deepEqual(pending,request);assert.equal(retired,0);
+  assert.equal(await run(true),true);assert.equal(calls,1);assert.equal(printed,1);assert.equal(retired,0);assert.ok(memory.has('current-draft'));assert.equal(memory.has(phoneRequestKey(actor)),false);
+  const payment={startedAt:'2026-11-02',total:40,requestId:crypto.randomUUID(),payload:{expected_total:40}};memory.set(`mi_cafe_checkout_review:${actor}`,JSON.stringify(payment));
+  assert.equal(await run(),false);assert.equal(calls,1);assert.deepEqual(paymentReview,payment);assert.equal(retired,0);assert.deepEqual(locks,Array(3).fill(`mi_cafe_checkout_review:${actor}`));
 });
 test('legacy uncertain sale cannot be converted into a new transaction by refresh',async()=>{
   const h=checkoutHarness(new Map([['test-user',JSON.stringify({startedAt:'old',total:60,orderId:'existing'})]]));await h.fn();assert.equal(h.calls,0);assert.equal(h.storage.size,1);

@@ -23,7 +23,8 @@
     "test:cashiers": "node scripts/cashiers/drill.mjs",
     "test:shift-http": "node scripts/shift/http-drill.mjs",
     "test:reports-http": "node scripts/reports/http-drill.mjs",
-    "test:admin-http": "node scripts/admin/http-drill.mjs"
+    "test:admin-http": "node scripts/admin/http-drill.mjs",
+    "test:phone-http": "node scripts/phone-orders/http-drill.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",

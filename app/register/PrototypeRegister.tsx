@@ -28,6 +28,7 @@ interface RegisterProps{
   favoriteProductIds?:readonly string[];favoritesError?:string;recentTicketsContent?:ReactNode;
   favoritesLoading?:boolean;onRetryFavorites?:()=>void;
   pagerNumber?:number|null;onPagerNumber?:(value:number|null)=>void;
+  phoneOrder?:boolean;onPhoneOrder?:()=>void;onPhoneOrders?:()=>void;
 }
 export default function PrototypeRegister(p:RegisterProps){
   const [category,setCategory]=useState('Todos'),[page,setPage]=useState(0),[selection,setSelection]=useState('');
@@ -39,7 +40,7 @@ export default function PrototypeRegister(p:RegisterProps){
   const visible=filtered.slice(currentPage*6,currentPage*6+6),selected=p.items.find(i=>i.id===selection)??p.items.at(-1);
   const search=(s:string)=>{setPage(0);p.onSearch(s);};
   return <div className="prototype-register">
-    <header className="prototype-topbar"><div className="prototype-brand"><span>C</span>Cariñito Mío</div><nav aria-label="Caja"><button aria-pressed={sheet!=='orders'} onClick={()=>setSheet('')}>Caja</button><button onClick={()=>setSheet('orders')}>Órdenes</button></nav>
+    <header className="prototype-topbar"><div className="prototype-brand"><span>C</span>Cariñito Mío</div><nav aria-label="Caja"><button aria-pressed={sheet!=='orders'} onClick={()=>setSheet('')}>Caja</button><button onClick={()=>setSheet('orders')}>Órdenes</button>{p.onPhoneOrders&&<button onClick={p.onPhoneOrders}>Pedidos por cobrar</button>}</nav>
       <div className="prototype-topright"><span>{p.userName}</span><button onClick={()=>{void document.documentElement.requestFullscreen?.().catch(()=>{});}}>Pantalla completa</button>{p.isAdmin&&<a href="/admin" target="_blank" rel="noreferrer">Administración</a>}{p.onHandoff&&<button onClick={p.onHandoff}>Cambiar cajero</button>}<button onClick={p.onCloseShift}>Terminar turno</button></div>
     </header>
     <div className="prototype-notices">{p.notices}</div>
@@ -55,14 +56,14 @@ export default function PrototypeRegister(p:RegisterProps){
       </section>
       <aside className="prototype-ticket"><div className="prototype-heading"><div><h2>Orden actual</h2><p>{p.customer?.name??'Toca un producto para modificarlo'}</p></div><button onClick={()=>setSheet('customer')}>{p.customer?'Cliente':'Nombre'}</button></div>
         <div className="prototype-service">{[['En Local','Para aquí'],['Para Llevar','Para llevar']].map(([v,label])=><button key={v} aria-pressed={p.orderType===v} disabled={p.disabled} onClick={()=>p.onOrderType(v)}>{label}</button>)}</div>
-        <div className="prototype-lines">{p.items.map(item=><button key={item.id} className="prototype-line" aria-pressed={selected?.id===item.id} onClick={()=>setSelection(item.id)}>
+        <div className="prototype-lines" role="region" aria-label="Artículos del pedido" tabIndex={0}>{p.items.map(item=><button key={item.id} className="prototype-line" aria-pressed={selected?.id===item.id} onClick={()=>setSelection(item.id)}>
           <strong>{item.quantity} × {item.product.name}</strong><strong>{money(item.quantity*item.product.price)}</strong><span>{[...(item.product.displayExtras??[]).map(e=>e.name),item.product.note].filter(Boolean).join(' · ')||'Sin extras'}</span></button>)}{!p.items.length&&<p className="prototype-empty">Selecciona un producto del menú.</p>}</div>
         <div className="prototype-line-actions"><button aria-label="Reducir cantidad" disabled={!selected||p.disabled} onClick={()=>selected&&p.onQuantity(selected.id,selected.quantity-1)}>−</button><span>{selected?.quantity??0}</span><button aria-label="Aumentar cantidad" disabled={!selected||p.disabled} onClick={()=>selected&&p.onQuantity(selected.id,selected.quantity+1)}>+</button><button disabled={!selected||p.disabled} onClick={()=>selected&&p.onEdit(selected)}>Personalizar</button></div>
         <div className="prototype-total"><span>Total MXN</span><strong>{money(p.total)}</strong></div>
         <div className="prototype-ticket-actions"><button disabled={!p.items.length||p.disabled} onClick={()=>{if(confirm('¿Vaciar la orden actual?'))p.onClear();}}>Limpiar</button><button disabled={!selected||p.disabled} onClick={()=>selected&&p.onRemove(selected.id)}>Quitar producto</button></div>
-        {p.onPagerNumber&&<PagerPicker value={p.pagerNumber??null} onChange={p.onPagerNumber} disabled={p.disabled}/>}
-        {!validPagerNumber(p.pagerNumber)&&p.items.length>0&&<p className="pos-pager-required-note">Elige un control para cobrar.</p>}
-        <button className="prototype-pay" aria-label="Cobrar" disabled={!p.items.length||p.disabled||!validPagerNumber(p.pagerNumber)} onClick={()=>{if(validPagerNumber(p.pagerNumber))p.onCheckout();}}><span>Cobrar</span><strong>{money(p.total)}</strong></button>
+        {p.onPagerNumber&&<PagerPicker value={p.pagerNumber??null} onChange={p.onPagerNumber} disabled={p.disabled} phoneOrder={p.phoneOrder} onPhoneOrder={p.onPhoneOrder}/>}
+        {!validPagerNumber(p.pagerNumber)&&!p.phoneOrder&&p.items.length>0&&<p className="pos-pager-required-note">Elige un control para cobrar.</p>}
+        <button className="prototype-pay" aria-label={p.phoneOrder?'Guardar pedido':'Cobrar'} disabled={!p.items.length||p.disabled||(!p.phoneOrder&&!validPagerNumber(p.pagerNumber))} onClick={()=>{if(p.phoneOrder||validPagerNumber(p.pagerNumber))p.onCheckout();}}><span>{p.phoneOrder?'Guardar pedido':'Cobrar'}</span><strong>{money(p.total)}</strong></button>
       </aside>
     </main><footer className="prototype-status"><span>MXN · Requiere conexión</span><span>{p.disabled?'Revisa el estado de la orden':'Borrador automático en este navegador'}</span></footer>
     {sheet==='search'&&<Sheet title="Buscar producto" onClose={()=>setSheet('')}><input autoFocus aria-label="Buscar producto" value={p.search} onChange={e=>search(e.target.value)}/><TouchKeyboard value={p.search} onChange={search}/><button className="prototype-primary" onClick={()=>setSheet('')}>Ver productos</button></Sheet>}
@@ -88,27 +89,28 @@ export function PrototypeCustomization({product,steps,index,extras,dbExtras,note
   </Sheet>;
 }
 
-export function PrototypeCheckout({total,method,mxn,usd,exchangeRate,orderType,note,busy,insufficient,onMethod,onMXN,onUSD,onOrderType,onNote,onConfirm,onClose,pagerNumber,onPagerNumber,clipEnabled}:{
+export function PrototypeCheckout({total,method,mxn,usd,exchangeRate,orderType,note,busy,insufficient,onMethod,onMXN,onUSD,onOrderType,onNote,onConfirm,onClose,pagerNumber,onPagerNumber,clipEnabled,phoneOrderLabel}:{
   total:number;method:string;mxn:string|number;usd:string|number;exchangeRate:number;orderType:string;note:string;busy:boolean;insufficient:boolean;
   onMethod:(s:string)=>void;onMXN:(s:string)=>void;onUSD:(s:string)=>void;onOrderType:(s:string)=>void;onNote:(s:string)=>void;onConfirm:()=>void;onClose:()=>void;
   pagerNumber?:number|null;onPagerNumber?:(value:number|null)=>void;clipEnabled?:boolean;
+  phoneOrderLabel?:string;
 }){
   const [currency,setCurrency]=useState<'MXN'|'USD'>('MXN'),[confirmed,setConfirmed]=useState(false),[notes,setNotes]=useState(false);
   const cash=method==='Efectivo'||method==='Mixto',received=Number(mxn||0)+Number(usd||0)*exchangeRate;
   const key=(value:string)=>{if(!/^\d{0,8}(?:\.\d{0,2})?$/.test(value))return;(currency==='MXN'?onMXN:onUSD)(value);};
   return <Sheet title="Cobrar orden" onClose={()=>{if(!busy)onClose();}}><div className="prototype-checkout-total"><span>Total MXN</span><strong>{money(total)}</strong></div>
     <div className="prototype-checkout-grid"><section>
-      <div className="prototype-service">{['En Local','Para Llevar'].map(t=><button key={t} disabled={busy} aria-pressed={orderType===t} onClick={()=>onOrderType(t)}>{t==='En Local'?'Para aquí':'Para llevar'}</button>)}</div>
-      <button disabled={busy} onClick={()=>setNotes(!notes)}>Notas de la orden{note?' · añadidas':''}</button>
+      <div className="prototype-service">{['En Local','Para Llevar'].map(t=><button key={t} disabled={busy||!!phoneOrderLabel} aria-pressed={orderType===t} onClick={()=>onOrderType(t)}>{t==='En Local'?'Para aquí':'Para llevar'}</button>)}</div>
+      <button disabled={busy||!!phoneOrderLabel} onClick={()=>setNotes(!notes)}>Notas de la orden{note?' · añadidas':''}</button>
       {notes&&<><textarea aria-label="Notas de la orden" disabled={busy} value={note} onChange={e=>onNote(e.target.value)} maxLength={1000}/><TouchKeyboard value={note} onChange={onNote}/></>}
       <div className="prototype-options">{['Efectivo','Mixto','Tarjeta','Otro'].map(m=><button key={m} disabled={busy} aria-pressed={method===m} onClick={()=>{onMethod(m);setConfirmed(false);}}>{m==='Mixto'?'MXN + USD':m}</button>)}</div>
       {method==='Tarjeta'&&!clipEnabled&&<label className="prototype-card-confirm"><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Confirmé el cobro aprobado en la terminal.</label>}
-      {onPagerNumber&&<PagerPicker value={pagerNumber??null} onChange={onPagerNumber} disabled={busy}/>}
+      {phoneOrderLabel?<p className="phone-order-state">{phoneOrderLabel} · Paga al recoger</p>:onPagerNumber&&<PagerPicker value={pagerNumber??null} onChange={onPagerNumber} disabled={busy}/>}
       {method==='Otro'&&<p>Confirma el pago por separado antes de registrar la venta.</p>}
       {cash&&<><div className="prototype-service">{['MXN','USD'].map(c=><button key={c} disabled={busy} aria-pressed={currency===c} onClick={()=>setCurrency(c as 'MXN'|'USD')}>{c}</button>)}</div>
         <label>Recibido MXN<input inputMode="decimal" disabled={busy} value={mxn} onFocus={()=>setCurrency('MXN')} onChange={e=>onMXN(e.target.value)}/></label><label>Recibido USD<input inputMode="decimal" disabled={busy} value={usd} onFocus={()=>setCurrency('USD')} onChange={e=>onUSD(e.target.value)}/></label>
         <p>Tipo de cambio: {exchangeRate} MXN / USD</p><p>{received>=total?`Cambio MXN: ${money(received-total)}`:`Faltan MXN: ${money(total-received)}`}</p></>}
     </section>{cash&&!notes&&<section><fieldset disabled={busy}><legend>Teclado {currency}</legend><TouchKeyboard value={String(currency==='MXN'?mxn:usd)} onChange={key} numeric/></fieldset><button disabled={busy} onClick={()=>{onMXN(String(total));onUSD('');}}>Importe exacto en MXN</button></section>}</div>
-    <button className="prototype-primary" disabled={busy||insufficient||!validPagerNumber(pagerNumber)||(method==='Tarjeta'&&!clipEnabled&&!confirmed)} onClick={()=>{if(validPagerNumber(pagerNumber))onConfirm();}}>{busy?'Confirmando…':method==='Tarjeta'&&clipEnabled?'Enviar a CLIP':'Confirmar pago'}</button>
+    <button className="prototype-primary" disabled={busy||insufficient||(!phoneOrderLabel&&!validPagerNumber(pagerNumber))||(method==='Tarjeta'&&!clipEnabled&&!confirmed)} onClick={()=>{if(phoneOrderLabel||validPagerNumber(pagerNumber))onConfirm();}}>{busy?'Confirmando…':method==='Tarjeta'&&clipEnabled?'Enviar a CLIP':'Confirmar pago'}</button>
   </Sheet>;
 }

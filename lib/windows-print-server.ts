@@ -41,7 +41,7 @@ export function printerAdapter(config: PrintConfig): PrintAdapter {
       }, dispose() {} };
     }
     if (process.platform !== 'win32') throw new Error('La impresión física requiere Windows en la PC de caja.');
-    if (job.audience === 'customer' && document.issuerComplete !== true && !document.testOnly) throw new Error('Configura los datos fiscales del emisor antes de imprimir tickets de venta. La prueba de hardware usa muestras identificadas como PRUEBA.');
+    if (job.audience === 'customer' && document.kind!=='phone' && document.issuerComplete !== true && !document.testOnly) throw new Error('Configura los datos fiscales del emisor antes de imprimir tickets de venta. La prueba de hardware usa muestras identificadas como PRUEBA.');
     if (job.audience === 'barista' && !config.baristaStock) throw new Error('Confirma el tamaño de las etiquetas y la configuración del controlador Bluetooth antes de enviar a barra.');
     return windowsPrepare(job, document, config);
   } };

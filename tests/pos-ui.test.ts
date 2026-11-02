@@ -29,6 +29,8 @@ import * as shiftState from '../lib/shift-state';
 import PrototypeRegister, {PrototypeCheckout,PrototypeCustomization} from '../app/register/PrototypeRegister';
 import WorkspaceRegister, {WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog} from '../app/register/WorkspaceRegister';
 import PagerPicker from '../app/register/PagerPicker';
+import PhoneOrders,{PhoneOrderContact} from '../app/register/PhoneOrders';
+import * as phoneOrders from '../lib/phone-orders';
 
 for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['prototype','cashier',false],['workspace','cashier',false],['workspace','admin',false],['workspace','admin',true]] as const) test(`the actual ${appearance} ${role} POS ${clipEnabled?'with CLIP ':''}preserves recovery and automatically dispatches both synthetic copies`, async () => {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://127.0.0.1' });
@@ -103,7 +105,7 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
   const router = { replace: () => {}, refresh: () => {} };
   const imports: Record<string, unknown> = { '@/lib/drawer':drawer,'./DrawerGate':{default:DrawerGate,__esModule:true}, '@/lib/request-deadline':deadline, '@/lib/receipt-reprint':reprint, '@/lib/supabase': { supabase: client }, '@/store/useCartStore': cart,
     '@/lib/checkout': checkout, '@/lib/printing': printing, '@/lib/sale-printing':salePrinting, './PrintDispatch':{default:PrintDispatch,__esModule:true}, './printing.css':{}, '@/lib/shift': shift, '@/lib/shift-state':shiftState,
-    './PrototypeRegister':{default:PrototypeRegister,PrototypeCheckout,PrototypeCustomization,__esModule:true}, './prototype.css':{}, './PagerPicker':{default:PagerPicker,__esModule:true},
+    './PrototypeRegister':{default:PrototypeRegister,PrototypeCheckout,PrototypeCustomization,__esModule:true}, './prototype.css':{}, './PagerPicker':{default:PagerPicker,__esModule:true},'./PhoneOrders':{default:PhoneOrders,PhoneOrderContact,__esModule:true},'@/lib/phone-orders':phoneOrders,
     './WorkspaceRegister':{default:WorkspaceRegister,WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog,__esModule:true}, './workspace.css':{}, '@/lib/pos-types': types, '@/lib/use-resource': resource, '@/lib/cart-draft': drafts, 'next/navigation': { useRouter: () => router } };
   const source = readFileSync(new URL('../app/register/Register.tsx', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020,

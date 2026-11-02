@@ -43,7 +43,7 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
       if (names.error) throw new AccessError('No se pudieron consultar los nombres de los cajeros. Actualiza la lista.',503);
       return { mode: config.mode, canManage: true, actorId: user.id, jobs, history, cashiers:names.data??[] };
     }
-    return { mode: config.mode, canManage: administrator, jobs: journal.list(user.id) };
+    return { mode: config.mode, canManage: administrator, jobs: journal.listRegister(user.id) };
   }
   const raw = await request.text();
   if (raw.length > 1024) throw new AccessError('Solicitud de impresión inválida.', 400);
@@ -81,12 +81,16 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
   let issuer;
   try { issuer = readReceiptIssuer(); }
   catch { /* The customer job is visibly withheld; a fiscal-config error must not stop barista instructions. */ }
-  journal.ensure(owner, order, config.queues, { issuer });
+  // A phone order already has its separately journaled preparation copy.
+  // Taking its payment prints only the financial customer receipt.
+  const phoneSale=typeof sale.data.receipt_snapshot?.phone_order_id==='string';
+  if(phoneSale&&input.audience==='barista')throw new AccessError('La preparación del pedido está en su comanda por teléfono.',409);
+  journal.ensure(owner, order, config.queues, { issuer },phoneSale?'customer':undefined);
   if (recovery) {
     try { journal.authorizeRecovery({ requestId: input.requestId,actor: user.id,owner,orderId: input.orderId,audience: input.audience,action:input.action,reason:input.reason.trim() }); }
     catch (error) { throw new AccessError(error instanceof Error ? error.message : 'No se pudo resolver esta copia.',409); }
   }
-  return { mode: config.mode, canManage: administrator, jobs: await journal.dispatch(owner, order.id, input.audience, async () => {
+  return { mode: config.mode, canManage: administrator,...(phoneSale?{expectedCopies:1}:{}), jobs: await journal.dispatch(owner, order.id, phoneSale?'customer':input.audience, async () => {
     const guardSignal = AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]);
     const current = await withDeadline(() => client.from('orders').select('status,cashier_id').eq('id', order.id).abortSignal(guardSignal).single(), { signal: guardSignal });
     if (current.error || !current.data || current.data.cashier_id !== owner)

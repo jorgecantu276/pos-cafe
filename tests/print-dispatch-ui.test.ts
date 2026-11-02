@@ -9,7 +9,7 @@ import { createRoot } from 'react-dom/client';
 import { JSDOM } from 'jsdom';
 import PrintDispatch from '../app/register/PrintDispatch';
 import { PrintJournal } from '../lib/print-journal-server';
-import { rememberSalePrint, pendingSalePrints, type PrintAudience, type SalePrintJob } from '../lib/sale-printing';
+import { rememberSalePrint, rememberPhonePrint, pendingSalePrints, type PrintAudience, type SalePrintJob } from '../lib/sale-printing';
 import type { SavedOrder } from '../lib/checkout';
 
 test('actual retry controls and refresh recover only the missing copy, including a lost HTTP response', async () => {
@@ -87,6 +87,32 @@ function updatePrinting(document: Document) {
   const button = [...document.querySelectorAll('button')].find(b => b.textContent === 'Actualizar impresión');
   assert.ok(button); return button;
 }
+
+test('phone preparation and its later single-copy paid receipt retire separate outbox identities',async()=>{
+  const phoneId=randomUUID(),saleId=randomUUID(),jobs:SalePrintJob[]=[],posts:string[]=[];
+  await withPrintStatus(async (url,options)=>{
+    if(options?.method==='POST'){
+      const body=JSON.parse(options.body as string);posts.push(String(url));
+      if(String(url)==='/api/phone-printing'){
+        assert.deepEqual(body,{phoneOrderId:phoneId});
+        for(const audience of ['customer','barista'] as const)jobs.push({orderId:`phone:${phoneId}`,ticket:'T1',audience,queue:audience,state:'submitted',message:'',attempts:1,updatedAt:new Date().toISOString()});
+        return Response.json({mode:'mock',jobs:jobs.filter(job=>job.orderId===`phone:${phoneId}`)});
+      }
+      assert.deepEqual(body,{orderId:saleId});
+      jobs.push({orderId:saleId,ticket:'2',audience:'customer',queue:'customer',state:'submitted',message:'',attempts:1,updatedAt:new Date().toISOString()});
+      return Response.json({mode:'mock',jobs:jobs.filter(job=>job.orderId===saleId),expectedCopies:1});
+    }
+    return Response.json({mode:'mock',jobs});
+  },async(document,storage)=>{
+    await act(async()=>{rememberPhonePrint(storage,'compact-print:cashier',{id:phoneId,folio:1});});
+    await act(async()=>updatePrinting(document).click());
+    assert.deepEqual(pendingSalePrints(storage,'compact-print:cashier'),[]);
+    rememberSalePrint(storage,'compact-print:cashier',{id:saleId,ticket_number:2});
+    await act(async()=>updatePrinting(document).click());
+    assert.deepEqual(pendingSalePrints(storage,'compact-print:cashier'),[]);
+    assert.deepEqual(posts,['/api/phone-printing','/api/printing']);assert.equal(jobs.length,3);
+  });
+});
 
 test('an unavailable print endpoint stays compact and recovers without opening the panel or sending a job', async () => {
   let unavailable = true, posts = 0;

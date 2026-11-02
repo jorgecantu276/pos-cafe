@@ -284,3 +284,24 @@
 @media(max-width:760px){.pos-closing-main{grid-template-columns:220px minmax(0,1fr)}.pos-closing-summary{padding:16px}.pos-closing-content{padding:16px}.pos-closing-options{grid-template-columns:1fr}.pos-closing-content .grid-cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}.pos-closing-dialog>footer.pos-closing-footer{grid-template-columns:1fr;padding:10px 16px}}
 .workspace-order-lines:focus-visible{outline:3px solid #0071e3;outline-offset:-3px}
 .pos-pager-trigger.is-required{border-color:#d8c59d;background:#fffbf3}.pos-pager-trigger.is-required strong{color:#805515}.workspace-order-footer .pos-pager-trigger{min-height:48px;padding:10px 12px;font-size:14px}.pos-pager-required-note{margin:0;color:#805515;font-size:13px;line-height:1.4}.workspace-order-footer .pos-pager-required-note{margin-top:-4px}
+.pos-pager-dialog footer p{margin:6px 0 0;text-align:center;color:#626d7e;font-size:14px}
+.phone-order-contact,.phone-orders{width:min(780px,calc(100vw - 24px))}
+.phone-order-contact label,.phone-order-search label,.phone-order-cancel label{display:grid;gap:7px;margin:0 0 14px;font-size:15px;font-weight:600}
+.phone-order-contact input,.phone-order-search input,.phone-order-cancel input:not([type=checkbox]),.phone-order-cancel textarea{box-sizing:border-box;width:100%;min-height:48px;border:1px solid #dbe2eb;border-radius:12px;background:#fff;color:#172033;padding:10px 12px;font:inherit}
+.phone-order-cancel textarea{min-height:96px;resize:vertical}
+.phone-order-contact>footer{align-items:center;gap:16px;justify-content:space-between;flex-wrap:wrap}
+.phone-order-state{padding:10px 12px;border-radius:12px;background:#fff6e7;color:#785112;font-weight:600}
+.phone-order-service{display:grid;grid-template-columns:1fr 1fr;gap:8px;border:0;padding:0;margin:0 0 14px}.phone-order-service legend{font-weight:600;margin-bottom:8px}.workspace-dialog .phone-order-service button[aria-pressed=true]{color:#005ab8;background:#edf5ff;border-color:#0066cc}
+.phone-order-notice{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 14px;background:#fff8ea;color:#654619;border:1px solid #ead7b2;border-radius:12px;font-size:14px}
+.phone-order-notice>div{display:grid;gap:3px;flex:1;min-width:180px}.phone-order-notice span{overflow-wrap:anywhere}
+.phone-order-notice button{min-width:44px;min-height:48px;border:1px solid #e2d4ba;border-radius:12px;background:#fff;padding:8px 12px;cursor:pointer}
+.phone-order-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px}.phone-order-heading h3{margin:0;font-size:22px}
+.phone-order-search{display:flex;align-items:end;gap:10px;flex-wrap:wrap}.phone-order-search label{flex:1;min-width:220px;margin:0}
+.phone-order-list,.phone-order-items{list-style:none;padding:0;margin:16px 0;display:grid;gap:10px}
+.workspace-dialog .phone-order-list button{display:grid;grid-template-columns:minmax(0,1fr) auto;width:100%;gap:4px 16px;text-align:left;justify-content:stretch;padding:14px 16px}
+.phone-order-list button span{font-size:14px;color:#626d7e}.phone-order-list button>*{overflow-wrap:anywhere;min-width:0}
+.phone-order-items li{display:grid;gap:5px;padding:12px 0;border-bottom:1px solid #e2e7ee}.phone-order-items span{font-size:14px;color:#626d7e}
+.phone-order-cancel{margin:18px 0 0;border:1px solid #e2e7ee;border-radius:14px;padding:16px}.phone-order-cancel legend{font-weight:700}.phone-order-cancel small{font-size:14px;color:#626d7e}
+.phone-order-cancel label.phone-order-confirm{display:flex;align-items:center;min-height:48px;gap:12px;margin:14px 0;font-size:14px;font-weight:500}.phone-order-confirm input{width:24px;height:24px;flex-shrink:0;accent-color:#0066cc}
+.workspace-dialog .phone-order-danger{color:#a22b26;border-color:#e8c8c5;background:#fff5f4}
+@media(max-width:1120px){.workspace-menu-heading{flex-wrap:wrap;height:auto}.workspace-menu-heading .workspace-search{flex:1;min-width:160px}.workspace-menu-heading .workspace-tickets{font-size:13px;padding:8px 10px;min-height:48px}.workspace-menu-heading>div:first-child{gap:6px}.workspace-menu-heading h1{font-size:24px}}

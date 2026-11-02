@@ -32,10 +32,16 @@ interface CartStore {
   orderType: string;
   orderNote: string;
   pagerNumber: number | null;
+  phoneOrder: boolean;
+  phoneName: string;
+  phoneContact: string;
   customerId: string | null;
   setOrderType: (value: string) => void;
   setOrderNote: (value: string) => void;
   setPagerNumber: (value: number | null) => void;
+  setPhoneOrder: (value: boolean) => void;
+  setPhoneName: (value: string) => void;
+  setPhoneContact: (value: string) => void;
   setCustomerId: (value: string | null) => void;
   addItem: (product: Product) => void;
   removeItem: (itemId: string) => void;
@@ -72,10 +78,13 @@ export function customizeProduct(product: Product, extras: CartExtra[], note: st
 
 export const createCartStore = () => create<CartStore>((set, get) => ({
   items: [],
-  orderType: 'En Local', orderNote: '', pagerNumber: null, customerId: null,
+  orderType: 'En Local', orderNote: '', pagerNumber: null, phoneOrder:false, phoneName:'', phoneContact:'', customerId: null,
   setOrderType: orderType => set({ orderType }),
   setOrderNote: orderNote => set({ orderNote }),
-  setPagerNumber: pagerNumber => set({ pagerNumber }),
+  setPagerNumber: pagerNumber => set({ pagerNumber, ...(pagerNumber!==null?{phoneOrder:false}:{}) }),
+  setPhoneOrder: phoneOrder => set({phoneOrder,...(phoneOrder?{pagerNumber:null}: {})}),
+  setPhoneName: phoneName => set({phoneName}),
+  setPhoneContact: phoneContact => set({phoneContact}),
   setCustomerId: customerId => set({ customerId }),
   
   addItem: (product) => {
@@ -117,7 +126,7 @@ export const createCartStore = () => create<CartStore>((set, get) => ({
     )
   })),
 
-  clearCart: () => set({ items: [], orderType: 'En Local', orderNote: '', pagerNumber: null, customerId: null }),
+  clearCart: () => set({ items: [], orderType: 'En Local', orderNote: '', pagerNumber: null, phoneOrder:false,phoneName:'',phoneContact:'',customerId: null }),
 
   getTotal: () => get().items.reduce((acc, item) => 
     acc + cents(item.product.price) * item.quantity, 0

@@ -14,8 +14,13 @@ export interface CheckoutPayload {
   order_type: string;
   order_note: string;
   pager_number?: number | null;
+  phone_order_id?: string;
+  phone_order_revision?: number;
 }
 export interface SavedOrder {
+  source?:'phone'|'in_person';
+  phone_folio?:number;
+  phone_order_id?: string|null;
   pager_number?: number | null;
   id: string;
   ticket_number: number | string;
@@ -59,7 +64,9 @@ export function readCheckoutReview(raw: string | null): CheckoutReview | null {
   return value as CheckoutReview;
 }
 export function checkoutPayload(items: readonly CartItem[], fields: Omit<CheckoutPayload, 'items'>): CheckoutPayload {
-  if (!validPagerNumber(fields.pager_number)) throw new Error('Elige un control del 1 al 30 antes de cobrar.');
+  if (fields.phone_order_id) {
+    if(fields.pager_number!=null||typeof fields.phone_order_revision!=='number'||!Number.isInteger(fields.phone_order_revision)||fields.phone_order_revision<0)throw new Error('Actualiza el pedido por teléfono antes de cobrar.');
+  } else if (!validPagerNumber(fields.pager_number)) throw new Error('Elige un control del 1 al 30 antes de cobrar.');
   if (!items.length || items.some(i => !Number.isInteger(i.quantity) || i.quantity < 1
     || (i.product.displayExtras ?? []).some(e => !e.id))) throw new Error('Revisa las cantidades y vuelve a seleccionar los extras del catálogo.');
   return { ...fields, items: items.map(i => ({ product_id: i.product.id, quantity: i.quantity,
@@ -85,6 +92,7 @@ export async function executeCheckout(client: Pick<SupabaseClient, 'rpc'>, pendi
     const order = reply.order;
     if (!order?.id || order.ticket_number == null || !Array.isArray(order.items) || !Number.isFinite(order.total) || order.total !== pending.total || order.payment_method !== 'tarjeta') throw new ClipPaymentPending('Comprobante CLIP no confirmado. Conserva el pedido.');
     if (pending.payload.pager_number != null && order.pager_number !== pending.payload.pager_number) throw new ClipPaymentPending('No se confirmó el control de entrega. Comprueba la venta antes de volver a cobrar.');
+    if (pending.payload.phone_order_id && order.phone_order_id !== pending.payload.phone_order_id) throw new ClipPaymentPending('No se confirmó el pedido por teléfono. No vuelvas a cobrar.');
     return order as SavedOrder;
   }
   const { data, error } = await withDeadline(() => client.rpc('pos_checkout', { p_request: pending.requestId, p_payload: pending.payload }), { timeoutMs });
@@ -96,5 +104,6 @@ export async function executeCheckout(client: Pick<SupabaseClient, 'rpc'>, pendi
   }
   if (!data?.id || data.ticket_number == null || !Array.isArray(data.items) || !Number.isFinite(data.total)) throw new Error('No se confirmó la venta. Compruébala antes de volver a cobrar.');
   if (pending.payload.pager_number != null && data.pager_number !== pending.payload.pager_number) throw new Error('No se confirmó el control de entrega. Comprueba la venta antes de volver a cobrar.');
+  if (pending.payload.phone_order_id && data.phone_order_id !== pending.payload.phone_order_id) throw new Error('No se confirmó el pedido por teléfono. No vuelvas a cobrar.');
   return data as SavedOrder;
 }

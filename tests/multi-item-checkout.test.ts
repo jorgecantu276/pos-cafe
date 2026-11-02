@@ -28,6 +28,8 @@ import PrintDispatch from '../app/register/PrintDispatch';
 import PrototypeRegister, { PrototypeCheckout, PrototypeCustomization } from '../app/register/PrototypeRegister';
 import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from '../app/register/WorkspaceRegister';
 import PagerPicker from '../app/register/PagerPicker';
+import PhoneOrders,{PhoneOrderContact} from '../app/register/PhoneOrders';
+import * as phoneOrders from '../lib/phone-orders';
 
 for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed drinks, distinct milk/notes and repeated cups produce one checkout and per-cup documents`,async()=>{
   const fixture=JSON.parse(readFileSync(new URL('./fixtures/multi-item-order.json',import.meta.url),'utf8'));
@@ -77,7 +79,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
   const router={replace(){},refresh(){}};
   const imports:Record<string,unknown>={ '@/lib/drawer':drawer,'./DrawerGate':{default:DrawerGate,__esModule:true},'@/lib/request-deadline':deadline, '@/lib/receipt-reprint':reprint, '@/lib/supabase':{supabase:client},'@/store/useCartStore':cart,'@/lib/checkout':checkout,
     '@/lib/printing':printing,'@/lib/sale-printing':salePrinting,'./PrintDispatch':{default:PrintDispatch,__esModule:true},'./printing.css':{},
-    '@/lib/shift':shift,'@/lib/shift-state':shiftState,'./PrototypeRegister':{default:PrototypeRegister,PrototypeCheckout,PrototypeCustomization,__esModule:true},'./prototype.css':{},'./PagerPicker':{default:PagerPicker,__esModule:true},
+    '@/lib/shift':shift,'@/lib/shift-state':shiftState,'./PrototypeRegister':{default:PrototypeRegister,PrototypeCheckout,PrototypeCustomization,__esModule:true},'./prototype.css':{},'./PagerPicker':{default:PagerPicker,__esModule:true},'./PhoneOrders':{default:PhoneOrders,PhoneOrderContact,__esModule:true},'@/lib/phone-orders':phoneOrders,
     './WorkspaceRegister':{default:WorkspaceRegister,WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog,__esModule:true},'./workspace.css':{},
     '@/lib/pos-types':types,'@/lib/use-resource':resource,'@/lib/cart-draft':drafts,'next/navigation':{useRouter:()=>router}};
   const source=readFileSync(new URL('../app/register/Register.tsx',import.meta.url),'utf8');

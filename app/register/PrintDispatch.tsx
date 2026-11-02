@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ChevronDown, Printer } from 'lucide-react';
-import { forgetSalePrint, pendingSalePrints, type PrintAudience, type SalePrintJob } from '@/lib/sale-printing';
+import { forgetSalePrint, pendingSalePrints, printRequestTarget, type PrintAudience, type SalePrintJob } from '@/lib/sale-printing';
 
-interface Reply { mode: 'mock' | 'windows'; jobs: SalePrintJob[]; canManage?: boolean }
+interface Reply { mode: 'mock' | 'windows'; jobs: SalePrintJob[]; canManage?: boolean; expectedCopies?:1|2 }
 const labels = { customer: 'Ticket del cliente', barista: 'Etiquetas del barista' };
 const stateLabels: Record<SalePrintJob['state'], string> = {
   queued: 'En espera', preparing: 'Preparando impresión…', submitting: 'Enviando…',
@@ -36,9 +36,10 @@ export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkout
     let active = true, running = false, pollNeeded = true;
     const controller = new AbortController();
     const request = async (orderId?: string, audience?: PrintAudience): Promise<Reply> => {
-      const result = await fetch('/api/printing', { method: orderId ? 'POST' : 'GET', cache: 'no-store', credentials: 'same-origin',
+      const target=orderId?printRequestTarget(orderId):{url:'/api/printing',body:{}};
+      const result = await fetch(target.url, { method: orderId ? 'POST' : 'GET', cache: 'no-store', credentials: 'same-origin',
         headers: { 'X-Pos-Print': '1', ...(orderId ? { 'Content-Type': 'application/json' } : {}) },
-        body: orderId ? JSON.stringify({ orderId, ...(audience ? { audience } : {}) }) : undefined,
+        body: orderId ? JSON.stringify({ ...target.body, ...(audience ? { audience } : {}) }) : undefined,
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(70_000)]) });
       const data = await result.json();
       if (!result.ok) {
@@ -60,7 +61,7 @@ export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkout
         // Independent orders can finish while another printer is slow.
         const outcomes = await Promise.allSettled([...pending].map(async orderId => {
           const sent = await request(orderId);
-          if (sent.jobs.length === 2) forgetSalePrint(localStorage, checkoutKey, orderId);
+          if (sent.jobs.length === (sent.expectedCopies??2)) forgetSalePrint(localStorage, checkoutKey, orderId);
         }));
         if (pending.size) result = await request();
         if (active) {
@@ -76,8 +77,10 @@ export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkout
     void run();
     const timer = setInterval(() => { if (pollNeeded) void run(); }, 5000);
     const changed = (event: StorageEvent) => { if (!event.key || event.key.startsWith(`${checkoutKey}:print:v1:`)) void run(); };
+    const pending=()=>{void run();};
     window.addEventListener('storage', changed);
-    return () => { active = false; clearInterval(timer); controller.abort(); window.removeEventListener('storage', changed); };
+    window.addEventListener('pos-print-pending',pending);
+    return () => { active = false; clearInterval(timer); controller.abort(); window.removeEventListener('storage', changed);window.removeEventListener('pos-print-pending',pending); };
   }, [checkoutKey, latestOrderId]);
   if (!checkoutKey) return null;
   const attention = jobs.filter(job => !['submitted', 'cancelled'].includes(job.state));

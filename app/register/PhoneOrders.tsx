@@ -1,0 +1,51 @@
+'use client';
+
+import {useEffect,useState} from 'react';
+import type {SupabaseClient} from '@supabase/supabase-js';
+import {getPhoneOrder,listPhoneOrders,validPhoneContact,type PhoneOrder,type PhoneReturn} from '@/lib/phone-orders';
+import {errorMessage} from '@/lib/pos-types';
+import {WorkspaceDialog,WorkspaceKeyboard} from './WorkspaceRegister';
+
+const money=(value:number)=>`$${value.toFixed(2)} MXN`;
+const date=new Intl.DateTimeFormat('es-MX',{timeZone:'America/Matamoros',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+
+export function PhoneOrderContact({name,phone,total,busy,error,pending,orderType,onOrderType,onRecover,onName,onPhone,onSave,onClose}:{name:string;phone:string;total:number;busy:boolean;error?:string;pending?:boolean;orderType:string;onOrderType:(value:string)=>void;onRecover?:()=>void;onName:(value:string)=>void;onPhone:(value:string)=>void;onSave:()=>void;onClose:()=>void}) {
+  const [field,setField]=useState<'name'|'phone'>('name');
+  return <WorkspaceDialog title="Pedido por teléfono" busy={busy} onClose={onClose} className="phone-order-contact"><div className="workspace-dialog-content">
+    <p className="phone-order-state">Sin pagar · Paga al recoger</p>
+    {error&&<p role="alert">{error}</p>}
+    <label>Nombre<input aria-label="Nombre del pedido" value={name} maxLength={120} disabled={busy||pending} onFocus={()=>setField('name')} onChange={event=>onName(event.target.value)}/></label>
+    <label>Teléfono<input aria-label="Teléfono del pedido" type="tel" value={phone} maxLength={60} disabled={busy||pending} onFocus={()=>setField('phone')} onChange={event=>onPhone(event.target.value)}/></label>
+    <fieldset className="phone-order-service" disabled={busy||pending}><legend>Tipo de pedido</legend>{[['En Local','Para aquí'],['Para Llevar','Para llevar']].map(([value,label])=><button type="button" key={value} aria-pressed={orderType===value} onClick={()=>onOrderType(value)}>{label}</button>)}</fieldset>
+    <p className="workspace-caption">El contacto identifica este pedido. No registra una membresía.</p>
+    <WorkspaceKeyboard value={field==='name'?name:phone} numeric={field==='phone'} disabled={busy||pending} label={field==='name'?'Nombre':'Teléfono'} onChange={value=>field==='name'?onName(value.slice(0,120)):onPhone(value.replace(/[^\d+(). -]/g,'').slice(0,60))}/>
+  </div><footer><strong>Por cobrar {money(total)}</strong>{pending?<button type="button" className="workspace-primary" disabled={busy} onClick={onRecover}>Comprobar pedido</button>:<button type="button" className="workspace-primary" disabled={busy||total<=0||!validPhoneContact(name,phone)} onClick={onSave}>{busy?'Guardando…':'Guardar pedido'}</button>}</footer></WorkspaceDialog>;
+}
+
+export default function PhoneOrders({client,disabled,pending,pendingError,onRecover,onClose,onPay,onPrint,onCancel}:{client:Pick<SupabaseClient,'rpc'>;disabled:boolean;pending?:boolean;pendingError?:string;onRecover?:()=>Promise<boolean>;onClose:()=>void;onPay:(order:PhoneOrder)=>void;onPrint?:(order:PhoneOrder)=>Promise<boolean>;onCancel:(order:PhoneOrder,reason:string,returns:PhoneReturn[])=>Promise<boolean>}) {
+  const [rows,setRows]=useState<PhoneOrder[]>([]),[selected,setSelected]=useState<PhoneOrder|null>(null),[search,setSearch]=useState(''),[query,setQuery]=useState(''),[attempt,setAttempt]=useState(0);
+  const [error,setError]=useState(''),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[cancelling,setCancelling]=useState(false),[reason,setReason]=useState(''),[returns,setReturns]=useState<Record<string,string>>({});
+  const [confirmed,setConfirmed]=useState(false),[keyboard,setKeyboard]=useState(false);
+  const [before,setBefore]=useState<string|null>(null),[hasMore,setHasMore]=useState(false);
+  const refresh=()=>{setLoading(true);setError('');setBefore(null);setAttempt(value=>value+1);};
+  useEffect(()=>{const controller=new AbortController();void listPhoneOrders(client,query,controller.signal,before).then(data=>{if(!controller.signal.aborted){setRows(previous=>before?[...previous,...data.filter(row=>!previous.some(old=>old.id===row.id))]:data);setHasMore(data.length===200);}}).catch(error=>{if(!controller.signal.aborted)setError(errorMessage(error));}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});return()=>controller.abort();},[client,query,attempt,before]);
+  const open=async(order:PhoneOrder)=>{setBusy(true);setError('');try{setSelected(await getPhoneOrder(client,order.id));setCancelling(false);setReason('');setReturns({});setConfirmed(false);setKeyboard(false);}catch(error){setError(errorMessage(error));}finally{setBusy(false);}};
+  const canReturn=!selected?.snapshot.inventory_reserved||selected.snapshot.items.every(line=>returns[line.id]!==undefined&&returns[line.id]!==''&&/^\d+$/.test(returns[line.id])&&Number(returns[line.id])<=line.quantity);
+  const cancel=async()=>{if(!selected||!canReturn||!reason.trim()||!confirmed)return;setBusy(true);try{const ok=await onCancel(selected,reason,selected.snapshot.inventory_reserved?selected.snapshot.items.map(line=>({line_id:line.id,return_quantity:Number(returns[line.id])})):[]);if(ok){setSelected(null);refresh();}}finally{setBusy(false);}};
+  return <WorkspaceDialog title="Pedidos por cobrar" busy={busy} onClose={onClose} className="phone-orders"><div className="workspace-dialog-content">
+    {error&&<p role="alert">{error}</p>}
+    {(pending||pendingError)&&<div role="alert" className="phone-order-notice"><span>{pendingError||'Hay un pedido sin confirmar.'}</span>{pending&&<button type="button" onClick={()=>void onRecover?.().then(ok=>{if(ok){setSelected(null);refresh();}})}>Comprobar pedido</button>}</div>}
+    {selected?<><button type="button" disabled={busy} onClick={()=>setSelected(null)}>Volver a pedidos</button><div className="phone-order-heading"><h3>Pedido #{selected.folio}</h3><strong>{money(selected.snapshot.total)}</strong></div>
+      <p><strong>{selected.contact_name}</strong> · {selected.contact_phone}</p><p className="phone-order-state">{selected.status==='pending'?'Sin pagar · Paga al recoger':selected.status==='paid'?'Pagado':'Cancelado'}</p>
+      <p className="workspace-caption">{date.format(new Date(selected.created_at))} · {selected.snapshot.order_type} · Precio guardado</p>
+      <ul className="phone-order-items">{selected.snapshot.items.map(line=><li key={line.id}><strong>{line.quantity} × {line.product.name}</strong><span>{[...(line.product.displayExtras??[]).map(extra=>extra.name),line.product.note].filter(Boolean).join(' · ')}</span></li>)}</ul>{selected.snapshot.order_note&&<p>Nota: {selected.snapshot.order_note}</p>}
+      {cancelling&&<fieldset disabled={disabled||busy} className="phone-order-cancel"><legend>Cancelar pedido</legend><label>Motivo<textarea aria-label="Motivo de cancelación del pedido" value={reason} maxLength={200} onChange={event=>{setReason(event.target.value);setConfirmed(false);}}/></label><button type="button" aria-expanded={keyboard} onClick={()=>setKeyboard(value=>!value)}>Teclado del motivo</button>{keyboard&&<WorkspaceKeyboard value={reason} onChange={value=>{setReason(value.slice(0,200));setConfirmed(false);}}/>}
+        {selected.snapshot.inventory_reserved&&<><p>Indica cuántos artículos pueden volver a venderse. El resto se registra como merma.</p>{selected.snapshot.items.map(line=><label key={line.id}>{line.product.name} · {line.quantity} en el pedido<input aria-label={`Devueltos vendibles: ${line.product.name}`} inputMode="numeric" value={returns[line.id]??''} onChange={event=>{setReturns(values=>({...values,[line.id]:event.target.value.replace(/\D/g,'')}));setConfirmed(false);}}/>{returns[line.id]!==undefined&&canReturn&&<small>{returns[line.id]} para volver a vender · {line.quantity-Number(returns[line.id])} de merma</small>}</label>)}</>}
+        <label className="phone-order-confirm"><input type="checkbox" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)}/>Confirmo la cancelación{selected.snapshot.inventory_reserved?' y las cantidades indicadas':''}. El pedido ya no se podrá cobrar.</label>
+        <button type="button" className="phone-order-danger" disabled={!reason.trim()||!canReturn||!confirmed||disabled||busy} onClick={()=>void cancel()}>Confirmar cancelación</button>
+      </fieldset>}
+    </>:<><form className="phone-order-search" onSubmit={event=>{event.preventDefault();setQuery(search);refresh();}}><label>Nombre, teléfono o folio<input aria-label="Buscar pedido por cobrar" value={search} maxLength={100} onChange={event=>setSearch(event.target.value)}/></label><button type="submit" disabled={busy}>Buscar</button><button type="button" disabled={loading||busy} onClick={refresh}>Actualizar pedidos</button></form><button type="button" aria-expanded={keyboard} onClick={()=>setKeyboard(value=>!value)}>Teclado de búsqueda de pedidos</button>{keyboard&&<WorkspaceKeyboard value={search} onChange={value=>setSearch(value.slice(0,100))}/>}
+      {loading&&<p role="status">Cargando pedidos…</p>}{rows.length?<ul className="phone-order-list">{rows.map(order=><li key={order.id}><button type="button" disabled={busy||loading} aria-label={`Abrir pedido ${order.folio}`} onClick={()=>void open(order)}><strong>#{order.folio} · {order.contact_name}</strong><span>{order.contact_phone} · {date.format(new Date(order.created_at))}</span><strong>{money(order.snapshot.total)}</strong><span>Sin pagar</span></button></li>)}</ul>:!loading&&!error&&<p>No hay pedidos por cobrar.</p>}{hasMore&&<button type="button" disabled={loading||busy} onClick={()=>{setLoading(true);setError('');setBefore(String(rows.at(-1)!.folio));setAttempt(value=>value+1);}}>Cargar anteriores</button>}
+    </>}
+  </div>{selected?.status==='pending'&&!cancelling&&<footer><button type="button" disabled={disabled||busy} onClick={()=>setCancelling(true)}>Cancelar pedido</button>{onPrint&&<button type="button" disabled={disabled||busy} onClick={()=>void onPrint(selected)}>Comprobar comanda</button>}<button type="button" className="workspace-primary" disabled={disabled||busy} onClick={()=>onPay(selected)}>Cobrar pedido</button></footer>}</WorkspaceDialog>;
+}

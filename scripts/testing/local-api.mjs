@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 // Separate fresh synthetic stack. Existing staging, archives and hosted data
 // are never read or reconciled. Each run owns a new project and test volumes.
 export async function freshLocalApi({ portBase = 55471 } = {}) {
-  assert.ok([55471,55481].includes(portBase), 'Only dedicated loopback test port families are allowed');
+  assert.ok([55471,55481,55501].includes(portBase), 'Only dedicated loopback test port families are allowed');
   const portPrefix=String(portBase).slice(0,-1);
   await dockerCheck();
   const project = `pos-cafe-admin-${randomUUID().slice(0, 8)}`, network = `supabase_network_${project}`;
