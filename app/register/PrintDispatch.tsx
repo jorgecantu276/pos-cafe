@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { ChevronDown, Printer } from 'lucide-react';
 import { forgetSalePrint, pendingSalePrints, type PrintAudience, type SalePrintJob } from '@/lib/sale-printing';
 
 interface Reply { mode: 'mock' | 'windows'; jobs: SalePrintJob[]; canManage?: boolean }
@@ -13,6 +14,22 @@ export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkout
   const [jobs, setJobs] = useState<SalePrintJob[]>([]), [error, setError] = useState(''), [mode, setMode] = useState('');
   const [busy, setBusy] = useState(false);
   const [canManage,setCanManage] = useState(false);
+  const disclosure = useRef<HTMLDetailsElement>(null);
+  const [panelPosition,setPanelPosition] = useState({top:54,right:12,height:420});
+  const placePanel = useCallback(() => {
+    const node=disclosure.current;
+    if(!node?.open)return;
+    const bounds=node.getBoundingClientRect();
+    const top=Math.max(8,Math.min(bounds.bottom+6,window.innerHeight-160));
+    const right=Math.max(12,window.innerWidth-bounds.right);
+    const height=Math.max(120,Math.min(420,window.innerHeight-top-12));
+    setPanelPosition(current=>current.top===top&&current.right===right&&current.height===height?current:{top,right,height});
+  },[]);
+  useEffect(()=>{
+    window.addEventListener('resize',placePanel);
+    window.addEventListener('scroll',placePanel,true);
+    return()=>{window.removeEventListener('resize',placePanel);window.removeEventListener('scroll',placePanel,true);};
+  },[placePanel]);
   const refresh = useRef<(orderId?: string, audience?: PrintAudience) => Promise<void>>(async () => {});
   useEffect(() => {
     if (!checkoutKey) return;
@@ -65,9 +82,17 @@ export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkout
   if (!checkoutKey) return null;
   const attention = jobs.filter(job => !['submitted', 'cancelled'].includes(job.state));
   const shown = [...attention, ...jobs.filter(job => job.orderId === latestOrderId && !attention.includes(job))];
-  return <details className="print-dispatch" open={Boolean(error || attention.length)}>
-    <summary>Impresión {mode === 'mock' ? '· Modo de prueba ' : ''}{attention.length ? `· ${attention.length} por revisar` : '· cliente y barra'}</summary>
-    <div className="print-dispatch-body" aria-live="polite">
+  const needsReview = attention.some(job => ['blocked', 'uncertain'].includes(job.state));
+  const status = error ? 'Estado sin comprobar' : needsReview ? 'Por revisar' : attention.length ? 'En curso' : mode ? 'Sin pendientes' : 'Comprobando…';
+  return <details ref={disclosure} onToggle={placePanel} className={`print-dispatch${error || needsReview ? ' has-attention' : ''}`}>
+    <summary>
+      <Printer size={18} aria-hidden="true"/><strong>Impresión</strong>
+      <span className="print-dispatch-status" role="status" aria-live="polite">{status}</span>
+      {attention.length > 0 && <span className="print-dispatch-count" role="status" aria-label={`${attention.length} ${attention.length === 1 ? 'copia pendiente' : 'copias pendientes'}`}>{attention.length}</span>}
+      {mode === 'mock' && <span className="print-dispatch-mode">Prueba</span>}
+      <ChevronDown className="print-dispatch-chevron" size={18} aria-hidden="true"/>
+    </summary>
+    <div className="print-dispatch-body" role="region" aria-label="Detalles de impresión" style={{'--print-panel-top':`${panelPosition.top}px`,'--print-panel-right':`${panelPosition.right}px`,'--print-panel-height':`${panelPosition.height}px`} as CSSProperties}>
       {error && <><p role="alert">No se pudo comprobar la impresión.</p><details><summary>Detalles</summary><p>{error}</p></details></>}
       {shown.map(job => <div className="print-dispatch-job" key={`${job.orderId}:${job.audience}`}>
         <strong>#{job.ticket} · {labels[job.audience]}</strong><p>{stateLabels[job.state]}</p>

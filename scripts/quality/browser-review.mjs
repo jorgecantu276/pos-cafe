@@ -106,6 +106,7 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     await audit(cashier,'register');
     await cashier.setViewportSize({width:1093,height:614});await audit(cashier,'register-scaled-125');
     await cashier.setViewportSize({width:1093,height:560});await audit(cashier,'register-short-screen');
+    await printingStatusReview(cashier,audit);
     await cashier.setViewportSize({width:1366,height:768});
     await cashier.locator('.workspace-product').first().click();
     await cashier.getByRole('button',{name:'Cobrar',exact:true}).click();await audit(cashier,'checkout');
@@ -125,4 +126,26 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     assert.equal(view.layout.under44.length,0,`${view.name}: touch controls smaller than 44px: ${JSON.stringify(view.layout.under44)}`);
   }
   return report;
+}
+
+export async function printingStatusReview(cashier,audit) {
+  // The warning must remain visible without taking over the sales area.
+  // Intercept only this disposable browser's status GET; never submit paper.
+  await cashier.route('**/api/printing',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Prueba: registro de impresión no disponible.'})}));
+  await cashier.reload();
+  await cashier.locator('.print-dispatch > summary').getByText('Estado sin comprobar',{exact:true}).waitFor();
+  for(const viewport of [{width:1366,height:768},{width:1093,height:560}]) {
+    await cashier.setViewportSize(viewport);await audit(cashier,'printing-status-unavailable');
+    assert.equal(await cashier.locator('.print-dispatch').evaluate(e=>e.open),false);
+    assert.ok((await cashier.locator('.print-dispatch').boundingBox()).height<=56,'A failed print check uses one compact row');
+  }
+  const menuTop=await cashier.locator('main').evaluate(e=>e.getBoundingClientRect().top);
+  await cashier.locator('.print-dispatch > summary').click();await audit(cashier,'printing-status-expanded');
+  assert.equal(await cashier.locator('main').evaluate(e=>e.getBoundingClientRect().top),menuTop,'Opening print details must not move the sale area');
+  await cashier.unroute('**/api/printing');
+  // This also fails if an ancestor clips the panel or another element covers it.
+  await cashier.getByRole('button',{name:'Actualizar impresión',exact:true}).click();
+  await cashier.locator('.print-dispatch > summary').getByText('Estado sin comprobar',{exact:true}).waitFor({state:'hidden'});
+  assert.equal(await cashier.locator('.print-dispatch').evaluate(e=>e.open),true,'A refresh preserves the user’s expanded state');
+  await cashier.locator('.print-dispatch > summary').click();await audit(cashier,'printing-status-recovered');
 }

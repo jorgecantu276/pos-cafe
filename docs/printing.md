@@ -361,6 +361,16 @@ configuration. The acceptance session did not deploy the café app or run live m
 
 ## Verification
 
+El estado de impresión del POS ocupa una fila de 48 px. Si una consulta falla,
+muestra **Estado sin comprobar**; los detalles se abren al tocar la fila y no
+desplazan el menú. Las copias pendientes conservan su contador y las salidas
+inciertas siguen requiriendo comprobar el papel antes de cualquier reposición.
+
+La vista local de administración usa `mock` con un diario aislado y muestra
+**Prueba**. No debe arrancar con impresión desactivada y presentar ese fallo de
+configuración como si se hubiera averiado una impresora. Esto no cambia la
+configuración `windows` ni los diarios del café.
+
 `npm test` covers actual checkout handlers/UI, failed outbox persistence,
 per-copy concurrency, restart fences, stale worker recovery, Bluetooth retries,
 lost HTTP/spool acknowledgments, cashier isolation and real-menu content.

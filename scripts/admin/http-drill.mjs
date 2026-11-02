@@ -4,9 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { freshLocalApi } from '../testing/local-api.mjs';
 import { startApp } from '../staging/app.mjs';
-import {writeFile} from 'node:fs/promises';
+import {mkdtemp,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {browserQualityReview} from '../quality/browser-review.mjs';
+import {work} from '../staging/runtime.mjs';
 
 let local, app; const sessions = [];
 const ok = result => { assert.ifError(result.error && Error(result.error.message)); return result.data; };
@@ -127,7 +128,15 @@ try {
   assert.ok(backup.tables['cafe_private.catalog_requests'].rows.length >= 4);
   pass('Cross-module cancellation, immutable snapshots/replay, deactivation, loyalty reversal, closing and backup of request journal');
 
-  app = await startApp(config,{port:3111}); await app.ready();
+  // This preview must exercise a working print endpoint without reaching hardware.
+  // Each drill owns a separate mock journal; no Windows journal is reused.
+  const printDirectory=await mkdtemp(path.join(work,'admin-printing-'));
+  app = await startApp(config,{port:3111,printing:{directory:printDirectory}}); await app.ready();
+  const printStatus=await fetch('http://127.0.0.1:3111/api/printing',{headers:{cookie:employee.cookie(),'X-Pos-Print':'1'}});
+  assert.equal(printStatus.status,200);
+  assert.deepEqual(await printStatus.json(),{mode:'mock',canManage:false,jobs:[]});
+  assert.equal((await fetch('http://127.0.0.1:3111/api/printing',{headers:{'X-Pos-Print':'1'}})).status,401);
+  pass('Preview printing: authenticated mock endpoint with an isolated journal, no false unavailable warning and no hardware output');
   for (const route of ['/admin', '/admin/ventas', '/admin/cortes', '/admin/productos', '/admin/clientes', '/admin/favoritos', '/admin/configuracion','/admin/caja','/admin/usuarios','/admin/respaldos','/admin/impresion','/admin/clip','/admin/inventario']) {
     const response = await fetch('http://127.0.0.1:3111' + route, { headers: { cookie: owner.cookie() }, redirect: 'manual' });
     assert.equal(response.status, 200, route); assert.ok((await response.text()).length > 100);

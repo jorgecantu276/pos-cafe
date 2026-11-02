@@ -1,1 +1,31 @@
-.print-dispatch{font:14px/1.35 Arial,sans-serif;color:#202020;background:#fff;border-bottom:1px solid #ccc;flex-shrink:0}.print-dispatch summary{cursor:pointer;padding:10px 14px;min-height:44px}.print-dispatch-body{padding:0 14px 10px;max-height:220px;overflow:auto}.print-dispatch-body>p{margin:6px 0}.print-dispatch-job{padding:10px 0;border-bottom:1px solid #ddd}.print-dispatch-job p{margin:4px 0}.print-dispatch button{min-height:56px;padding:8px 16px;border:1px solid #555;background:white;border-radius:4px;margin:6px 0;color:#202020}.print-dispatch button:disabled{opacity:.5}
+.print-dispatch{position:relative;z-index:45;flex-shrink:0;min-width:0;font:14px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#52627a;background:#fff;border-bottom:1px solid #e2e7ee}
+.print-dispatch>summary{display:flex;align-items:center;gap:10px;min-height:48px;padding:8px 16px;cursor:pointer;list-style:none;user-select:none}
+.print-dispatch>summary::-webkit-details-marker{display:none}
+.print-dispatch>summary::marker{content:''}
+.print-dispatch>summary>svg{flex-shrink:0}
+.print-dispatch>summary>strong{font-size:14px;font-weight:600;color:#26354d}
+.print-dispatch-status{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.print-dispatch-count{display:grid;place-items:center;min-width:26px;min-height:26px;padding:2px 7px;border-radius:8px;background:#f1f4f8;color:#52627a;font-size:13px;font-weight:650;font-variant-numeric:tabular-nums}
+.print-dispatch-mode{flex-shrink:0;border:1px solid #d7e7fa;background:#edf5ff;color:#245d95;border-radius:7px;padding:3px 7px;font-size:12px;font-weight:550}
+.print-dispatch.has-attention>summary{color:#805515;background:#fffaf0}
+.print-dispatch.has-attention .print-dispatch-count{background:#f9eac9;color:#714b13}
+.print-dispatch-chevron{margin-left:auto;color:#657084}
+.print-dispatch[open] .print-dispatch-chevron{transform:rotate(180deg)}
+.print-dispatch-body{position:fixed;top:var(--print-panel-top,54px);right:var(--print-panel-right,12px);z-index:1;width:min(580px,calc(100vw - 24px));max-height:var(--print-panel-height,calc(100dvh - 88px));overflow:auto;overscroll-behavior:contain;box-sizing:border-box;padding:16px 18px;background:#fff;border:1px solid #d9e1eb;border-radius:16px;box-shadow:0 12px 32px #24324c26;color:#26354d;overflow-wrap:anywhere}
+.print-dispatch-body>p{margin:0 0 12px}
+.print-dispatch-body>p[role=alert]{padding:12px;border:1px solid #ead7b1;border-radius:11px;background:#fffaf0;color:#805515}
+.print-dispatch-job{padding:14px 0;border-bottom:1px solid #e6ebf2}
+.print-dispatch-job:first-child{padding-top:0}
+.print-dispatch-job strong{font-size:15px;font-weight:600}
+.print-dispatch-job p{font-size:14px;line-height:1.45;margin:6px 0;color:#52627a}
+.print-dispatch-body details{margin:8px 0}
+.print-dispatch-body details>summary{display:flex;align-items:center;min-height:44px;padding:8px 0;cursor:pointer;color:#52627a;font-size:14px;font-weight:550}
+.print-dispatch-body details p{margin:4px 0 12px;font-size:13px;line-height:1.45;color:#59687c}
+.print-dispatch button,.print-dispatch-body>a{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:10px 15px;border:1px solid #d6dfeb;background:#f7f9fc;border-radius:12px;margin:8px 8px 0 0;color:#005ab8;font:inherit;font-weight:600;text-decoration:none;touch-action:manipulation;cursor:pointer}
+.print-dispatch button:disabled{opacity:.5;cursor:default}
+.print-dispatch>summary:focus-visible,.print-dispatch-body summary:focus-visible,.print-dispatch button:focus-visible,.print-dispatch-body>a:focus-visible{outline:3px solid #0071e3;outline-offset:-3px}
+@media(max-width:600px){.print-dispatch>summary{padding-inline:12px;gap:8px}.print-dispatch-body{width:calc(100vw - 24px);padding:14px}.print-dispatch-mode{font-size:11px;padding:3px 5px}.print-dispatch-status{font-size:13px}}
+/* A single status row needs no extra notice padding. Fixed panels escape its scroll area. */
+.workspace-notices:has(>.print-dispatch:only-child){padding:0}
+/* Inside a sale dialog the details stay in its existing scroll flow. */
+.workspace-dialog .print-dispatch-body,[role=dialog] .print-dispatch-body{position:static;width:100%;max-height:280px;margin-top:8px;box-shadow:none}
