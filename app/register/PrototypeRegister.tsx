@@ -1,7 +1,7 @@
 'use client';
 
 import PagerPicker from './PagerPicker';
-import { productAvailable, productStockLabel } from '@/lib/pos-types';
+import { productAvailable, productStockLabel, validPagerNumber } from '@/lib/pos-types';
 
 import {useState,type ReactNode} from 'react';
 import ProductPhoto from '@/components/ProductPhoto';
@@ -27,6 +27,7 @@ interface RegisterProps{
   onReprint:(ticket?:string)=>void;notices:ReactNode;
   favoriteProductIds?:readonly string[];favoritesError?:string;recentTicketsContent?:ReactNode;
   favoritesLoading?:boolean;onRetryFavorites?:()=>void;
+  pagerNumber?:number|null;onPagerNumber?:(value:number|null)=>void;
 }
 export default function PrototypeRegister(p:RegisterProps){
   const [category,setCategory]=useState('Todos'),[page,setPage]=useState(0),[selection,setSelection]=useState('');
@@ -59,7 +60,9 @@ export default function PrototypeRegister(p:RegisterProps){
         <div className="prototype-line-actions"><button aria-label="Reducir cantidad" disabled={!selected||p.disabled} onClick={()=>selected&&p.onQuantity(selected.id,selected.quantity-1)}>−</button><span>{selected?.quantity??0}</span><button aria-label="Aumentar cantidad" disabled={!selected||p.disabled} onClick={()=>selected&&p.onQuantity(selected.id,selected.quantity+1)}>+</button><button disabled={!selected||p.disabled} onClick={()=>selected&&p.onEdit(selected)}>Personalizar</button></div>
         <div className="prototype-total"><span>Total MXN</span><strong>{money(p.total)}</strong></div>
         <div className="prototype-ticket-actions"><button disabled={!p.items.length||p.disabled} onClick={()=>{if(confirm('¿Vaciar la orden actual?'))p.onClear();}}>Limpiar</button><button disabled={!selected||p.disabled} onClick={()=>selected&&p.onRemove(selected.id)}>Quitar producto</button></div>
-        <button className="prototype-pay" aria-label="Cobrar" disabled={!p.items.length||p.disabled} onClick={p.onCheckout}><span>Cobrar</span><strong>{money(p.total)}</strong></button>
+        {p.onPagerNumber&&<PagerPicker value={p.pagerNumber??null} onChange={p.onPagerNumber} disabled={p.disabled}/>}
+        {!validPagerNumber(p.pagerNumber)&&p.items.length>0&&<p className="pos-pager-required-note">Elige un control para cobrar.</p>}
+        <button className="prototype-pay" aria-label="Cobrar" disabled={!p.items.length||p.disabled||!validPagerNumber(p.pagerNumber)} onClick={()=>{if(validPagerNumber(p.pagerNumber))p.onCheckout();}}><span>Cobrar</span><strong>{money(p.total)}</strong></button>
       </aside>
     </main><footer className="prototype-status"><span>MXN · Requiere conexión</span><span>{p.disabled?'Revisa el estado de la orden':'Borrador automático en este navegador'}</span></footer>
     {sheet==='search'&&<Sheet title="Buscar producto" onClose={()=>setSheet('')}><input autoFocus aria-label="Buscar producto" value={p.search} onChange={e=>search(e.target.value)}/><TouchKeyboard value={p.search} onChange={search}/><button className="prototype-primary" onClick={()=>setSheet('')}>Ver productos</button></Sheet>}
@@ -106,6 +109,6 @@ export function PrototypeCheckout({total,method,mxn,usd,exchangeRate,orderType,n
         <label>Recibido MXN<input inputMode="decimal" disabled={busy} value={mxn} onFocus={()=>setCurrency('MXN')} onChange={e=>onMXN(e.target.value)}/></label><label>Recibido USD<input inputMode="decimal" disabled={busy} value={usd} onFocus={()=>setCurrency('USD')} onChange={e=>onUSD(e.target.value)}/></label>
         <p>Tipo de cambio: {exchangeRate} MXN / USD</p><p>{received>=total?`Cambio MXN: ${money(received-total)}`:`Faltan MXN: ${money(total-received)}`}</p></>}
     </section>{cash&&!notes&&<section><fieldset disabled={busy}><legend>Teclado {currency}</legend><TouchKeyboard value={String(currency==='MXN'?mxn:usd)} onChange={key} numeric/></fieldset><button disabled={busy} onClick={()=>{onMXN(String(total));onUSD('');}}>Importe exacto en MXN</button></section>}</div>
-    <button className="prototype-primary" disabled={busy||insufficient||(method==='Tarjeta'&&!clipEnabled&&!confirmed)} onClick={onConfirm}>{busy?'Confirmando…':method==='Tarjeta'&&clipEnabled?'Enviar a CLIP':'Confirmar pago'}</button>
+    <button className="prototype-primary" disabled={busy||insufficient||!validPagerNumber(pagerNumber)||(method==='Tarjeta'&&!clipEnabled&&!confirmed)} onClick={()=>{if(validPagerNumber(pagerNumber))onConfirm();}}>{busy?'Confirmando…':method==='Tarjeta'&&clipEnabled?'Enviar a CLIP':'Confirmar pago'}</button>
   </Sheet>;
 }

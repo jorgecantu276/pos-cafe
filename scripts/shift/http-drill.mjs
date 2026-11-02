@@ -18,7 +18,7 @@ const pass=name=>{checks.push(name);console.log('PASS '+name);};
 const ok=(response,name)=>{assert.ifError(response.error&&new Error(name+': '+response.error.message));return response.data;};
 try {
   const current=await sourceFiles();
-  const migrations=await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300005_single_drawer.sql','202610300006_loyalty_phone.sql','202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql','202610300010_register_shortcuts.sql','202610300011_recent_tickets.sql','202610300012_business_backups.sql','202611020013_catalog_requests.sql','202611020014_customer_history.sql','202611020015_order_pager.sql','202611020016_clip_payments.sql','202611020017_inventory.sql'].map(f=>readFile(path.join(root,'supabase/migrations',f),'utf8')));
+  const migrations=await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300005_single_drawer.sql','202610300006_loyalty_phone.sql','202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql','202610300010_register_shortcuts.sql','202610300011_recent_tickets.sql','202610300012_business_backups.sql','202611020013_catalog_requests.sql','202611020014_customer_history.sql','202611020015_order_pager.sql','202611020016_clip_payments.sql','202611020017_inventory.sql','202611020018_required_order_pager.sql'].map(f=>readFile(path.join(root,'supabase/migrations',f),'utf8')));
   const hashes=migrations.map((_,i)=>fingerprint(current.snapshot,migrations.slice(0,i+1).join('\n')));
   const directory=path.join(work,'recovery');let selected;
   for(const entry of (await readdir(directory,{withFileTypes:true})).filter(e=>e.isDirectory()&&e.name!=='keys').reverse()){
@@ -85,7 +85,7 @@ try {
   for(const [name,quantity,custom,total] of cases){
     const entry=menu.products.find(e=>e.name===name);assert.ok(entry);const id=randomUUID();
     ok(await service.from('products').insert({id,name:entry.name,price:entry.price_mxn,stock:5000,is_active:true,customizable:custom,wizard_steps:custom?['Tipo de Leche']:[]}),'synthetic real-menu item');
-    const payload={register_id:register.id,items:[{product_id:id,quantity,extra_ids:custom?[milk]:[],note:'Datos sintéticos'}],expected_total:total,payment_method:'efectivo',tender_mxn:total,tender_usd:0,customer_id:null,order_type:'Para Llevar',order_note:''};
+    const payload={register_id:register.id,items:[{product_id:id,quantity,extra_ids:custom?[milk]:[],note:'Datos sintéticos'}],expected_total:total,payment_method:'efectivo',tender_mxn:total,tender_usd:0,customer_id:null,order_type:'Para Llevar',order_note:'',pager_number:1};
     const receipt=ok(await api.rpc('pos_checkout',{p_request:randomUUID(),p_payload:payload}),'real-menu checkout');
     assert.equal(receipt.total,total);expected+=total;
   }

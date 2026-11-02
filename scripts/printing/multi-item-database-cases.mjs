@@ -19,7 +19,7 @@ export async function multiItemDatabaseCases(db,connection,ids) {
   for(const extra of fixture.extras)await db.query('insert into extras(id,name,price,phase,active) values($1,$2,$3,$4,true)',[extra.id,extra.name,extra.price,extra.phase]);
   const captured=process.env.POS_MULTI_ITEM_EVIDENCE?JSON.parse(await readFile(process.env.POS_MULTI_ITEM_EVIDENCE,'utf8')):null;
   const payload={...(captured?.payload??{items:fixture.expectedLines,expected_total:425,payment_method:'tarjeta',tender_mxn:0,tender_usd:0,
-    customer_id:null,order_type:'Para Llevar',order_note:'entregar juntos'}),register_id:open.id};
+    customer_id:null,order_type:'Para Llevar',order_note:'entregar juntos',pager_number:1}),register_id:open.id};
   equal(payload.items,fixture.expectedLines);equal(payload.expected_total,425);
   const request=randomUUID();
   const rpc=async(client,key,value)=>(await client.query('select pos_checkout($1,$2) result',[key,value])).rows[0].result;

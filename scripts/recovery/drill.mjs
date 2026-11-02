@@ -73,7 +73,7 @@ try {
   if(!current){await db.query("update cash_registers set status='closed' where status='open'");await db.query('update cafe_private.drawer_settings set rate=20');}
   const register = current || ok(await client.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 0, p_rate: 20 }), 'Recovery opening');
   const request = randomUUID(), payload = { register_id: register.id, items: [{ product_id: product, quantity: 1, extra_ids: [], note: '' }], expected_total: 35,
-    payment_method: 'tarjeta', tender_mxn: 0, tender_usd: 0, customer_id: null, order_type: 'En Local', order_note: 'Solo prueba local de rollback' };
+    payment_method: 'tarjeta', tender_mxn: 0, tender_usd: 0, customer_id: null, order_type: 'En Local', order_note: 'Solo prueba local de rollback', pager_number: 1 };
   const cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
   const priorTicket = Number((await db.query('select coalesce(max(ticket_number),0) ticket from public.orders')).rows[0].ticket);
   const deployment = await deploymentDrill(restored.config, backup.payload.contract, cookie, backup.directory, async (replay = false) => {

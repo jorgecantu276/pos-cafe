@@ -13,7 +13,7 @@ import { loadRegisterShortcuts } from '@/lib/register-shortcuts';
 import { catalogChangeKey, catalogFingerprint, loadLiveCatalog, loadRegisterInventory } from '@/lib/catalog-management';
 import './workspace.css';
 
-import { catalogProduct, productAvailable, productStockLabel, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
+import { catalogProduct, productAvailable, productStockLabel, validPagerNumber, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { customizeProduct, useCartStore, type CartExtra, type CartItem, type Product } from '@/store/useCartStore';
@@ -22,6 +22,7 @@ import { useResource } from '@/lib/use-resource';
 import { useRouter } from 'next/navigation';
 import { openPrintWindow } from '@/lib/printing';
 import PrintDispatch from './PrintDispatch';
+import PagerPicker from './PagerPicker';
 import { printSavedShift } from '@/lib/shift-printing';
 import { confirmClosingPrints } from '@/lib/closing-print-check';
 import { printHistoricalReceipt } from '@/lib/receipt-reprint';
@@ -545,10 +546,12 @@ const handleSaveAndClose = async () => {
   }, [draftError, loading, loadError, addItem, buildWizardSteps]);
 
   const handleEditItem = (item: CartItem) => {
-    const configured = buildWizardSteps(item.product);
+    const current = products.find(product => product.id === item.product.id);
+    const editable = current ? { ...item.product, customizable:current.customizable, wizard_steps:current.wizard_steps } : item.product;
+    const configured = buildWizardSteps(editable);
     const steps = configured.length ? configured : [{id:'notes',title:'Notas',options:[],exclusive:false}];
 
-    setSelectedProduct(item.product);
+    setSelectedProduct(editable);
     setActiveExtras(item.product.displayExtras || []);
     setProductNote(item.product.note || '');
     setEditingItemId(item.id);
@@ -583,6 +586,7 @@ const handleSaveAndClose = async () => {
       return;
     }
     if (items.length === 0) return;
+    if (!validPagerNumber(pagerNumber)) { alert('Elige un control del 1 al 30 antes de cobrar.'); return; }
     setPaymentMethod('Efectivo');
     setAmountReceivedMXN('');
     setAmountReceivedUSD('');
@@ -627,6 +631,7 @@ const handleSaveAndClose = async () => {
 
         let review = existing;
         if (!review) {
+          if (!validPagerNumber(pagerNumber)) throw new Error('Elige un control del 1 al 30 antes de cobrar.');
           if (catalogStale) throw new Error('El menú cambió. Cierra el cobro, actualiza y revisa el pedido.');
           if (!binding || draftError || customerRestoring || (activeCustomer?.id ?? null) !== customerId)
             throw new Error('Revisa el pedido y el cliente antes de cobrar.');
@@ -638,7 +643,7 @@ const handleSaveAndClose = async () => {
             payload: checkoutPayload(items, {
               register_id: registerId, expected_total: orderTotal, payment_method: paymentMethod.toLowerCase(),
               tender_mxn: cash ? parseAmount(amountReceivedMXN) : 0, tender_usd: cash ? parseAmount(amountReceivedUSD) : 0,
-              customer_id: customerId, order_type: orderType, order_note: orderNote, ...(pagerNumber ? {pager_number:pagerNumber} : {}),
+              customer_id: customerId, order_type: orderType, order_note: orderNote, pager_number:pagerNumber,
             }),
           };
           // Persist the exact identity and payload before the first request.
@@ -994,7 +999,7 @@ const handleSaveAndClose = async () => {
         onHandoff={()=>void handleOpenCierre('handoff')}
         customerSearchError={customerSearchError} customerSearching={customerSearching} onRetryCustomerSearch={()=>void handleCustomerSearchInput(customerSearch)} customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
         onNewCustomer={handleOpenCustomerModal} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
-        orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
+        orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} pagerNumber={pagerNumber} onPagerNumber={setPagerNumber} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
         {catalogNotice}
         {!showPostSaleModal && printStatus}
         {loadError && (
@@ -1272,11 +1277,13 @@ const handleSaveAndClose = async () => {
         </div>
 
         <div className="p-8 bg-white border-t border-slate-50 space-y-6">
+          <PagerPicker value={pagerNumber} onChange={setPagerNumber} disabled={loading || !!checkoutReview || isProcessingCheckout || isClosingShift}/>
+          {!validPagerNumber(pagerNumber)&&items.length>0&&<p className="pos-pager-required-note">Elige un control para cobrar.</p>}
           <div className="flex justify-between items-baseline">
             <span className="text-[13px] font-semibold text-[#86868b] uppercase tracking-tight">Total</span>
             <span className="text-4xl font-semibold text-[#1d1d1f] tracking-tighter">${getTotal().toFixed(2)}</span>
           </div>
-          <button onClick={handleOpenCheckout} disabled={items.length === 0 || loading || !!loadError || !!draftError || !!customerError || customerRestoring || !!checkoutReview || isClosingShift} className="w-full bg-[#0071e3] text-white h-16 rounded-[22px] font-semibold text-lg shadow-xl shadow-blue-100 hover:bg-[#0077ed] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:shadow-none">
+          <button onClick={handleOpenCheckout} disabled={items.length === 0 || !validPagerNumber(pagerNumber) || loading || !!loadError || !!draftError || !!customerError || customerRestoring || !!checkoutReview || isClosingShift} className="w-full bg-[#0071e3] text-white h-16 rounded-[22px] font-semibold text-lg shadow-xl shadow-blue-100 hover:bg-[#0077ed] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:shadow-none">
              <CreditCard size={22}/> Pagar Ahora
           </button>
         </div>
@@ -1321,7 +1328,7 @@ const handleSaveAndClose = async () => {
              {/* 🟢 PASO 1: TIPO DE ORDEN Y NOTAS */}
              {checkoutStep === 1 && (
                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                 <label>Control de entrega (1–30)<input aria-label="Control de entrega" type="number" min="1" max="30" inputMode="numeric" value={pagerNumber??''} onChange={e=>setPagerNumber(e.target.value===''?null:Number(e.target.value))}/></label>
+                 <PagerPicker value={pagerNumber} onChange={setPagerNumber} disabled={isProcessingCheckout}/>
                  <div className="mb-6 space-y-6">
                     <div>
                       <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-3">Tipo de Orden</label>
@@ -1343,7 +1350,7 @@ const handleSaveAndClose = async () => {
                       />
                     </div>
                  </div>
-                 <button onClick={() => setCheckoutStep(2)} className="w-full bg-[#0071e3] text-white h-16 rounded-[20px] font-bold text-lg flex justify-center items-center gap-2 shadow-xl hover:bg-[#0077ed] active:scale-95 transition-all">
+                 <button onClick={() => { if(validPagerNumber(pagerNumber)) setCheckoutStep(2); }} disabled={!validPagerNumber(pagerNumber)} className="w-full bg-[#0071e3] text-white h-16 rounded-[20px] font-bold text-lg flex justify-center items-center gap-2 shadow-xl hover:bg-[#0077ed] active:scale-95 transition-all disabled:opacity-50">
                     Continuar <ChevronRight size={22}/>
                  </button>
                </div>
@@ -1412,7 +1419,7 @@ const handleSaveAndClose = async () => {
                     )}
                  </div>
 
-                 <button onClick={processCheckout} disabled={isProcessingCheckout || isPaymentInsufficient} className="w-full bg-[#1d1d1f] text-white h-16 rounded-[20px] font-bold text-lg flex justify-center items-center gap-2 shadow-xl hover:bg-black active:scale-95 transition-all">
+                 <button onClick={processCheckout} disabled={isProcessingCheckout || isPaymentInsufficient || !validPagerNumber(pagerNumber)} className="w-full bg-[#1d1d1f] text-white h-16 rounded-[20px] font-bold text-lg flex justify-center items-center gap-2 shadow-xl hover:bg-black active:scale-95 transition-all">
                     {isProcessingCheckout ? <Loader2 className="animate-spin" /> : <><CheckCircle2 size={22}/> Confirmar pago</>}
                  </button>
                </div>

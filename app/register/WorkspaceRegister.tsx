@@ -5,7 +5,7 @@ import ProductPhoto from '@/components/ProductPhoto';
 import PagerPicker from './PagerPicker';
 import { Keyboard, Minus, Plus, Search, X, Pencil, Trash2, Printer, UserRound, ChevronRight, Coffee, Settings2, ArrowRight } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/pos-types';
-import { productAvailable, productStockLabel } from '@/lib/pos-types';
+import { productAvailable, productStockLabel, validPagerNumber } from '@/lib/pos-types';
 
 type RegisterProps = ComponentProps<typeof import('./PrototypeRegister').default> & {
   orderNote: string; onOrderNote: (value: string) => void;
@@ -128,8 +128,10 @@ export default function WorkspaceRegister(p: RegisterProps) {
           <span><span className="workspace-line-count">{item.quantity} × </span>{item.product.name}</span><strong>{money(Math.round(item.quantity * item.product.price * 100) / 100)}</strong><Pencil className="workspace-line-edit" size={16} aria-hidden="true" />
           {(item.product.displayExtras?.length || item.product.note) ? <small>{[...(item.product.displayExtras ?? []).map(extra => extra.name), item.product.note].filter(Boolean).join(' · ')}</small> : null}
         </button>)}{!p.items.length && <div className="workspace-empty-order"><Coffee size={34} aria-hidden="true" /><strong>Orden vacía</strong><p>Toca un producto del menú.</p></div>}</div>
-        <footer className="workspace-order-footer"><div className="workspace-total"><span>Total <small>MXN</small></span><strong>{money(p.total)}</strong></div>
-          <button type="button" className="workspace-pay" aria-label="Cobrar" disabled={!p.items.length || p.disabled} onClick={p.onCheckout}>Cobrar<ArrowRight size={22} aria-hidden="true" /></button></footer>
+        <footer className="workspace-order-footer">{p.onPagerNumber&&<PagerPicker value={p.pagerNumber??null} onChange={p.onPagerNumber} disabled={p.disabled}/>}
+          {!validPagerNumber(p.pagerNumber)&&p.items.length>0&&<p className="pos-pager-required-note">Elige un control para cobrar.</p>}
+          <div className="workspace-total"><span>Total <small>MXN</small></span><strong>{money(p.total)}</strong></div>
+          <button type="button" className="workspace-pay" aria-label="Cobrar" disabled={!p.items.length || p.disabled || !validPagerNumber(p.pagerNumber)} onClick={()=>{if(validPagerNumber(p.pagerNumber))p.onCheckout();}}>Cobrar<ArrowRight size={22} aria-hidden="true" /></button></footer>
       </aside>
     </main>
     {panel === 'ticket' && <WorkspaceDialog title="Reimprimir ticket" onClose={() => setPanel(null)} className="workspace-ticket-dialog"><div className="workspace-dialog-content">{p.recentTicketsContent}<label>Folio<input aria-label="Folio del ticket" inputMode="numeric" value={ticket} onChange={event => setTicket(event.target.value.replace(/\D/g, ''))} /></label><WorkspaceKeyboard numeric value={ticket} onChange={value => { if (/^\d*$/.test(value)) setTicket(value); }} />
@@ -176,7 +178,7 @@ export function WorkspaceCheckout(p: CheckoutProps) {
     {p.method === 'Otro' && <p className="workspace-caption">Registra la venta después de recibir el pago.</p>}
     </section><section className="workspace-checkout-keypad">{p.onPagerNumber&&<PagerPicker value={p.pagerNumber??null} onChange={p.onPagerNumber} disabled={p.busy}/>}{cash && <WorkspaceKeyboard numeric label={`Teclado ${currency}`} disabled={p.busy} value={String(currency === 'MXN' ? p.mxn : p.usd)} onChange={key} />}<button type="button" className="workspace-note-toggle" aria-expanded={notes} disabled={p.busy} onClick={() => setNotes(!notes)}>{p.note || 'Nota de la orden'}</button>
     {notes && <><input aria-label="Notas de la orden" maxLength={1000} value={p.note} disabled={p.busy} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard disabled={p.busy} value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
-  </section></div></div><footer><button type="button" className="workspace-primary" disabled={p.busy || p.insufficient || (p.method === 'Tarjeta' && !p.clipEnabled && !cardConfirmed)} onClick={p.onConfirm}>{p.busy ? 'Confirmando…' : p.method==='Tarjeta'&&p.clipEnabled?'Enviar a CLIP':'Confirmar pago'}</button></footer></WorkspaceDialog>;
+  </section></div></div><footer><button type="button" className="workspace-primary" disabled={p.busy || p.insufficient || !validPagerNumber(p.pagerNumber) || (p.method === 'Tarjeta' && !p.clipEnabled && !cardConfirmed)} onClick={()=>{if(validPagerNumber(p.pagerNumber))p.onConfirm();}}>{p.busy ? 'Confirmando…' : p.method==='Tarjeta'&&p.clipEnabled?'Enviar a CLIP':'Confirmar pago'}</button></footer></WorkspaceDialog>;
 }
 
 export function WorkspaceOpening(p: {

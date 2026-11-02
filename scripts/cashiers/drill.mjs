@@ -25,7 +25,7 @@ try{
   const person=await rpc(actors.cashier,'pos_enroll_customer',{name:'Cliente de prueba de entrega',phone:'8682345678',birthday:null,promos:false});
   assert.equal(person.customer.points,50);
   const id=randomUUID();await db.query("insert into products(id,name,price,is_active,customizable) values($1,'Venta prueba caja única',50,true,false)",[id]);
-  const key=randomUUID(),payload={register_id:register.id,items:[{product_id:id,quantity:1,extra_ids:[],note:''}],expected_total:50,payment_method:'efectivo',tender_mxn:50,tender_usd:0,customer_id:person.customer.id,order_type:'En Local',order_note:''};
+  const key=randomUUID(),payload={register_id:register.id,items:[{product_id:id,quantity:1,extra_ids:[],note:''}],expected_total:50,payment_method:'efectivo',tender_mxn:50,tender_usd:0,customer_id:person.customer.id,order_type:'En Local',order_note:'',pager_number:1};
   const receipts=await Promise.all(Array.from({length:20},()=>actors.cashier.api.rpc('pos_checkout',{p_request:key,p_payload:payload}).then(ok)));
   assert.equal(new Set(receipts.map(r=>r.id)).size,1);
   assert.equal((await db.query('select points from customers where id=$1',[person.customer.id])).rows[0].points,55);

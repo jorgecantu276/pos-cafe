@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as ts from 'typescript';
 import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, type CheckoutReview } from '../lib/checkout';
-import { errorMessage } from '../lib/pos-types';
+import { errorMessage, validPagerNumber } from '../lib/pos-types';
 import {withDeadline} from '../lib/request-deadline';
 import {savedShiftHtml} from '../lib/shift-printing';
 import {confirmClosingPrints} from '../lib/closing-print-check';
@@ -106,7 +106,7 @@ test('a cashier can stop closing when unfinished printing needs attention',async
 // Exercise the actual page handlers with browser/network dependencies replaced;
 // no request reaches Supabase and no print dialog is opened by these checks.
 function handler(name: string, context: Record<string, unknown>, file='../app/register/Register.tsx'): (...args: unknown[]) => unknown {
-  context = { clipEnabled:false,pagerNumber:null,ClipPaymentPending,catalogStale:false, withDeadline,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
+  context = { clipEnabled:false,pagerNumber:1,validPagerNumber,ClipPaymentPending,catalogStale:false, withDeadline,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
   const source=ts.createSourceFile('page.tsx',readFileSync(new URL(file,import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
   let body='';
   function visit(node: ts.Node) {
@@ -119,7 +119,7 @@ function handler(name: string, context: Record<string, unknown>, file='../app/re
   return new Function(...Object.keys(context),compiled+';return extracted;')(...Object.values(context));
 }
 
-function checkoutHarness(storage=new Map<string,string>(), online=true, retire=()=>{}, timeoutMs=12_000) {
+function checkoutHarness(storage=new Map<string,string>(), online=true, retire=()=>{}, timeoutMs=12_000, pagerNumber:number|null=1) {
   let calls=0,successful=false;
   const alerts:string[]=[];
   let settle!: (value: unknown)=>void;
@@ -127,7 +127,7 @@ function checkoutHarness(storage=new Map<string,string>(), online=true, retire=(
   const item:CartItem={id:'line',quantity:1,product:{id:'coffee',name:'Coffee',price:60,category:'Bebidas'}};
   const checkoutKey={current:'test-user'}, binding={current:{requestId:()=>crypto.randomUUID(),complete:retire}};
   const fn=handler('processCheckout',{
-    checkoutInFlight:{current:false},checkoutReviewKey:checkoutKey,
+    checkoutInFlight:{current:false},checkoutReviewKey:checkoutKey,pagerNumber,
     cartDraft:binding,draftError:null,customerRestoring:false,customerId:null,
     localStorage:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)},
     navigator:{onLine:online},setIsProcessingCheckout:()=>{},getTotal:()=>60,items:[item],isPaymentInsufficient:false,activeCustomer:null,
@@ -152,13 +152,13 @@ test('actual checkout handler releases a stalled confirmation and keeps its pers
   const pending = h.storage.get('test-user'); await first;
   assert.equal(h.storage.get('test-user'), pending); assert.equal(h.successful, false);
   assert.match(h.alerts[0], /conexión no respondió.*\nNo vuelvas a cobrar/);
-  h.settle({ data: { id: 'one-sale', ticket_number: 12, total: 60, items: [], status: 'completed' }, error: null });
+  h.settle({ data: { id: 'one-sale', ticket_number: 12, total: 60, items: [], status: 'completed', pager_number:1 }, error: null });
   await h.fn(); assert.equal(h.successful, true); assert.equal(h.storage.has('test-user'), false);
 });
 
-test('refresh recovery sends the persisted payload rather than the new cart',async()=>{
-  const pending={startedAt:'2026-10-27',total:90,requestId:'saved-key',payload:{expected_total:90}};
-  const h=checkoutHarness(new Map([['test-user',JSON.stringify(pending)]]));
+test('refresh recovery preserves a historical no-control payload rather than using the new cart selection',async()=>{
+  const pending={startedAt:'2026-10-27',total:90,requestId:'saved-key',payload:{expected_total:90,pager_number:null}};
+  const h=checkoutHarness(new Map([['test-user',JSON.stringify(pending)]]),true,undefined,12_000,null);
   const run=h.fn();assert.equal(h.calls,1);
   h.settle({data:{id:'order',ticket_number:12,total:90,items:[],status:'completed'},error:null});await run;
   assert.equal(h.storage.has('test-user'),false);assert.ok(h.storage.has('test-user:print:v1:order'));assert.equal(h.successful,true);
@@ -171,7 +171,7 @@ test('confirmed first-attempt database rejection leaves the cart editable and ne
 test('confirmed sale cannot clear its recovery guard if unpaid-draft retirement fails',async()=>{
   const h=checkoutHarness(undefined,true,()=>{throw Error('Storage unavailable');});
   const run=h.fn();
-  h.settle({data:{id:'order',ticket_number:12,total:60,items:[],status:'completed'},error:null}); await run;
+  h.settle({data:{id:'order',ticket_number:12,total:60,items:[],status:'completed',pager_number:1},error:null}); await run;
   assert.equal(h.successful,false); assert.ok(JSON.parse(h.storage.get('test-user')!).requestId);
   assert.match(h.alerts[0],/No vuelvas a cobrar/);
 });
@@ -181,7 +181,7 @@ test('confirmed sale retains checkout recovery if the print outbox cannot be sav
     set(key:string,value:string) { if(key.includes(':print:v1:'))throw Error('Print outbox unavailable');return super.set(key,value); }
   }
   const h=checkoutHarness(new FailedPrintStorage());const run=h.fn();
-  h.settle({data:{id:'order',ticket_number:12,total:60,items:[],status:'completed'},error:null});await run;
+  h.settle({data:{id:'order',ticket_number:12,total:60,items:[],status:'completed',pager_number:1},error:null});await run;
   assert.ok(h.storage.has('test-user'));assert.equal(h.successful,false);assert.match(h.alerts[0],/No vuelvas a cobrar/);
 });
 
@@ -191,12 +191,19 @@ test('a checkout response arriving after cashier switch only retires its origina
   assert.equal(h.calls,1); h.checkoutKey.current='cashier-b';
   h.binding.current={requestId:()=>crypto.randomUUID(),complete:()=>{retiredB++;}};
   h.storage.set('cashier-b','B pending request');
-  h.settle({data:{id:'order-a',ticket_number:12,total:60,items:[],status:'completed'},error:null}); await run;
+  h.settle({data:{id:'order-a',ticket_number:12,total:60,items:[],status:'completed',pager_number:1},error:null}); await run;
   assert.equal(retiredA,1);assert.equal(retiredB,0);assert.equal(h.storage.has('test-user'),false);
   assert.equal(h.storage.get('cashier-b'),'B pending request'); assert.equal(h.successful,false);assert.equal(h.alerts.length,0);
 });
 test('offline before submission leaves the order unsent',async()=>{
   const h=checkoutHarness(undefined,false);await h.fn();assert.equal(h.calls,0);assert.equal(h.storage.size,0);assert.ok(h.alerts[0].includes('La venta no se envió'));
+});
+
+test('the actual checkout handler rejects a new sale without a valid control before persisting or sending it',async()=>{
+  for(const number of [null,0,31,1.2]) {
+    const h=checkoutHarness(undefined,true,undefined,12_000,number);await h.fn();
+    assert.equal(h.calls,0);assert.equal(h.storage.size,0);assert.equal(h.successful,false);assert.match(h.alerts[0],/Elige un control del 1 al 30/);
+  }
 });
 test('legacy uncertain sale cannot be converted into a new transaction by refresh',async()=>{
   const h=checkoutHarness(new Map([['test-user',JSON.stringify({startedAt:'old',total:60,orderId:'existing'})]]));await h.fn();assert.equal(h.calls,0);assert.equal(h.storage.size,1);
@@ -235,9 +242,31 @@ test('opening a customization edit leaves the original line intact until confirm
   useCartStore.getState().addItem(customizeProduct({id:'coffee',name:'Coffee',price:50,category:'Bebidas'},[{name:'Vainilla',price:10}],''));
   const original=useCartStore.getState().items[0];
   handler('handleEditItem',{
-    buildWizardSteps:()=>[{}],setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},setEditingItemId:()=>{},setEditingQuantity:(quantity:number)=>assert.equal(quantity,original.quantity),setDynamicSteps:()=>{},setCustomizationStep:()=>{},
+    products:[],buildWizardSteps:()=>[{}],setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},setEditingItemId:()=>{},setEditingQuantity:(quantity:number)=>assert.equal(quantity,original.quantity),setDynamicSteps:()=>{},setCustomizationStep:()=>{},
   })(original);
   assert.deepEqual(useCartStore.getState().items,[original]);
+});
+
+test('editing an old draft uses current milk options while preserving the original line and price until saved',()=>{
+  useCartStore.getState().clearCart();
+  const extras=[{id:'almond',name:'Almendra',price:15,phase:'Tipo de Leche',active:true}];
+  useCartStore.getState().addItem(customizeProduct({id:'coffee',name:'Café',price:50,category:'Bebidas',customizable:false,wizard_steps:[]},extras,'sin hielo'));
+  const first=useCartStore.getState().items[0];useCartStore.getState().updateQuantity(first.id,2);
+  const original=useCartStore.getState().items[0],snapshot=JSON.stringify(original);
+  const products=[{...original.product,price:100,customizable:true,wizard_steps:['Tipo de Leche']}];
+  let selected=original.product,steps:Array<{id:string}>=[];
+  const buildWizardSteps=handler('buildWizardSteps',{useCallback:(fn:unknown)=>fn,dbExtras:extras});
+  handler('handleEditItem',{products,buildWizardSteps,setSelectedProduct:(value:typeof selected)=>selected=value,
+    setActiveExtras:(value:unknown)=>assert.deepEqual(value,extras),setProductNote:(value:string)=>assert.equal(value,'sin hielo'),
+    setEditingItemId:(value:string)=>assert.equal(value,original.id),setEditingQuantity:(value:number)=>assert.equal(value,2),
+    setDynamicSteps:(value:typeof steps)=>steps=value,setCustomizationStep:()=>{},})(original);
+  assert.deepEqual(steps.map(step=>step.id),['Tipo de Leche','notes']);
+  assert.equal(selected.price,65);assert.equal(selected.basePrice,50);assert.equal(JSON.stringify(useCartStore.getState().items[0]),snapshot);
+  handler('handleConfirmAdd',{selectedProduct:selected,products,items:[original],editingItemId:original.id,editingQuantity:2,
+    customizeProduct,activeExtras:extras,productNote:'sin hielo',productAvailable:()=>true,replaceItem:useCartStore.getState().replaceItem,
+    setEditingItemId:()=>{},setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},alert:()=>assert.fail()})();
+  const saved=useCartStore.getState().items[0];assert.equal(saved.quantity,2);assert.equal(saved.product.price,65);assert.equal(saved.product.note,'sin hielo');assert.deepEqual(saved.product.displayExtras,extras);
+  useCartStore.getState().clearCart();
 });
 
 test('catalog name/price editing cannot reset stock consumed since the editor loaded',async()=>{

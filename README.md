@@ -12,7 +12,7 @@ Punto de venta para una cafetería con una sola caja física. Next.js 16.4.3, Re
 | Backend del cliente | Las 15 migraciones retenidas, incluidas 013–016, están aplicadas. |
 | Receptor CLIP | `clip-webhook` v1 desplegado y verificado. Recibir un aviso no crea ni aprueba un cobro. |
 | Cobro automático CLIP | **Apagado. Token como placeholder.** Pendiente de habilitación de PinPad, token real y aceptación con la terminal. |
-| Controles de entrega 1–30 | Selección manual, guardado con la venta y número en ticket del cliente y etiquetas del barista. |
+| Controles de entrega 1–30 | Selección manual obligatoria antes de cobrar, guardado con la venta y número en ticket del cliente y etiquetas del barista. Requiere migración 018, pendiente en el backend alojado. |
 | App en la PC del café | Instalación/configuración de esta versión y aceptación operativa pendientes. Publicar código en GitHub no instala la app. |
 | Inventario | Integrado en Catálogo y probado localmente; **apagado al inicio**. La migración 017 sigue pendiente en el backend alojado. |
 | Tipo de cambio del negocio | **1 USD = 16 MXN** guardado para la próxima apertura. El turno abierto anterior conserva 18; sus ventas no se recalculan. |
@@ -42,7 +42,7 @@ La integración automática guarda una cotización validada por el servidor ante
 
 **Mantener `POS_CLIP_ENABLED=0` / `ClipEnabled: false`.** El token real pertenece a un archivo privado fuera de la versión instalada; no va en Git ni en variables `NEXT_PUBLIC_`. Los ejemplos solo contienen un placeholder. Ver [configuración, despliegue y recuperación](docs/clip-payments.md) y [ejemplo de entorno](config/clip.env.example).
 
-El cajero elige un control **1–30** o **Sin control**. Su número se conserva al recargar, se guarda en el comprobante y aparece en el ticket del cliente y cada etiqueta/página del barista. La siguiente orden empieza sin control. El barista activa el localizador desde su base física; el POS no se comunica por radio con esa base.
+El cajero elige un control **1–30 antes de cobrar**. Su número se conserva al recargar, se guarda en el comprobante y aparece en el ticket del cliente y cada etiqueta/página del barista. La siguiente orden empieza sin control y debe recibir uno para cobrar. El barista activa el localizador desde su base física; el POS no se comunica por radio con esa base. La migración 018 exige el control también en el backend, sin modificar las ventas anteriores ni sus comprobantes.
 
 ## Impresión y recuperación
 
@@ -82,7 +82,7 @@ El POS requiere conexión al backend. La PWA no habilita ventas offline: el serv
 | `npm run build:verify` | Compilación de producción aislada de la vista previa en ejecución. |
 | `npm audit` / `npm audit --omit=dev` | Dependencias completas y de ejecución. |
 
-La integración pasó localmente **212 pruebas y 2,539 comprobaciones de PostgreSQL**. GitHub Actions repite los checks Windows y el ensayo Auth/PostgREST en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
+La integración pasó localmente **219 pruebas y 2,579 comprobaciones de PostgreSQL**. GitHub Actions repite los checks Windows y el ensayo Auth/PostgREST en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
 
 Con `POS_BROWSER_QUALITY=1`, el ensayo HTTP también abre Chromium/Edge aislado y ejecuta axe WCAG 2.2 AA, navegación real, conteo cero por UI y revisión de desbordamiento sobre 82 productos de referencia. CI ejecuta este modo. Necesita un navegador Chromium instalado; no usa un perfil personal ni envía papel. Las mediciones locales de carga/eventos se registran como laboratorio, sin atribuirles cumplimiento de Core Web Vitals en campo.
 
@@ -96,6 +96,6 @@ La PC de desarrollo prepara el paquete; la del café recibe una versión revisad
 
 Las migraciones 013–016 y el receptor CLIP ya están desplegados. Un respaldo cifrado previo y las huellas de las 28 tablas existentes confirmaron datos conservados. **No reinstalar estas migraciones ni activar CLIP para probar el despliegue.**
 
-La instalación debe conservar el POS anterior, configuración privada, respaldos y diario de impresión. **Antes de instalar esta app, aplicar su migración 017; aquí solo se ha aplicado a bases locales desechables.** El inventario apagado no limita ni descuenta ventas. Al activarlo se deben registrar/importar conteos físicos actualizados. Los pendientes están declarados en la revisión de preparación.
+La instalación debe conservar el POS anterior, configuración privada, respaldos y diario de impresión. **Antes de instalar esta app, aplicar las migraciones 017 y 018; solo se han ensayado en bases locales desechables y siguen pendientes en el backend alojado.** El inventario apagado no limita ni descuenta ventas. Al activarlo se deben registrar/importar conteos físicos actualizados. Los pendientes están declarados en la revisión de preparación.
 
 Ver [contrato de base de datos](supabase/README.md), [instalación Windows](docs/windows-deployment.md), [respaldos](docs/business-backups.md) y [revisión de preparación](docs/integration-readiness.md).

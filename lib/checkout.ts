@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CartItem } from '../store/useCartStore';
 import { withDeadline } from './request-deadline';
+import { validPagerNumber } from './pos-types';
 
 export interface CheckoutPayload {
   register_id: string;
@@ -58,7 +59,7 @@ export function readCheckoutReview(raw: string | null): CheckoutReview | null {
   return value as CheckoutReview;
 }
 export function checkoutPayload(items: readonly CartItem[], fields: Omit<CheckoutPayload, 'items'>): CheckoutPayload {
-  if (fields.pager_number != null && (!Number.isInteger(fields.pager_number) || fields.pager_number < 1 || fields.pager_number > 30)) throw new Error('El control debe ser del 1 al 30.');
+  if (!validPagerNumber(fields.pager_number)) throw new Error('Elige un control del 1 al 30 antes de cobrar.');
   if (!items.length || items.some(i => !Number.isInteger(i.quantity) || i.quantity < 1
     || (i.product.displayExtras ?? []).some(e => !e.id))) throw new Error('Revisa las cantidades y vuelve a seleccionar los extras del catálogo.');
   return { ...fields, items: items.map(i => ({ product_id: i.product.id, quantity: i.quantity,

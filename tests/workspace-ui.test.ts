@@ -65,7 +65,7 @@ test('workspace cash keypad, exact payment and terminal confirmation preserve ch
   let confirms = 0;
   function Checkout() {
     const [method, onMethod] = useState('Efectivo'), [mxn, onMXN] = useState(''), [usd, onUSD] = useState('');
-    return createElement(WorkspaceCheckout, { total: 165, method, mxn, usd, exchangeRate: 20, orderType: 'Para Llevar', note: '', busy: false,
+    return createElement(WorkspaceCheckout, { total: 165, method, mxn, usd, exchangeRate: 20, orderType: 'Para Llevar', note: '', busy: false, pagerNumber:12,
       insufficient: ['Efectivo', 'Mixto'].includes(method) && Number(mxn) + Number(usd) * 20 < 165,
       onMethod: value => { onMethod(value); onMXN(''); onUSD(''); }, onMXN, onUSD, onOrderType: () => {}, onNote: () => {}, onConfirm: () => { confirms++; }, onClose: () => {} });
   }

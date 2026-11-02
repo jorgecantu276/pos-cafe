@@ -103,10 +103,10 @@ separate local print journal. Rehearse a full recovery before live use.
 
 ## Matching database and rollback
 
-Provision the chosen client test project, apply the retained migrations 001, 002, 004, 005, 006, 007, 008, 009, 010, 011 and 012 in order and
+Provision the chosen client test project, apply the retained migrations 001, 002 and 004–018 in order and
 create confirmed staff profiles. Review the legacy compatibility requirements
 before applying to any existing database. Test against a separate synthetic
-catalog and explicit test quantities, not live business records. Optional finished-product inventory requires migration 017 and starts OFF. That migration is validated locally and is not yet deployed to the hosted client; apply it before installing this matching app. Count/import fresh stock only after explicit activation. Legacy ingredient stock/recipes remain inert. See [inventory](inventory.md) and [quality review](quality-review.md). The app still
+catalog and explicit test quantities, not live business records. Optional finished-product inventory requires migration 017 and starts OFF. Migration 018 makes a manually selected delivery control 1–30 mandatory for new sales and CLIP payment preparation; old sales and accepted-request recovery remain unchanged. Both 017 and 018 are tested locally and still pending on the hosted client; apply both before installing this matching app. Keep CLIP OFF until provisioned with its real token. Count/import fresh stock only after explicit activation. Legacy ingredient stock/recipes remain inert. See [inventory](inventory.md) and [quality review](quality-review.md). The app still
 requires internet for cloud sales; it has no offline sales queue.
 
 Keep every deployed release folder and the one current external print journal.

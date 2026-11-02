@@ -283,3 +283,4 @@
 .pos-closing-actions button:last-child{background:#0066cc;border-color:#0066cc;color:#fff}
 @media(max-width:760px){.pos-closing-main{grid-template-columns:220px minmax(0,1fr)}.pos-closing-summary{padding:16px}.pos-closing-content{padding:16px}.pos-closing-options{grid-template-columns:1fr}.pos-closing-content .grid-cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}.pos-closing-dialog>footer.pos-closing-footer{grid-template-columns:1fr;padding:10px 16px}}
 .workspace-order-lines:focus-visible{outline:3px solid #0071e3;outline-offset:-3px}
+.pos-pager-trigger.is-required{border-color:#d8c59d;background:#fffbf3}.pos-pager-trigger.is-required strong{color:#805515}.workspace-order-footer .pos-pager-trigger{min-height:48px;padding:10px 12px;font-size:14px}.pos-pager-required-note{margin:0;color:#805515;font-size:13px;line-height:1.4}.workspace-order-footer .pos-pager-required-note{margin-top:-4px}

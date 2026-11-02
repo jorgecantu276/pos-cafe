@@ -116,7 +116,7 @@ export async function stagingTests(config) {
     assert.equal(ok(await cash.rpc('pos_open_shift', opening), 'Opening retry').id, register.id);
     denied(await bar.rpc('pos_open_shift', { p_request: randomUUID(), p_cash: 0, p_rate: 20 }), 'Second cashier cannot open the occupied physical drawer');
     const payload = { register_id: register.id, items: [{ product_id: product, quantity: 2, extra_ids: [extra], note: 'Sin hielo' }],
-      expected_total: 120, payment_method: 'mixto', tender_mxn: 20, tender_usd: 5, customer_id: customer.id, order_type: 'En Local', order_note: 'Prueba aislada' };
+      expected_total: 120, payment_method: 'mixto', tender_mxn: 20, tender_usd: 5, customer_id: customer.id, order_type: 'En Local', order_note: 'Prueba aislada', pager_number: 1 };
     denied(await cash.rpc('pos_checkout', { p_request: randomUUID(), p_payload: { ...payload, expected_total: 1 } }), 'Server-price mismatch rejected');
     denied(await bar.rpc('pos_checkout', { p_request: randomUUID(), p_payload: payload }), 'Foreign register checkout rejected');
     const request = randomUUID();

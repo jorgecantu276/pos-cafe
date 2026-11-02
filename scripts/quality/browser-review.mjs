@@ -6,12 +6,13 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {root,work,run} from '../staging/runtime.mjs';
+import {seedQualityMenu} from './menu-fixture.mjs';
 
 // Only called with the fresh disposable backend owned by the HTTP drill.
 export async function browserQualityReview({url,actors,db,appDirectory}) {
   assert.equal(url,'http://127.0.0.1:3111');
   const menu=JSON.parse(await readFile(path.join(root,'tests/fixtures/real-menu.json'),'utf8'));
-  for(const product of menu.products) await db.query('insert into products(name,price,category,is_active,customizable,wizard_steps) select $1,$2,$3,true,false,$4 where not exists(select 1 from products where name=$1)',[product.name,product.price_mxn,product.category,[]]);
+  await seedQualityMenu(db,menu);
   const executablePath=process.env.POS_QUALITY_BROWSER || [
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe','/usr/bin/google-chrome','/usr/bin/chromium',
   ].find(existsSync);
@@ -108,7 +109,27 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     await cashier.setViewportSize({width:1093,height:560});await audit(cashier,'register-short-screen');
     await printingStatusReview(cashier,audit);
     await cashier.setViewportSize({width:1366,height:768});
-    await cashier.locator('.workspace-product').first().click();
+    await cashier.locator('.workspace-product').filter({hasText:'Agua natural'}).first().click();
+    await cashier.getByRole('button',{name:'Editar Agua natural',exact:true}).waitFor();
+    assert.equal(await cashier.getByRole('dialog').count(),0,'Packaged water enters the order directly');
+    cashier.once('dialog',dialog=>dialog.accept());await cashier.getByRole('button',{name:'Vaciar orden',exact:true}).click();
+    await cashier.locator('.workspace-product').filter({hasText:'Iced coffee caramelo'}).first().click();
+    const customization=cashier.getByRole('dialog',{name:'Iced coffee caramelo',exact:true});
+    await customization.getByRole('group',{name:'Tipo de Leche',exact:true}).waitFor();
+    assert.equal(await customization.getByRole('group',{name:'Tipo de Leche',exact:true}).getByRole('button').count(),7);
+    await customization.getByRole('button',{name:/^almendra/i}).click();
+    assert.equal(await customization.locator('.workspace-custom-price').textContent(),'$110.00');
+    await audit(cashier,'milk-customization');
+    await cashier.setViewportSize({width:1093,height:560});await audit(cashier,'milk-customization-short-screen');
+    await cashier.setViewportSize({width:1366,height:768});
+    await customization.getByRole('button',{name:'Agregar a la orden',exact:true}).click();
+    await cashier.locator('.workspace-order-line').filter({hasText:'Iced coffee caramelo'}).waitFor();
+    assert.equal(await cashier.getByRole('button',{name:'Cobrar',exact:true}).isDisabled(),true,'A new order needs a delivery control');
+    await cashier.getByRole('button',{name:'Control de entrega: Elegir control',exact:true}).click();
+    await audit(cashier,'required-pager');
+    await cashier.setViewportSize({width:1093,height:560});await audit(cashier,'required-pager-short-screen');
+    await cashier.getByRole('button',{name:'Control 30',exact:true}).click();
+    await cashier.setViewportSize({width:1366,height:768});
     await cashier.getByRole('button',{name:'Cobrar',exact:true}).click();await audit(cashier,'checkout');
     await cashier.setViewportSize({width:1093,height:560});await audit(cashier,'checkout-short-screen');
     await cashier.getByRole('button',{name:'Cerrar Cobrar',exact:true}).click();

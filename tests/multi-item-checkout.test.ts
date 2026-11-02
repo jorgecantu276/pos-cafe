@@ -27,6 +27,7 @@ import * as shiftState from '../lib/shift-state';
 import PrintDispatch from '../app/register/PrintDispatch';
 import PrototypeRegister, { PrototypeCheckout, PrototypeCustomization } from '../app/register/PrototypeRegister';
 import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from '../app/register/WorkspaceRegister';
+import PagerPicker from '../app/register/PagerPicker';
 
 for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed drinks, distinct milk/notes and repeated cups produce one checkout and per-cup documents`,async()=>{
   const fixture=JSON.parse(readFileSync(new URL('./fixtures/multi-item-order.json',import.meta.url),'utf8'));
@@ -70,13 +71,13 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
           return{id:String(index),quantity:line.quantity,product:{...product,basePrice:product.price,
             price:product.price+extras.reduce((sum:number,e:{price:number})=>sum+e.price,0),displayExtras:extras,note:line.note}};
         }),customer_name:'Invitado',created_at:'2026-10-30T17:00:00Z',order_type:payload.order_type,order_note:payload.order_note,
-        payment_method:payload.payment_method,tender_mxn:payload.tender_mxn,tender_usd:payload.tender_usd,exchange_rate:20,change_mxn:0};
+        payment_method:payload.payment_method,tender_mxn:payload.tender_mxn,tender_usd:payload.tender_usd,exchange_rate:20,change_mxn:0,pager_number:payload.pager_number};
       return{error:null,data:receipt};
     }};
   const router={replace(){},refresh(){}};
   const imports:Record<string,unknown>={ '@/lib/drawer':drawer,'./DrawerGate':{default:DrawerGate,__esModule:true},'@/lib/request-deadline':deadline, '@/lib/receipt-reprint':reprint, '@/lib/supabase':{supabase:client},'@/store/useCartStore':cart,'@/lib/checkout':checkout,
     '@/lib/printing':printing,'@/lib/sale-printing':salePrinting,'./PrintDispatch':{default:PrintDispatch,__esModule:true},'./printing.css':{},
-    '@/lib/shift':shift,'@/lib/shift-state':shiftState,'./PrototypeRegister':{default:PrototypeRegister,PrototypeCheckout,PrototypeCustomization,__esModule:true},'./prototype.css':{},
+    '@/lib/shift':shift,'@/lib/shift-state':shiftState,'./PrototypeRegister':{default:PrototypeRegister,PrototypeCheckout,PrototypeCustomization,__esModule:true},'./prototype.css':{},'./PagerPicker':{default:PagerPicker,__esModule:true},
     './WorkspaceRegister':{default:WorkspaceRegister,WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog,__esModule:true},'./workspace.css':{},
     '@/lib/pos-types':types,'@/lib/use-resource':resource,'@/lib/cart-draft':drafts,'next/navigation':{useRouter:()=>router}};
   const source=readFileSync(new URL('../app/register/Register.tsx',import.meta.url),'utf8');
@@ -109,6 +110,9 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     await add('Iced coffee vainilla','Almendra+$15.00','sin tapa');
     assert.equal(cart.useCartStore.getState().items.length,3);assert.equal(cart.useCartStore.getState().getTotal(),425);
     assert.deepEqual(cart.useCartStore.getState().items.map(i=>i.quantity),[2,1,1]);
+    const pay=[...dom.window.document.querySelectorAll('button')].find(node=>node.textContent?.trim()==='Cobrar')!;assert.equal(pay.disabled,true);
+    await click(button('Control de entrega: Elegir control'));await click(button('Control 1'));
+    assert.equal(cart.useCartStore.getState().getTotal(),425);
     await click(button('Cobrar'));await click(button('Tarjeta'));
     const orderType=dom.window.document.querySelector<HTMLSelectElement>('select[aria-label="Tipo de pedido"]')!;
     await act(async()=>{orderType.value='Para Llevar';orderType.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
@@ -117,6 +121,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     await click(button('Confirmar pago'));
     assert.equal(calls,1);assert.ok(payload);assert.equal(payload.expected_total,425);assert.deepEqual(payload.items,fixture.expectedLines);
     assert.equal(payload.order_type,'Para Llevar');assert.equal(payload.order_note,'entregar juntos');
+    assert.equal(payload.pager_number,1);
     assert.ok(receipt);const documents=salePrinting.saleDocuments(receipt,{testOnly:true});
     assert.equal(documents.customer.sections.length,1);assert.equal(documents.barista.sections.length,4);
     assert.deepEqual(documents.barista.sections.map(lines=>lines[1]),['Iced coffee caramelo','Iced coffee caramelo','Iced coffee caramelo','Iced coffee vainilla']);

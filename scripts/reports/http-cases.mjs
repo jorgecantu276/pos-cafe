@@ -8,7 +8,7 @@ export async function reportHttpCases({db,admin,cashier,anonymous,menu,ids,regis
   pass('All three report RPCs deny anonymous and cashier access over real local Auth/PostgREST');
   const total=menu.products.reduce((sum,p)=>sum+Math.round(p.price_mxn*100),0)/100;
   const payload={register_id:register.id,items:menu.products.map(p=>({product_id:ids[p.name],quantity:1,extra_ids:[],note:''})),
-    expected_total:total,payment_method:'tarjeta',tender_mxn:0,tender_usd:0,customer_id:null,order_type:'Para Llevar',order_note:'Prueba local de reportes: menú real completo'};
+    expected_total:total,payment_method:'tarjeta',tender_mxn:0,tender_usd:0,customer_id:null,order_type:'Para Llevar',order_note:'Prueba local de reportes: menú real completo',pager_number:1};
   const receipt=ok(await cashier.rpc('pos_checkout',{p_request:randomUUID(),p_payload:payload}));assert.equal(receipt.total,total);assert.equal(receipt.items.length,82);
   const today=ok(await admin.rpc('pos_sales_report',{p_period:'today'}));
   const expected=(await db.query("select count(*)::int n,sum(total)::numeric total from orders where status='completed' and created_at>=$1 and created_at<$2 and created_at<=$3",[today.start_at,today.end_at,today.as_of])).rows[0];

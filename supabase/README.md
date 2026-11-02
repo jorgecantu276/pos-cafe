@@ -15,7 +15,7 @@ Retained migrations are `202610280001_secure_pos.sql`,
 `202610300011_recent_tickets.sql`, `202610300012_business_backups.sql`,
 `202611020013_catalog_requests.sql`, `202611020014_customer_history.sql`,
 `202611020015_order_pager.sql`, `202611020016_clip_payments.sql` and
-`202611020017_inventory.sql`, in that order.
+`202611020017_inventory.sql` and `202611020018_required_order_pager.sql`, in that order.
 The removed, unreleased migration 003 is not part of this candidate. Do not
 apply this revised draft to a database that already ran an earlier candidate;
 that requires a deliberate forward migration.
@@ -35,8 +35,11 @@ all 15 retained versions are synchronized. The CLIP receiver is deployed, but
 automatic charging remains OFF with a placeholder token. An encrypted backup
 and fingerprints verified preservation of all 28 existing exported tables.
 Do not reapply these migrations or migrate the historical development target.
-Migration 017 has been rehearsed ONLY on fresh local databases. It is not deployed
-to that hosted client. The matching app requires it even while inventory is OFF.
+Migrations 017 and 018 have been rehearsed ONLY on fresh local databases. Neither is deployed
+to that hosted client. The matching app requires both even while inventory is OFF.
+Migration 018 requires a manually selected pager number 1–30 for every new
+checkout and CLIP preparation. It preserves earlier orders, snapshots and
+recovery of previously accepted requests, including historical sales without a pager.
 See [integration readiness](../docs/integration-readiness.md) and
 [CLIP deployment](../docs/clip-payments.md).
 
