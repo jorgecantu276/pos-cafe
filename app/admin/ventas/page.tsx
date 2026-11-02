@@ -113,7 +113,7 @@ export default function VentasPage() {
       </div>}>
         <p className="ticket-date">{reportDate(selectedOrder.created_at)}</p>
             {isCanceled(selectedOrder.status) && (
-              <div className="bg-red-50 text-red-600 border border-red-200 p-4 rounded-xl flex items-center gap-3 mb-6">
+              <div className="bg-red-50 text-red-700 border border-red-200 p-4 rounded-xl flex items-center gap-3 mb-6">
                 <AlertCircle size={20} />
                 <p className="text-sm font-bold">Venta cancelada. El dinero no se ha devuelto.</p>
               </div>
