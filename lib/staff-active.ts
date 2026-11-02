@@ -1,5 +1,6 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 import {withDeadline} from './request-deadline';
+import {isDefinitiveWriteRejection} from './write-outcome';
 import {readStaffPending,staffActiveKey,staffWriteLock} from './staff-requests';
 
 type Memory=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
@@ -23,7 +24,7 @@ export async function saveStaffActivation(client:Client,storage:Memory,actor:str
     if(!pending)throw new Error('No hay un acceso pendiente de comprobar.');
     const key=staffActiveKey(actor),raw=JSON.stringify(pending);
     const{data,error}=await withDeadline(()=>client.rpc('pos_set_staff_active',{p_request:pending!.request,p_id:pending!.id,p_revision:pending!.revision,p_active:pending!.active}));
-    if(error){if(/^[0-9A-Z]{5}$/.test(error.code??'')&&storage.getItem(key)===raw)storage.removeItem(key);throw new Error(error.message);}
+    if(error){if(isDefinitiveWriteRejection(error.code)&&storage.getItem(key)===raw)storage.removeItem(key);throw new Error(error.message);}
     if(data?.request_id!==pending.request||data.id!==pending.id||data.is_active!==pending.active||!Number.isSafeInteger(data.management_revision)||data.management_revision<pending.revision)throw new Error('No se confirmó el acceso. Pulsa Comprobar acceso.');
     if(storage.getItem(key)!==raw)throw new Error('El acceso cambió en otra ventana. Comprueba el pendiente.');
     storage.removeItem(key);return data as {id:string;is_active:boolean;management_revision:number};

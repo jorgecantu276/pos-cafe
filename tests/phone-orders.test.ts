@@ -18,6 +18,19 @@ test('phone save keeps its exact identity after a lost response and rejects a di
   assert.ok(storage.getItem(phoneRequestKey('cashier')),'The caller must retain recovery until print intent and draft retirement succeed');completePhoneRequest(storage,pending);assert.equal(storage.values.size,0);
 });
 
+test('phone SQL completion uncertainty preserves the save identity until the existing order is recovered',async()=>{
+  for(const code of ['08006','08007','40003']){
+    const storage=memory(),calls:unknown[]=[];beginPhoneRequest(storage,pending);
+    const client={rpc:async(name:string,args:unknown)=>{calls.push([name,args]);return calls.length===1?{data:null,error:{code,message:'Completion unknown'}}:{data:order,error:null};}} as unknown as Pick<SupabaseClient,'rpc'>;
+    await assert.rejects(submitPhoneRequest(client,storage,pending),/Completion unknown/);
+    assert.deepEqual(readPhoneRequest(storage,'cashier'),pending,code);
+    assert.throws(()=>beginPhoneRequest(storage,{...pending,request:crypto.randomUUID()}),/Comprueba el pedido/);
+    assert.equal((await submitPhoneRequest(client,storage,readPhoneRequest(storage,'cashier')!)).id,order.id);
+    assert.deepEqual(calls[1],calls[0],code);assert.ok(readPhoneRequest(storage,'cashier'));
+    completePhoneRequest(storage,pending);assert.equal(readPhoneRequest(storage,'cashier'),null);
+  }
+});
+
 test('phone cancellation persists explicit saleable quantities and request identity, with no automatic all-returned default',async()=>{
   const storage=memory(),request:PhoneRequest={actor:'cashier',request:crypto.randomUUID(),kind:'cancel',id:order.id,revision:0,reason:'No recogió',returns:[{line_id:'line',return_quantity:0}]};beginPhoneRequest(storage,request);
   let sent:unknown;const client={rpc:async(name:string,args:unknown)=>{assert.equal(name,'pos_phone_cancel');sent=args;return{data:{...order,status:'cancelled',revision:1},error:null};}} as unknown as Pick<SupabaseClient,'rpc'>;

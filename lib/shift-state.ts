@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Expense } from './pos-types';
 import type { ShiftReport } from './shift';
+import { isDefinitiveWriteRejection } from './write-outcome';
 
 type Client = Pick<SupabaseClient, 'rpc'>;
 export interface ShiftSummary {
@@ -67,7 +68,7 @@ async function submit<T>(client: Client, storage: Storage, key: string, rpc: str
   storage.setItem(key, raw);
   const { data, error } = await shiftRpc(client, rpc, request);
   if (error) {
-    if (/^[0-9A-Z]{5}$/.test(error.code || '') && storage.getItem(key) === raw) storage.removeItem(key);
+    if (isDefinitiveWriteRejection(error.code) && storage.getItem(key) === raw) storage.removeItem(key);
     throw new Error(error.message);
   }
   const result = validate(data);

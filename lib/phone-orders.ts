@@ -2,6 +2,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import type {CartItem} from '../store/useCartStore';
 import type {CheckoutPayload} from './checkout';
 import {withDeadline} from './request-deadline';
+import {isDefinitiveWriteRejection} from './write-outcome';
 
 type Client=Pick<SupabaseClient,'rpc'>;
 type Memory=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
@@ -68,7 +69,7 @@ export async function submitPhoneRequest(client:Client,storage:Memory,request:Ph
   if(storage.getItem(key)!==raw)throw new Error('El pedido cambió en otra ventana. Comprueba el pendiente.');
   const args=request.kind==='save'?{p_request:request.request,p_payload:request.payload}:{p_request:request.request,p_id:request.id,p_revision:request.revision,p_reason:request.reason,p_returns:request.returns};
   const {data,error}=await withDeadline(()=>client.rpc(request.kind==='save'?'pos_phone_save':'pos_phone_cancel',args));
-  if(error){if(/^[0-9A-Z]{5}$/.test(error.code??'')&&storage.getItem(key)===raw)storage.removeItem(key);throw new Error(error.message);}
+  if(error){if(isDefinitiveWriteRejection(error.code)&&storage.getItem(key)===raw)storage.removeItem(key);throw new Error(error.message);}
   const order=readPhoneOrder(data);
   if(request.kind==='save'&&(order.contact_name!==request.payload.contact_name.trim()||order.snapshot.total!==request.payload.expected_total))throw new Error('No se confirmó el pedido. Pulsa Comprobar pedido.');
   if(request.kind==='cancel'&&(order.id!==request.id||order.status!=='cancelled'))throw new Error('No se confirmó la cancelación. Pulsa Comprobar pedido.');

@@ -94,6 +94,11 @@ test('Windows launcher parses in PowerShell 5.1 and preserves one identified loc
   };
   let passed = false;
   try {
+    writeFileSync(configPath, JSON.stringify({...config,RequireExistingPrintJournal:true}));
+    const missingJournal=await launch().done;
+    assert.notEqual(missingJournal.code,0);assert.match(missingJournal.output,/registro anterior de impresion/);
+    assert.equal(await noListener(),true,'A missing historical journal must refuse startup before opening a port');
+    writeFileSync(configPath,JSON.stringify(config));
     const first = launch();
     await eventually(ready, 'Initial fixture startup did not become ready: ' + first.output());
     const original = readOwner();

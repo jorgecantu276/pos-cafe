@@ -35,6 +35,7 @@ import { closeShift, expenseRequestKey, loadShiftSummary, recoverPendingExpenses
 import { CheckoutRejected, ClipPaymentPending, checkoutPayload, executeCheckout, readCheckoutReview, withCheckoutLock, type CheckoutReview, type SavedOrder } from '@/lib/checkout';
 import { bindCartDraft, cartDraftKey, type CartDraftBinding } from '@/lib/cart-draft';
 import { withDeadline } from '@/lib/request-deadline';
+import { isDefinitiveWriteRejection } from '@/lib/write-outcome';
 import {
   Coffee, Minus, Plus, Trash2, CreditCard, ShoppingBag,
   Loader2, Search, X, UserPlus, Edit3, LogOut, Wallet,
@@ -335,7 +336,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       setShowApertura(false);
       await fetchData();
     } catch (error) {
-      if (error && typeof error==='object' && 'code' in error && /^[0-9A-Z]{5}$/.test(String(error.code))) {
+      if (error && typeof error==='object' && 'code' in error && isDefinitiveWriteRejection(error.code)) {
         localStorage.removeItem(`${shiftMemoryKey.current}:opening`);
         alert('No se abrió la caja. Revisa los importes y vuelve a intentar.');
         await fetchData();

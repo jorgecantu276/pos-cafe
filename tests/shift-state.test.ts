@@ -65,6 +65,27 @@ test('SQL conflict retires only its request; browser-storage failure sends no ex
   assert.throws(()=>checkedExpenses([{desc:'R',amount:0.001}]),/válidos/);
 });
 
+test('unknown SQL completion preserves an expense identity and a closing count for exact recovery',async()=>{
+  for(const code of ['08006','08007','40003']){
+    const s=storage(),requests:Record<string,unknown>[]=[];
+    const expenses=[{desc:'Retiro',amount:35}],saved={...initial(),expenses,expenses_revision:1,expected_cash:1210};
+    const api=client((name,args)=>{
+      if(name==='pos_shift_summary')return {data:saved,error:null};
+      requests.push(args);return requests.length===1?{data:null,error:{code,message:'Completion unknown'}}:{data:saved,error:null};
+    });
+    await assert.rejects(saveShiftExpenses(api,s.value,'uncertain',initial(),expenses),/Completion unknown/);
+    const raw=s.value.getItem(expenseRequestKey('uncertain'));assert.ok(raw,code);
+    await recoverPendingExpenses(api,s.value,'uncertain');assert.deepEqual(requests[1],requests[0],code);assert.equal(s.map.size,0);
+    const closeRequests:Record<string,unknown>[]=[];
+    const report={id:'existing-close',starting_cash:100,total_sales:1145,total_expenses:0,expected_cash:1245,counted_cash:1245,difference:0,expenses_detail:[]};
+    const closing=client((_name,args)=>{closeRequests.push(args);return closeRequests.length===1?{data:null,error:{code,message:'Completion unknown'}}:{data:report,error:null};});
+    await assert.rejects(closeShift(closing,s.value,'uncertain',initial(),1245),/Completion unknown/);
+    assert.ok(s.value.getItem(closeRequestKey('uncertain')),code);
+    const recovered=await closeShift(closing,s.value,'uncertain',initial(),1000);
+    assert.equal(recovered.id,report.id);assert.deepEqual(closeRequests[1],closeRequests[0],code);assert.equal(s.map.size,0);
+  }
+});
+
 test('legacy expense import preserves the old journal until acknowledgment and rejects conflicting server history',async()=>{
   const s=storage();const legacy=JSON.stringify({registerId:initial().register_id,expenses:[{desc:'Anterior',amount:35}]});
   s.value.setItem('mi_cafe_shift:a',legacy);let fail=true;

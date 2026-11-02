@@ -45,7 +45,7 @@ test('timeout retains the exact inventory operation across reload and recovery c
 });
 test('database rollback clears pending stock changes; transport errors and malformed acknowledgements preserve recovery', async () => {
   const s = storage();
-  await assert.rejects(saveInventoryRequest(client(() => Promise.resolve({ error: { code: '40001', message: 'Cambió' } })), s, request), InventoryRejected);
+  await assert.rejects(saveInventoryRequest(client(() => Promise.resolve({ error: { code: 'P0001', message: 'Cambió' } })), s, request), InventoryRejected);
   assert.equal(readInventoryRequest(s, 'admin'), null);
   await assert.rejects(saveInventoryRequest(client(() => Promise.resolve({ error: { code: '', message: 'Network' } })), s, request), /Network/);
   assert.deepEqual(readInventoryRequest(s, 'admin'), request);
@@ -57,6 +57,18 @@ test('database rollback clears pending stock changes; transport errors and malfo
   assert.deepEqual(readInventoryRequest(s, 'admin'), request);
   await assert.rejects(saveInventoryRequest(client(() => { throw Error('Must not send'); }), s, { ...request, request: crypto.randomUUID() }), /Recupera primero/);
   s.setItem(inventoryRequestKey('other'), JSON.stringify(request));assert.throws(() => readInventoryRequest(s, 'other'), /revisión/);
+});
+
+test('inventory SQL completion uncertainty never retires the operation or applies a second stock movement',async()=>{
+  for(const code of ['08006','08007','40003','40001']){
+    const s=storage(),calls:unknown[]=[];
+    const api=client(async(_name:string,args:unknown)=>{calls.push(args);return calls.length===1?{data:null,error:{code,message:'Completion unknown'}}:{data:[{product_id:item.product_id,revision:3}],error:null};});
+    await assert.rejects(saveInventoryRequest(api,s,request),error=>!(error instanceof InventoryRejected));
+    assert.deepEqual(readInventoryRequest(s,'admin'),request,code);
+    await assert.rejects(saveInventoryRequest(api,s,{...request,request:crypto.randomUUID()}),/Recupera primero/);
+    await saveInventoryRequest(api,s,readInventoryRequest(s,'admin')!);
+    assert.deepEqual(calls[1],calls[0],code);assert.equal(calls.length,2);assert.equal(readInventoryRequest(s,'admin'),null);
+  }
 });
 test('register projection supports PostgREST one-to-one inventory and never uses legacy stock as a gate', () => {
   const product = { id: '1', name: 'Brownie', price: 30, category: 'Postres', image_url: null, is_active: true, customizable: false, wizard_steps: [], stock: 999 };
