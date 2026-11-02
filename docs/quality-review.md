@@ -14,14 +14,14 @@ Revisión del 2 de noviembre de 2026. El inventario pasa las mismas comprobacion
 
 axe es una comprobación automatizada parcial. Cero hallazgos en una pantalla no prueba todos los criterios WCAG, todos los estados, lectores de pantalla ni legibilidad física.
 
-Resultado local registrado: **34 estados, cero infracciones de axe, cero objetivos medidos menores de 44 px y cero desbordamientos horizontales**, en Edge 156.0.4314.58. Quedan comprobaciones manuales de axe (`color-contrast` y `aria-prohibited-attr`) que se conservan en el reporte; no se contabilizan falsamente como criterios certificados.
+Primera revisión histórica (anterior a teléfono y reactivación): **34 estados, cero infracciones de axe, cero objetivos medidos menores de 44 px y cero desbordamientos horizontales**, en Edge 156.0.4314.58. Quedan comprobaciones manuales de axe (`color-contrast` y `aria-prohibited-attr`) que se conservan en el reporte; no se contabilizan falsamente como criterios certificados.
 
 En ese recorrido, el LCP observado estuvo entre **84 y 308 ms**, la suma local de desplazamientos llegó a **0.049** y el evento observado más largo fue **112 ms**. Son datos de un navegador en el PC de desarrollo con backend local, no percentiles de usuarios ni prueba de rendimiento del café. La inspección visual también corrigió el panel fijo del inventario para que el encabezado de Administración no tape el producto al desplazarse.
 
 ## Pruebas de esta revisión
 
-- **242 pruebas** de aplicación: UI real, recuperación, permisos, borradores, inventario, CLIP simulado, controles e impresión Windows. Incluyen bloqueo entre ventanas, teléfono sin control con pago al recoger, preservación del carrito de mostrador y recuperación de la comanda desde otro cajero.
-- **2,700 comprobaciones PostgreSQL**: transacciones, revisiones obsoletas, lotes CSV atómicos, última pieza concurrente, venta/replay, devoluciones parciales, inventario apagado y reservas/liquidación CLIP. Incluyen 121 de teléfono: precio acordado, turno/tasa del pago, concurrencia, cancelación/merma y respaldo tipado de pedidos y reservas. No equivalen a certificar una restauración operativa completa de Auth, Windows y sus dispositivos.
+- Pruebas de aplicación del commit: UI real, recuperación, permisos, borradores, inventario, CLIP simulado, controles e impresión Windows. Incluyen bloqueo entre ventanas, teléfono sin control con pago al recoger, preservación del carrito de mostrador y recuperación de la comanda desde otro cajero.
+- **2,766 comprobaciones PostgreSQL**: transacciones, revisiones obsoletas, lotes CSV atómicos, última pieza concurrente, venta/replay, devoluciones parciales, inventario apagado y reservas/liquidación CLIP. Incluyen 121 de teléfono: precio acordado, turno/tasa del pago, concurrencia, cancelación/merma y respaldo tipado de pedidos y reservas. El ensayo adicional de respaldo cifrado ahora restaura en un destino local compatible, valida Auth, una nueva venta y el corte. Esto no certifica restauración del proveedor alojado ni hardware Windows.
 - **Auth/PostgREST y producción local**: roles reales, activación protegida, conteo, venta con control 30, no doble descuento, cancelación sin reposición automática, devolución/replay y pausa. Backend nuevo, sin acceder al cliente alojado.
 - **Navegador real** con los **82 productos** del menú de referencia: login, administración, Catálogo, inventario, Ventas, Caja, Clientes, Configuración, Equipo, respaldos, impresión y CLIP; detalle/conteo cero de inventario y diálogos de cobro/cierre. axe WCAG 2.2 AA y comprobación de desbordamiento. Las pantallas de configuración sin rutas privadas se revisan en su estado de configuración faltante, no como un respaldo físico ya instalado.
 - **Tickets**: seis comprobantes SQL creados después de todas las migraciones, con inventario activo y control 30. Verificación de cantidades descontadas, extras, importes unitarios/renglones, MXN/USD, cambio, cliente, preparación y puntos. Los mismos snapshots pasan por el API de impresión, render Windows y diario simulado. Repetir/reiniciar/reimprimir no crea otra venta, descuento o copia aceptada.
@@ -50,9 +50,9 @@ La aceptación pendiente debe comprobar desde arranque de Windows hasta venta mi
 
 ## Impresión física y despliegue
 
-La aceptación física anterior distingue el ticket V8 y las versiones de etiqueta efectivamente impresas. Ver [registro físico](printer-acceptance-2026-10-31.md). El diseño `reference-v2` y el control nuevo tienen render verificado; necesitan su propia confirmación en papel para afirmar aceptación completa. Se mantienen los ajustes de controladores y el diario histórico; no se cambia ni reenvía un documento viejo para aplicar un diseño nuevo.
+La aceptación física anterior distingue el ticket V8 y las versiones de etiqueta efectivamente impresas. Ver [registro físico](printer-acceptance-2026-10-31.md): el seguimiento V9/reference-v2 sí registra la confirmación positiva del usuario. Lo nuevo pendiente de aceptación física son los controles 1–30 y documentos telefónicos desde la app completa. Se mantienen los ajustes de controladores y el diario histórico; no se cambia ni reenvía un documento viejo para aplicar un diseño nuevo.
 
-Inventario inicia **apagado**, CLIP continúa **apagado** y el token es un placeholder. Las migraciones 017–019 están validadas localmente, pendientes de despliegue alojado autorizado. El código publicado no instala ni certifica la nueva app en la PC del café.
+Inventario inicia **apagado**, CLIP continúa **apagado** y el token es un placeholder. Las migraciones 017–020 se desplegaron con respaldo y comparación de huellas que preservó las 31 tablas existentes. El código publicado no instala ni certifica la nueva app en la PC del café. La [preparación de entrega](delivery-readiness.md) separa los defectos corregidos de la aceptación en sitio.
 
 ## Repetir la revisión
 

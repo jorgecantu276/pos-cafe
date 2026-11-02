@@ -4,7 +4,7 @@ import { catalogProduct, type CatalogProduct, type ExtraRow, type ProductRow } f
 import { loadRegisterShortcuts } from './register-shortcuts';
 
 export type CatalogChange = {
-  kind: 'product' | 'extra'; action: 'save' | 'deactivate'; id: string | null;
+  kind: 'product' | 'extra'; action: 'save' | 'deactivate'|'reactivate'; id: string | null;revision?:number;
   fields?: { name: string; price: number; category?: string; phase?: string; customizable?: boolean; image_url?: string; wizard_steps?: string[] };
 };
 type Pending = { actor: string; request: string; payload: CatalogChange & { actor_id: string } };
@@ -48,7 +48,9 @@ export function readCatalogRequest(storage: Memory, actor: string): Pending | nu
   if (!raw) return null;
   const pending = JSON.parse(raw) as Pending;
   if (!pending || pending.actor !== actor || pending.payload?.actor_id !== actor || !uuid.test(pending.request)
-    || !['product', 'extra'].includes(pending.payload.kind) || !['save', 'deactivate'].includes(pending.payload.action)) {
+    || !['product', 'extra'].includes(pending.payload.kind) || !['save', 'deactivate','reactivate'].includes(pending.payload.action)
+    ||(pending.payload.revision!==undefined&&(!Number.isSafeInteger(pending.payload.revision)||pending.payload.revision<0))
+    ||(pending.payload.action==='reactivate'&&(!pending.payload.id||pending.payload.revision===undefined))) {
     throw Error('No se pudieron abrir los cambios pendientes. Pide ayuda al responsable.');
   }
   return pending;

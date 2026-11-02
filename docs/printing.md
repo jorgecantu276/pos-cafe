@@ -33,6 +33,16 @@ identity before sending and replays exactly that request after a lost response
 or refresh. Preserve the existing journal when upgrading. Normal polling and
 cashier retry still never resend an uncertain or accepted copy automatically.
 
+## Preparación telefónica y pago
+
+La preparación original usa `phone:UUID`, con documentos pendientes de pago e
+identidad separada del recibo pagado. Cobrar asegura y despacha la preparación
+faltante, incluso tras respuesta perdida y cambio de cajero; no repite copias
+aceptadas o inciertas. **Pedidos por teléfono → Pagados → Comprobar comanda**
+permite recuperarla después. El estado financiero se confirma sin esperar al
+papel; nunca se vuelve a cobrar para resolver la impresión. Una venta cancelada
+impide nuevos envíos y mantiene las revisiones históricas.
+
 ## Exact machine profile
 
 ### Owner's customer receipt reference — October 31

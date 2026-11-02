@@ -2,6 +2,7 @@
 
 import { loadReport, reportMoney, reportDate, type CustomerReport } from '@/lib/reports';
 import { useResource } from '@/lib/use-resource';
+import {useDebouncedValue} from '@/lib/use-debounced-value';
 import LoadFailure from '@/app/LoadFailure';
 import { ReportPagination } from '../ReportControls';
 import { readCustomerCorrection, recoverCustomerCorrection, saveCustomerCorrection, type CustomerCorrection, type PendingCustomerCorrection } from '@/lib/customer-management';
@@ -15,6 +16,9 @@ import CustomerHistory from './CustomerHistory';
 
 export default function ClientesPage() {
   const [query, setQuery] = useState({ search: '', page: 0 });
+  const [searchTerm,setSearchTerm]=useState('');
+  const applySearch=useCallback((search:string)=>setQuery({search,page:0}),[]);
+  const search=useDebouncedValue(searchTerm,300,applySearch),searchPending=search!==searchTerm;
   const [historyCustomer, setHistoryCustomer] = useState<{ id: string; name: string } | null>(null);
   const load = useCallback((signal: AbortSignal) => loadReport<CustomerReport>(supabase, 'pos_customer_report', { p_search: query.search, p_page: query.page }, signal), [query]);
   const { data: report, loading, error, reload } = useResource<CustomerReport | null>(load, null);
@@ -94,8 +98,8 @@ export default function ClientesPage() {
             placeholder="Nombre o teléfono"
             aria-label="Buscar clientes por nombre o teléfono"
             maxLength={100}
-            value={query.search}
-            onChange={event => setQuery({ search: event.target.value, page: 0 })}
+            value={searchTerm}
+            onChange={event => setSearchTerm(event.target.value)}
           />
         </span></label>
         <button className="admin-secondary-button" onClick={() => setQuery({ ...query, page: 0 })}>Actualizar clientes</button>
@@ -121,7 +125,7 @@ export default function ClientesPage() {
           <button type="button" disabled={saving} className="rounded-xl border p-3" onClick={() => setEditing(null)}>Cerrar edición</button>
         </form>
       </section>}
-      {error ? <LoadFailure message={error} retry={reload} /> : loading ? <p role="status">Cargando clientes…</p> : report && <>
+      {error&&!searchPending&&!loading ? <LoadFailure message={error} retry={reload} /> : loading||searchPending ? <p role="status">Cargando clientes…</p> : report && <>
       <p className="text-sm">{report.summary.rows} clientes · Compras pagadas {reportMoney(report.summary.sales)} · Actualizado {reportDate(report.captured_at)}</p>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map(customer => (

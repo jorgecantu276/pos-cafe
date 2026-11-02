@@ -72,6 +72,7 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     await page.getByRole('dialog',{name:'Editar usuario',exact:true}).waitFor();await audit(page,'staff-editor');
     await page.goto(url+'/admin/productos');await page.getByRole('button',{name:'Editar Brownie tradicional',exact:true}).click();
     await page.getByRole('dialog').waitFor();await audit(page,'catalog-editor');
+    await activationQualityReview({page,audit,db,actors,url});
     await page.goto(url+'/admin/clientes');await page.getByRole('button',{name:/Corregir datos de/}).first().click();await audit(page,'customer-editor');
     await page.goto(url+'/admin/ventas');await page.locator('.workspace-sales-list > button').first().click();
     await page.getByRole('dialog').waitFor();await audit(page,'cancelled-sale-return');
@@ -169,4 +170,47 @@ export async function printingStatusReview(cashier,audit) {
   await cashier.locator('.print-dispatch > summary').getByText('Estado sin comprobar',{exact:true}).waitFor({state:'hidden'});
   assert.equal(await cashier.locator('.print-dispatch').evaluate(e=>e.open),true,'A refresh preserves the user’s expanded state');
   await cashier.locator('.print-dispatch > summary').click();await audit(cashier,'printing-status-recovered');
+}
+
+// Reversing a mistaken deactivation must be a real UI operation, preserving
+// identities, financial snapshots and stock rather than recreating records.
+async function activationQualityReview({page,audit,db,actors,url}) {
+  const ordersBefore=(await db.query('select coalesce(jsonb_agg(to_jsonb(o) order by id),\'[]\') rows from orders o')).rows[0].rows;
+  const productBefore=(await db.query("select id,name,price,stock,is_active from products where name='Brownie tradicional'")).rows[0];
+  const inventoryBefore=(await db.query('select * from pos_inventory_items where product_id=$1',[productBefore.id])).rows[0];
+  const extraBefore=(await db.query("select id,name,price,phase,active from extras where lower(name)='almendra' and phase='Tipo de Leche'")).rows[0];
+  const staffBefore=(await db.query('select id,username,full_name,role,avatar_url,is_active from profiles where id=$1',[actors.cashier.id])).rows[0];
+  const bothSizes=async name=>{for(const viewport of [{width:1366,height:768},{width:1093,height:560}]){await page.setViewportSize(viewport);await audit(page,name);}await page.setViewportSize({width:1366,height:768});};
+  await page.goto(url+'/admin/productos');
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Desactivar Brownie tradicional',exact:true}).click();
+  await page.getByRole('button',{name:'Desactivar Brownie tradicional',exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('group',{name:'Estado del catálogo',exact:true}).getByRole('button',{name:'Inactivos',exact:true}).click();
+  await page.getByRole('button',{name:'Reactivar Brownie tradicional',exact:true}).waitFor();await bothSizes('catalog-inactive-product');
+  await page.getByRole('button',{name:'Reactivar Brownie tradicional',exact:true}).click();
+  await page.getByRole('button',{name:'Reactivar Brownie tradicional',exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('group',{name:'Estado del catálogo',exact:true}).getByRole('button',{name:'Activos',exact:true}).click();
+  await page.getByRole('button',{name:'Editar Brownie tradicional',exact:true}).waitFor();
+  assert.deepEqual((await db.query('select id,name,price,stock,is_active from products where id=$1',[productBefore.id])).rows[0],productBefore);
+  assert.deepEqual((await db.query('select * from pos_inventory_items where product_id=$1',[productBefore.id])).rows[0],inventoryBefore);
+  await page.getByRole('group',{name:'Tipo de catálogo',exact:true}).getByRole('button',{name:'Extras',exact:true}).click();
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:`Desactivar ${extraBefore.name}`,exact:true}).click();
+  await page.getByRole('button',{name:`Desactivar ${extraBefore.name}`,exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('group',{name:'Estado del catálogo',exact:true}).getByRole('button',{name:'Inactivos',exact:true}).click();
+  await page.getByRole('button',{name:`Reactivar ${extraBefore.name}`,exact:true}).waitFor();await bothSizes('catalog-inactive-extra');
+  await page.getByRole('button',{name:`Reactivar ${extraBefore.name}`,exact:true}).click();
+  await page.getByRole('button',{name:`Reactivar ${extraBefore.name}`,exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('group',{name:'Estado del catálogo',exact:true}).getByRole('button',{name:'Activos',exact:true}).click();
+  await page.getByRole('button',{name:`Editar ${extraBefore.name}`,exact:true}).waitFor();
+  assert.deepEqual((await db.query('select id,name,price,phase,active from extras where id=$1',[extraBefore.id])).rows[0],extraBefore);
+  await page.goto(url+'/admin/usuarios');
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:`Desactivar a ${actors.cashier.username}`,exact:true}).click();
+  await page.getByRole('button',{name:`Desactivar a ${actors.cashier.username}`,exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('group',{name:'Estado del equipo',exact:true}).getByRole('button',{name:'Inactivos',exact:true}).click();
+  await page.getByRole('button',{name:`Reactivar a ${actors.cashier.username}`,exact:true}).waitFor();await bothSizes('staff-inactive');
+  await page.getByRole('button',{name:`Reactivar a ${actors.cashier.username}`,exact:true}).click();
+  await page.getByRole('button',{name:`Reactivar a ${actors.cashier.username}`,exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('group',{name:'Estado del equipo',exact:true}).getByRole('button',{name:'Activos',exact:true}).click();
+  await page.getByRole('button',{name:`Desactivar a ${actors.cashier.username}`,exact:true}).waitFor();
+  assert.deepEqual((await db.query('select id,username,full_name,role,avatar_url,is_active from profiles where id=$1',[actors.cashier.id])).rows[0],staffBefore);
+  assert.deepEqual((await db.query('select coalesce(jsonb_agg(to_jsonb(o) order by id),\'[]\') rows from orders o')).rows[0].rows,ordersBefore);
 }

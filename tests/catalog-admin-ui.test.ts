@@ -18,18 +18,28 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
   }
   const { createRoot } = await import('react-dom/client');
   const id = '00000000-0000-4000-8000-000000000001';
+  const inactiveProduct='00000000-0000-4000-8000-000000000002',inactiveExtra='00000000-0000-4000-8000-000000000003';
   const fixtures: Record<string, unknown[]> = { products: [
     { id, name: 'Café', price: 55, category: 'Bebidas', customizable: false, wizard_steps: [], image_url: '', is_active: true },
     { id: 'dessert', name: 'Pastel de nuez', price: 80, category: 'Postres', customizable: false, wizard_steps: [], image_url: '', is_active: true },
-    { id: 'inactive', name: 'Café retirado', price: 40, category: 'Bebidas', is_active: false },
-  ], extras: [{ id, name: 'Almendra', price: 10, phase: 'Leche', active: true }] };
+    { id: inactiveProduct, name: 'Café retirado', price: 40, category: 'Bebidas', is_active: false,catalog_revision:4 },
+  ], extras: [{ id, name: 'Almendra', price: 10, phase: 'Leche', active: true },{id:inactiveExtra,name:'Coco retirado',price:15,phase:'Tipo de Leche',active:false,catalog_revision:2}] };
   type Args = { p_request: string; p_payload: management.CatalogChange };
   const calls: Args[] = []; let release!: (value: unknown) => void;
   const firstResponse = new Promise(resolve => { release = resolve; });
+  const replays=new Map<string,unknown>();let loseReactivation=true;
   const client = { auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) },
-    from: (table: string) => { const query = Object.assign(Promise.resolve({ data: fixtures[table], error: null }), { select: () => query, order: () => query, abortSignal: () => query }); return query; },
+    from: (table: string) => { const query = Object.assign(Promise.resolve({ data: structuredClone(fixtures[table]), error: null }), { select: () => query, order: () => query, abortSignal: () => query }); return query; },
     rpc: (name: string, args: Args) => {
       assert.equal(name, 'pos_save_catalog'); calls.push(args);
+      if(args.p_payload.action==='reactivate'){
+        if(!replays.has(args.p_request)){
+          const item=fixtures[args.p_payload.kind==='product'?'products':'extras'].find(item=>(item as {id:string}).id===args.p_payload.id) as Record<string,unknown>;assert.ok(item);item[args.p_payload.kind==='product'?'is_active':'active']=true;item.catalog_revision=Number(item.catalog_revision)+1;
+          replays.set(args.p_request,{error:null,data:{request_id:args.p_request,kind:args.p_payload.kind,action:'reactivate',id:item.id,revision:item.catalog_revision}});
+          if(loseReactivation){loseReactivation=false;const result=Promise.resolve({error:{code:'',message:'Respuesta de reactivación perdida'},data:null});return Object.assign(result,{abortSignal:()=>result});}
+        }
+        const result=Promise.resolve(replays.get(args.p_request));return Object.assign(result,{abortSignal:()=>result});
+      }
       const response = calls.length === 1 ? firstResponse : Promise.resolve(args.p_payload.action === 'deactivate' ? { error: { code: 'P0001', message: 'No se pudo desactivar' } } : { error: null, data: { request_id: args.p_request, kind: args.p_payload.kind, action: args.p_payload.action, id } });
       return Object.assign(response, { abortSignal: () => response });
     } };
@@ -71,6 +81,12 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
     assert.match(dom.window.document.body.textContent!, /No se pudo desactivar/);
     assert.ok(button('Editar Almendra')); assert.equal(management.readCatalogRequest(dom.window.localStorage, 'owner'), null);
     assert.equal(calls[2].p_payload.action, 'deactivate');
+    await click('Productos');await click('Inactivos');await click('Reactivar Café retirado');
+    assert.match(dom.window.document.body.textContent!,/reactivación perdida/);assert.ok(management.readCatalogRequest(dom.window.localStorage,'owner'));
+    await click('Comprobar guardado');assert.deepEqual(calls[3],calls[4]);assert.deepEqual(calls[3].p_payload,{kind:'product',action:'reactivate',id:inactiveProduct,revision:4,actor_id:'owner'});
+    await click('Activos');assert.ok(button('Editar Café retirado'));assert.equal((fixtures.products.find(p=>(p as {id:string}).id===inactiveProduct) as {price:number}).price,40);
+    await click('Extras');await click('Inactivos');await click('Reactivar Coco retirado');await click('Activos');assert.ok(button('Editar Coco retirado'));
+    assert.deepEqual(calls[5].p_payload,{kind:'extra',action:'reactivate',id:inactiveExtra,revision:2,actor_id:'owner'});assert.equal((fixtures.extras.find(p=>(p as {id:string}).id===inactiveExtra) as {price:number}).price,15);
   } finally {
     await act(async () => root.unmount()); dom.window.close();
     for (const [key, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }

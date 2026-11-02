@@ -9,13 +9,13 @@ Punto de venta para una cafetería con una sola caja física. Next.js 16.4.3, Re
 | Área | Estado |
 | --- | --- |
 | Ventas, Caja, Catálogo y Clientes | Conectados al backend; pruebas con datos sintéticos y Auth/PostgREST local. |
-| Backend del cliente | Las 15 migraciones retenidas, incluidas 013–016, están aplicadas. |
+| Backend del cliente | Las 19 migraciones retenidas, incluidas **017–020**, están aplicadas. Respaldo previo/posterior y huellas de las 31 tablas existentes conservadas. |
 | Receptor CLIP | `clip-webhook` v1 desplegado y verificado. Recibir un aviso no crea ni aprueba un cobro. |
 | Cobro automático CLIP | **Apagado. Token como placeholder.** Pendiente de habilitación de PinPad, token real y aceptación con la terminal. |
-| Controles de entrega 1–30 | Obligatorios en mostrador. **Pedido por teléfono** permite guardar sin control y cobrar al recoger; migraciones 018/019 pendientes en el backend alojado. |
+| Controles de entrega 1–30 | Obligatorios en mostrador. **Pedido por teléfono** permite guardar sin control y cobrar al recoger. |
 | Pedidos por teléfono | Pendientes compartidos entre turnos, precio acordado, preparación sin pagar y cobro único al recoger. Ver [flujo completo](docs/phone-orders.md). |
 | App en la PC del café | Instalación/configuración de esta versión y aceptación operativa pendientes. Publicar código en GitHub no instala la app. |
-| Inventario | Integrado en Catálogo y probado localmente; **apagado al inicio**. La migración 017 sigue pendiente en el backend alojado. |
+| Inventario | Integrado en Catálogo; migración 017 desplegada y **apagado al inicio**. No se inventan existencias. |
 | Tipo de cambio del negocio | **1 USD = 16 MXN** guardado para la próxima apertura. El turno abierto anterior conserva 18; sus ventas no se recalculan. |
 
 La [revisión de integración y preparación](docs/integration-readiness.md) documenta conexiones UI/backend, evidencias, pendientes y condiciones para instalar o activar cada función. Pasar pruebas locales no equivale a aceptar toda la operación del café.
@@ -27,11 +27,11 @@ La revisión sigue un [flujo coordinado](docs/quality-workflow.md) con responsab
 ## Qué incluye
 
 - **Caja:** apertura, gastos, tipo de cambio guardado, arqueo, corte y entrega a otro cajero. El entrante inicia sesión y confirma el efectivo recibido. Solo puede existir un turno abierto.
-- **Ventas:** cantidades, extras y notas; efectivo MXN/USD, tarjeta y otro medio; historial, cancelación administrativa y reimpresión. Cancelar una venta **no devuelve dinero** en CLIP ni en otra terminal.
-- **Catálogo:** productos, extras y favoritos; búsqueda/filtros; guardados recuperables y desactivación que conserva el historial. Caja detecta cambios de menú y exige revisar precios antes de un nuevo cobro.
+- **Ventas:** cantidades, extras y notas; efectivo MXN, MXN + USD y tarjeta; historial, cancelación administrativa y reimpresión. Cancelar una venta **no devuelve dinero** en CLIP ni en otra terminal.
+- **Catálogo:** productos, extras y favoritos; búsqueda/filtros; guardados recuperables, desactivación y reactivación con el mismo ID e historial. Caja detecta cambios de menú y exige revisar precios antes de un nuevo cobro.
 - **Inventario dentro de Catálogo:** disponibilidad, conteos, entradas, mermas, CSV con vista previa, movimientos y devoluciones parciales de ventas canceladas. Activación explícita por administrador, apagada al inicio. Ver [operación y CLIP](docs/inventory.md).
 - **Clientes:** alta por nombre/teléfono, corrección, compras y puntos según la regla existente. El canje sigue pendiente de la política del negocio.
-- **Configuración:** equipo, respaldos cifrados, impresión y revisión de pagos CLIP pendientes.
+- **Configuración:** equipo con reactivación recuperable, respaldos cifrados, impresión y revisión de pagos CLIP pendientes.
 
 El borrador conserva cantidades, extras, notas, cliente, tipo de pedido y control. Editar un artículo aplica sus cambios al guardar. Una identidad por venta permite recuperar la misma solicitud después de una interrupción. La administración tiene cuatro áreas principales; los antiguos accesos duplicados/cupones redirigen a las acciones vigentes. Ver [interfaz y navegación](docs/workspace.md).
 
@@ -47,7 +47,7 @@ En mostrador, el cajero elige un control **1–30 antes de cobrar**. Su número 
 
 ## Impresión y recuperación
 
-Las ventas de mostrador generan dos trabajos independientes: cliente a **POS80 Printer** por USB y etiquetas a **Y813BT Sticker** por Bluetooth. El pedido por teléfono genera sus copias **pendientes de pago** al guardarse; al cobrar se imprime solo el recibo del cliente, sin repetir la preparación. El servidor usa documentos guardados y un diario SQLite por copia. No reenvía automáticamente una entrega incierta a Windows. Reimpresiones históricas y cortes usan el diálogo de Windows.
+Las ventas de mostrador generan dos trabajos independientes: cliente a **POS80 Printer** por USB y etiquetas a **Y813BT Sticker** por Bluetooth. El pedido por teléfono guarda sus copias **pendientes de pago** con identidad propia. Al cobrar agrega el recibo pagado y asegura la preparación original si faltaba, sin repetir copias ya aceptadas o inciertas. **Pagados → Comprobar comanda** conserva la recuperación. El servidor usa documentos guardados y un diario SQLite por copia. Reimpresiones históricas y cortes usan el diálogo de Windows.
 
 Los recibos nuevos conservan logo, importes, QR de Instagram y datos del emisor; omiten el nombre individual y las líneas de CFDI retiradas. Las etiquetas nuevas usan el diseño negro `reference-v2`. Los documentos y diarios anteriores no se reescriben. La aceptación física anterior y las comprobaciones pendientes se distinguen en el [registro de impresoras](docs/printer-acceptance-2026-10-31.md).
 
@@ -80,11 +80,12 @@ El POS requiere conexión al backend. La PWA no habilita ventas offline: el serv
 | `npm run test:admin-http` | Auth/PostgREST y app de producción: cuatro áreas, inventario apagado/activo, venta, devolución, roles, control guardado y CLIP apagado. API/DB 55481/55482 y app 3111. Requiere Docker. |
 | `npm run test:phone-http` | Auth/PostgREST y producción para teléfono: guardar sin cobrar, preparación simulada, recuperación entre turnos y pago al recoger. API/DB 55501/55502 y app 3112. Con `POS_BROWSER_QUALITY=1`, incluye navegador y capturas. |
 | `npm run test:printing` | Endpoints de impresión/reimpresión y diario con backend/impresoras simulados; app 3112. |
+| `npm run test:restore-business` | Archivo cifrado automático → segundo backend local vacío → relaciones/filas/secuencias → Auth original → pago al recoger → corte. API/DB de origen 55501/55502 y destino 55521/55522. |
 | `npm run typecheck` / `npm run lint` | TypeScript y reglas sin advertencias. |
 | `npm run build:verify` | Compilación de producción aislada de la vista previa en ejecución. |
 | `npm audit` / `npm audit --omit=dev` | Dependencias completas y de ejecución. |
 
-La integración pasó localmente **242 pruebas y 2,700 comprobaciones de PostgreSQL**. GitHub Actions repite los checks Windows y los ensayos Auth/PostgREST y teléfono en los PR y en `main`; consultar el estado del commit, no interpretar estas cifras como un resultado permanente de CI.
+La integración incluye **2,766 comprobaciones de PostgreSQL**, pruebas de aplicación/recuperación y restauración operativa de un respaldo cifrado. GitHub Actions repite los checks Windows y los ensayos Auth/PostgREST, teléfono y restauración en los PR y en `main`; consultar el resultado del commit. El [plan de entrega](docs/delivery-readiness.md) conserva los límites de hardware y puesta en marcha.
 
 Con `POS_BROWSER_QUALITY=1`, el ensayo HTTP también abre Chromium/Edge aislado y ejecuta axe WCAG 2.2 AA, navegación real, conteo cero por UI y revisión de desbordamiento sobre 82 productos de referencia. CI ejecuta este modo. Necesita un navegador Chromium instalado; no usa un perfil personal ni envía papel. Las mediciones locales de carga/eventos se registran como laboratorio, sin atribuirles cumplimiento de Core Web Vitals en campo.
 
@@ -98,6 +99,6 @@ La PC de desarrollo prepara el paquete; la del café recibe una versión revisad
 
 Las migraciones 013–016 y el receptor CLIP ya están desplegados. Un respaldo cifrado previo y las huellas de las 28 tablas existentes confirmaron datos conservados. **No reinstalar estas migraciones ni activar CLIP para probar el despliegue.**
 
-La instalación debe conservar el POS anterior, configuración privada, respaldos y diario de impresión. **Antes de instalar esta app, aplicar las migraciones 017–019; solo se han ensayado en bases locales desechables y siguen pendientes en el backend alojado.** El inventario apagado no limita ni descuenta ventas. Al activarlo se deben registrar/importar conteos físicos actualizados. Los pendientes están declarados en la revisión de preparación.
+La instalación conserva el POS anterior, configuración privada, respaldos y diario de impresión. **017–020 ya están desplegadas**; sus huellas conservaron las 31 tablas existentes y se verificaron respaldos cifrados antes/después. Inventario sigue apagado y no limita ni descuenta ventas; al activarlo se deberán registrar conteos físicos reales. La instalación y aceptación de la app completa en el café siguen siendo pasos separados.
 
 Ver [contrato de base de datos](supabase/README.md), [instalación Windows](docs/windows-deployment.md), [respaldos](docs/business-backups.md) y [revisión de preparación](docs/integration-readiness.md).

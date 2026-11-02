@@ -35,6 +35,8 @@ jobs:
         run: npm run test:admin-http
       - name: Exercise phone preparation and pickup payment with real sessions and simulated printing
         run: npm run test:phone-http
+      - name: Restore an actual encrypted business backup into a separate empty Auth/backend and operate it
+        run: npm run test:restore-business
   verify:
     runs-on: windows-latest
     timeout-minutes: 20

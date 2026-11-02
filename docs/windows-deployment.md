@@ -103,10 +103,10 @@ separate local print journal. Rehearse a full recovery before live use.
 
 ## Matching database and rollback
 
-Provision the chosen client test project, apply the retained migrations 001, 002 and 004–019 in order and
+Provision the chosen client test project, apply the retained migrations 001, 002 and 004–020 in order and
 create confirmed staff profiles. Review the legacy compatibility requirements
 before applying to any existing database. Test against a separate synthetic
-catalog and explicit test quantities, not live business records. Optional finished-product inventory requires migration 017 and starts OFF. Migration 018 requires a delivery control for new in-person sales. Migration 019 adds persistent phone orders prepared unpaid and charged at pickup without a pager; old sales and accepted-request recovery remain unchanged. Migrations 017–019 are tested locally and still pending on the hosted client; apply all three before installing this matching app. Keep CLIP OFF until provisioned with its real token. Count/import fresh stock only after explicit activation. Legacy ingredient stock/recipes remain inert. See [phone orders](phone-orders.md), [inventory](inventory.md) and [quality review](quality-review.md). The app still
+catalog and explicit test quantities, not live business records. Optional finished-product inventory requires migration 017 and starts OFF. Migration 018 requires a delivery control for new in-person sales. Migration 019 adds persistent phone orders prepared unpaid and charged at pickup without a pager; old sales and accepted-request recovery remain unchanged. Migrations 017–020 are deployed on the verified client after encrypted backups and preserved fingerprints of all 31 existing tables. Migration 020 adds recovery fixes and reversible activation; retain all four in the installed contract. Keep CLIP OFF until provisioned with its real token. Count/import fresh stock only after explicit activation. Legacy ingredient stock/recipes remain inert. See [phone orders](phone-orders.md), [inventory](inventory.md) and [quality review](quality-review.md). The app still
 requires internet for cloud sales; it has no offline sales queue.
 
 Keep every deployed release folder and the one current external print journal.
@@ -115,6 +115,12 @@ same target and current journal. Never rewind/delete/replace that journal or
 automatically reverse database migrations after trading. Recover uncertain
 sales/print copies before changing versions. A same-disk D: folder is not an
 off-machine backup; verify a separate backup/restore procedure before live use.
+
+The delivery private configuration can set `RequireExistingPrintJournal: true`.
+The launcher then refuses to start if the configured `windows-jobs.sqlite` is
+missing; a typo must not silently create a fresh journal during this upgrade.
+Keep this requirement enabled for the café's existing journal, and retain the
+old POS until the [onsite acceptance](delivery-readiness.md) is complete.
 
 At final repository transfer review collaborator access, secrets and deploy
 keys that remain associated with the repository. Paid GitHub features do not

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
+import {useDebouncedValue} from '@/lib/use-debounced-value';
 import LoadFailure from '@/app/LoadFailure';
 import { openPrintWindow } from '@/lib/printing';
 import { printHistoricalReceipt } from '@/lib/receipt-reprint';
@@ -23,6 +24,8 @@ export default function VentasPage() {
   
   // ESTADOS PARA EL BUSCADOR Y EL TECLADO
   const [searchTerm, setSearchTerm] = useState('');
+  const resetSearchPage=useCallback(()=>setQuery(previous=>({...previous,page:0,asOf:null})),[]);
+  const search=useDebouncedValue(searchTerm,300,resetSearchPage),searchPending=search!==searchTerm;
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   // 🟢 ESTADOS PARA EL MODAL DE DETALLE DE ORDEN
@@ -30,13 +33,13 @@ export default function VentasPage() {
   const [isCanceling, setIsCanceling] = useState(false);
 
   const loadOrders = useCallback((signal: AbortSignal) => loadReport<SalesReport>(supabase, 'pos_sales_report', {
-    ...reportParams(query), p_search: searchTerm,
-  }, signal), [query, searchTerm]);
+    ...reportParams(query), p_search: search,
+  }, signal), [query, search]);
   const { data: report, loading, error: loadError, reload: fetchOrders } = useResource<SalesReport | null>(loadOrders, null);
   const orders = report?.orders ?? [];
   const filteredOrders = orders;
 
-  const changeSearch = (value: string) => { setSearchTerm(value); setQuery(previous => ({ ...previous, page: 0, asOf: null })); };
+  const changeSearch = (value: string) => setSearchTerm(value);
 
   // LÓGICA DEL TECLADO VIRTUAL
   const handleKeyClick = (key: string) => {
@@ -88,14 +91,14 @@ export default function VentasPage() {
     </div>
   );
 
-  if (loadError) return <LoadFailure message={loadError} retry={fetchOrders} />;
+  if (loadError&&!searchPending&&!loading) return <LoadFailure message={loadError} retry={fetchOrders} />;
 
   if (!report) return null;
 
   return (
     <div className="workspace-sales">
       <header><div className="workspace-admin-heading-row"><h1>Ventas</h1><Link className="workspace-admin-text-action" href="/tv" target="_blank" rel="noopener noreferrer">Abrir pantalla de ventas</Link></div><div className="workspace-sales-filters"><div className="workspace-sales-search"><input type="search" aria-label="Buscar ticket o producto" placeholder="Buscar ticket o producto" maxLength={100} value={searchTerm} onChange={event => changeSearch(event.target.value)} /><button type="button" aria-label="Teclado de búsqueda" aria-pressed={isKeyboardOpen} onClick={() => setIsKeyboardOpen(!isKeyboardOpen)}><Keyboard size={22}/></button></div><ReportFilters query={query} onChange={setQuery}/></div></header>
-      {loading ? <p role="status">Verificando reporte…</p> : <>
+      {loading||searchPending ? <p role="status">Verificando reporte…</p> : <>
         <div className="workspace-sales-total"><span>Ventas pagadas <strong>{reportMoney(report.summary.sales)}</strong></span><span>{report.summary.completed} tickets · {reportPeriod(query, report.day)}</span></div>
         <div className="workspace-sales-list" aria-label="Tickets">{filteredOrders.map(order => <button type="button" key={order.id} onClick={() => setSelectedOrder(order)}>
           <span><strong>#{String(order.ticket_number ?? order.id.split('-')[0]).padStart(4, '0')}</strong><small>{reportDate(order.created_at, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</small></span>

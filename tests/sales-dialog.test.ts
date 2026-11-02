@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { JSDOM } from 'jsdom';
 import { act, createElement, type ComponentType, type ReactNode } from 'react';
-import { createRoot } from 'react-dom/client';
 import * as ts from 'typescript';
 import AdminDialog from '../app/admin/AdminDialog';
 import * as reports from '../lib/reports';
 import * as resource from '../lib/use-resource';
+import * as debounced from '../lib/use-debounced-value';
 import * as types from '../lib/pos-types';
 import * as shift from '../lib/shift';
 import * as cancellation from '../lib/cancellation';
@@ -24,19 +24,20 @@ test('actual ticket dialog moves/restores focus, handles cancel and keeps a pend
     summary: { rows: 1, completed: 1, pending: 0, cancelled: 0, sales: 55, average: 55 }, orders: [order], payments: [] };
   let release!: (value: unknown) => void, cancellations = 0;
   const pending = new Promise(resolve => { release = resolve; });
-  const client = { rpc: (name: string) => {
+  const searches:Array<{p_search:string;p_page:number}>=[];
+  const client = { rpc: (name: string,args:{p_search:string;p_page:number}) => {
     if (name === 'pos_cancel_sale') { cancellations++; return pending; }
-    assert.equal(name, 'pos_sales_report'); const result = Promise.resolve({ error: null, data: report }); return Object.assign(result, { abortSignal: () => result });
+    assert.equal(name, 'pos_sales_report');searches.push(args);const result = Promise.resolve({ error: null, data: report }); return Object.assign(result, { abortSignal: () => result });
   } };
   const imports: Record<string, unknown> = { '../inventario/InventoryReturn': {default:()=>null,__esModule:true}, '../AdminDialog': { default: AdminDialog, __esModule: true }, '@/lib/reports': reports,
     'next/link': { default: ({ href, children, ...props }: { href: string; children: ReactNode }) => createElement('a', { href, ...props }, children), __esModule: true },
-    '@/lib/use-resource': resource, '@/lib/pos-types': types, '@/lib/shift': shift, '@/lib/cancellation': cancellation, '@/lib/supabase': { supabase: client },
+    '@/lib/use-resource': resource,'@/lib/use-debounced-value':debounced, '@/lib/pos-types': types, '@/lib/shift': shift, '@/lib/cancellation': cancellation, '@/lib/supabase': { supabase: client },
     '@/lib/printing': { openPrintWindow: () => assert.fail('No printing during dialog verification') }, '@/lib/receipt-reprint': {},
     '../ReportControls': { ReportFilters: () => null, ReportPagination: () => null }, '@/app/LoadFailure': { default: () => null, __esModule: true } };
   const compiled = ts.transpileModule(readFileSync(new URL('../app/admin/ventas/page.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true, target: ts.ScriptTarget.ES2020 } }).outputText;
   const exports: { default?: ComponentType } = {}, require = createRequire(import.meta.url);
   new Function('require', 'exports', compiled)((name: string) => imports[name] ?? require(name), exports);
-  const root = createRoot(dom.window.document.getElementById('root')!);
+  const{createRoot}=await import('react-dom/client');const root = createRoot(dom.window.document.getElementById('root')!);
   const button = (name: string) => { const node = [...dom.window.document.querySelectorAll('button')].find(e => e.textContent?.trim() === name); assert.ok(node, name); return node; };
   const click = async (node: HTMLElement) => { await act(async () => { node.focus(); node.click(); }); };
   const cancel = async () => { await act(async () => { dom.window.document.querySelector('dialog')!.dispatchEvent(new dom.window.Event('cancel', { cancelable: true })); }); };
@@ -54,6 +55,11 @@ test('actual ticket dialog moves/restores focus, handles cancel and keeps a pend
     await act(async () => release({ error: { message: 'Sin conexión de prueba' } }));
     assert.match(alerts[0], /Sin conexión/); assert.equal(button('Cancelar venta').disabled, false);
     await cancel(); assert.equal(dom.window.document.querySelector('dialog'), null); assert.equal(dom.window.document.activeElement, opener);
+    const search=dom.window.document.querySelector<HTMLInputElement>('[aria-label="Buscar ticket o producto"]')!;
+    const type=async(value:string)=>{await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(search,value);search.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});};
+    const before=searches.length;await type('a');await type('an');assert.equal(search.value,'an');assert.equal(searches.length,before,'Typing does not send one report request per key');assert.equal(dom.window.document.querySelector('.workspace-sales-list'),null,'Old results stay hidden while the search settles');
+    await act(async()=>new Promise(resolve=>setTimeout(resolve,350)));assert.equal(searches.length,before+1);assert.equal(searches.at(-1)?.p_search,'an');assert.equal(searches.at(-1)?.p_page,0);
+    await type('');await act(async()=>new Promise(resolve=>setTimeout(resolve,10)));assert.equal(searches.at(-1)?.p_search,'');assert.equal(searches.at(-1)?.p_page,0);
   } finally {
     await act(async () => root.unmount()); dom.window.close();
     for (const [key, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }

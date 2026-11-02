@@ -11,6 +11,7 @@ import * as reports from '../lib/reports';
 import * as types from '../lib/pos-types';
 import * as deadline from '../lib/request-deadline';
 import * as resource from '../lib/use-resource';
+import * as debounced from '../lib/use-debounced-value';
 
 test('actual CRM retains a lost correction for recovery, blocks other edits and refreshes after confirmation',async()=>{
   const dom=new JSDOM('<div id="root"></div>',{url:'http://127.0.0.1'}),saved=new Map<string,PropertyDescriptor|undefined>();
@@ -30,6 +31,7 @@ test('actual CRM retains a lost correction for recovery, blocks other edits and 
   const report={captured_at:'2026-10-30T12:00:00Z',page:0,page_size:50,summary:{rows:1,sales:345.25},customers:[{id:'member',name:'Ana',phone:'8682345678',points:173,completed_spent:345.25}]};
   const imports:Record<string,unknown>={
     '@/lib/customer-management':management,'@/lib/reports':reports,'@/lib/pos-types':types,'@/lib/request-deadline':deadline,'@/lib/supabase':{supabase:client},
+    '@/lib/use-debounced-value':debounced,
     '@/lib/use-resource':{useResource:(load:unknown)=>{loads.add(load);return{data:report,loading:false,error:null,reload:async()=>{}};}},
     '@/app/LoadFailure':{default:()=>null,__esModule:true},'../ReportControls':{ReportPagination:()=>null},
   };
