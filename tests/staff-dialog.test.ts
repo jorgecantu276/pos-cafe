@@ -10,6 +10,7 @@ import AdminDialog from '../app/admin/AdminDialog';
 import * as resource from '../lib/use-resource';
 import * as types from '../lib/pos-types';
 import * as avatars from '../lib/staff-avatars';
+import * as active from '../lib/staff-active';
 
 test('staff editor uses the shared dialog, keeps its avatar secondary and cannot close during an unconfirmed save',async()=>{
   const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost'}),saved=new Map<string,PropertyDescriptor|undefined>();
@@ -19,12 +20,12 @@ test('staff editor uses the shared dialog, keeps its avatar secondary and cannot
     saved.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{configurable:true,value});
   }
   const user={id:'user',username:'ana',full_name:'Ana',role:'cashier',avatar_url:avatars.staffAvatars[0].src,is_active:true};
-  const client={from:()=>{const q=Object.assign(Promise.resolve({data:[user],error:null}),{select:()=>q,eq:()=>q,order:()=>q,abortSignal:()=>q});return q;}};
+  const client={auth:{getUser:async()=>({data:{user:{id:'actor'}},error:null})},from:()=>{const q=Object.assign(Promise.resolve({data:[user],error:null}),{select:()=>q,eq:()=>q,order:()=>q,abortSignal:()=>q});return q;}};
   let resolve!:(value:unknown)=>void,writes=0;
   const pending=new Promise(ready=>{resolve=ready;});
   const imports:Record<string,unknown>={
     '../AdminDialog':{default:AdminDialog,__esModule:true},'@/lib/use-resource':resource,'@/lib/pos-types':types,'@/lib/staff-avatars':avatars,
-    '@/lib/supabase':{supabase:client},'@/lib/staff-requests':{readStaffPending:()=>null,acknowledgeStaffPending:()=>{},saveStaffChange:()=>{writes++;return pending;}},
+    '@/lib/supabase':{supabase:client},'@/lib/staff-active':active,'@/lib/staff-requests':{readStaffPending:()=>null,acknowledgeStaffPending:()=>{},saveStaffChange:()=>{writes++;return pending;}},
     '@/components/StaffAvatar':{default:()=>null,__esModule:true},'@/app/LoadFailure':{default:()=>null,__esModule:true},
   };
   const code=ts.transpileModule(readFileSync(new URL('../app/admin/usuarios/page.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true,target:ts.ScriptTarget.ES2020}}).outputText;
