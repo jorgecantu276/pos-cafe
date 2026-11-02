@@ -40,3 +40,14 @@ test('phone queue loads more than200 orders, can retry the same older-page curso
     await click('Actualizar pedidos');assert.equal(document.querySelectorAll('.phone-order-list li').length,200);assert.deepEqual(calls,[null,'801','801',null]);
   },{client,disabled:false,onClose:()=>{},onPay:()=>{},onCancel:async()=>false});
 });
+
+test('paid phone orders retain preparation recovery, while a cancelled paid sale cannot send another preparation',async()=>{
+  let saleStatus='completed',prints=0;
+  const client={rpc:async(name:string,args:{p_status?:string})=>({data:name==='pos_phone_list'?(args.p_status==='paid'?[{...sample,status:'paid',paid_sale_status:saleStatus,paid_order_id:'sale'}]:[]):{...sample,status:'paid',paid_sale_status:saleStatus,paid_order_id:'sale'},error:null})} as unknown as Pick<SupabaseClient,'rpc'>;
+  await render(async(document,click)=>{
+    await click('Pagados');await click('Abrir pedido 1000');assert.match(document.body.textContent!,/Pagado/);await click('Comprobar comanda');assert.equal(prints,1);
+    assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent==='Cobrar pedido'),false);
+    saleStatus='cancelled';await click('Volver a pedidos');await click('Actualizar pedidos');await click('Abrir pedido 1000');assert.match(document.body.textContent!,/Venta cancelada/);
+    assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent==='Comprobar comanda'),false);assert.equal(prints,1);
+  },{client,disabled:false,onClose:()=>{},onPay:()=>assert.fail('Paid orders cannot charge again'),onCancel:async()=>assert.fail('Paid orders cannot be cancelled as unpaid'),onPrint:async(order)=>{assert.equal(order.id,sample.id);prints++;return true;}});
+});

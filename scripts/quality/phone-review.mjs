@@ -72,8 +72,8 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     console.log(`PHONE QUALITY ${name} ${layout.width}x${layout.height}: PASS`);
   }
   const twoSizes=async(page,name)=>{for(const viewport of [{width:1366,height:768},{width:1093,height:560}]){await page.setViewportSize(viewport);await audit(page,name);}};
-  const openQueue=async page=>{await page.getByRole('button',{name:'Pedidos por cobrar',exact:true}).click();return page.getByRole('dialog',{name:'Pedidos por cobrar',exact:true});};
-  const findPhone=async(page,phone)=>{const queue=await openQueue(page);await queue.getByRole('textbox',{name:'Buscar pedido por cobrar',exact:true}).fill(String(phone.folio));
+  const openQueue=async page=>{await page.getByRole('button',{name:'Pedidos por cobrar',exact:true}).click();return page.getByRole('dialog',{name:'Pedidos por teléfono',exact:true});};
+  const findPhone=async(page,phone,state='Por cobrar')=>{const queue=await openQueue(page);await queue.getByRole('button',{name:state,exact:true}).click();await queue.getByRole('textbox',{name:'Buscar pedido por cobrar',exact:true}).fill(String(phone.folio));
     await queue.getByRole('button',{name:'Buscar',exact:true}).click();await queue.getByRole('button',{name:`Abrir pedido ${phone.folio}`,exact:true}).click();return queue;};
   async function startPhone(page,name,quantity=1){
     await page.locator('.workspace-product').filter({hasText:'Iced coffee caramelo'}).first().click();
@@ -142,25 +142,9 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     let queue=await findPhone(pageB,phone);await twoSizes(pageB,'phone-queue-details');
     assert.ok(faultsFile,'The owning runner must configure an isolated mock fault file');
     assert.equal(path.dirname(path.resolve(faultsFile)),path.resolve(printDirectory));
-    await writeFile(faultsFile,JSON.stringify({barista:'uncertain'}));
-    await queue.getByRole('button',{name:'Comprobar comanda',exact:true}).click();
-    await poll(spool,rows=>rows.filter(row=>row.orderId===prepId).length===2,'Shared preparation copies were not dispatched to mock spool');
-    const prepared=(await spool()).filter(row=>row.orderId===prepId);check('Preparation sends customer and barista',prepared.map(row=>row.audience).sort(),['barista','customer']);
-    assert.match(JSON.stringify(prepared),/PENDIENTE DE PAGO/);assert.doesNotMatch(JSON.stringify(prepared),/TICKET DE VENTA|Recibido MXN|CONTROL:/);
-    for(const document of prepared)assert.match(JSON.stringify(document.document),/Para Llevar/,'The selected service appears on each preparation document');
-    await poll(async()=>journal().find(row=>row.order_id===prepId&&row.audience==='barista')?.state,state=>state==='uncertain','Lost mock spool acknowledgment was not retained');
-    await poll(()=>pageB.locator('.print-dispatch-body > button').last().isEnabled(),enabled=>enabled,'Preparation status check did not finish');
-    await queue.waitFor({state:'hidden'});
-    await pageB.locator('.print-dispatch > summary').click();
-    await pageB.getByText('Salida por comprobar',{exact:true}).waitFor();await audit(pageB,'phone-shared-preparation-uncertain');
-    await pageB.locator('.print-dispatch > summary').click();
-    await writeFile(faultsFile,'{}');
-    queue=await findPhone(pageB,phone);
-    const repeated=pageB.waitForResponse(response=>new URL(response.url()).pathname==='/api/phone-printing'&&response.request().method()==='POST');
-    await queue.getByRole('button',{name:'Comprobar comanda',exact:true}).click();await repeated;
-    check('Repeated shared preparation does not blindly resend uncertain paper',(await spool()).filter(row=>row.orderId===prepId).length,2);
-    check('Unknown barista acknowledgment stays uncertain',journal().find(row=>row.order_id===prepId&&row.audience==='barista').state,'uncertain');
-    await queue.waitFor({state:'hidden'});queue=await findPhone(pageB,phone);
+    // Regression: B must pay DIRECTLY. The old passing journey explicitly
+    // checked preparation first and therefore missed a paid order with no job.
+    await writeFile(faultsFile,JSON.stringify({barista:'offline'}));
     await queue.getByRole('button',{name:'Cobrar pedido',exact:true}).click();
     const checkout=pageB.getByRole('dialog',{name:'Cobrar',exact:true});check('Pickup has no pager picker',await checkout.locator('.pos-pager-trigger').count(),0);
     check('Pickup service stays fixed',await checkout.getByRole('combobox',{name:'Tipo de pedido',exact:true}).isDisabled(),true);
@@ -176,7 +160,9 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     const saved=pageB.getByRole('dialog',{name:'Venta guardada',exact:true});await saved.waitFor();
     await poll(spool,rows=>rows.filter(row=>row.orderId===paid.id).length===1,'Paid customer receipt was not dispatched');
     check('Paid phone sends only customer receipt',(await spool()).filter(row=>row.orderId===paid.id).map(row=>row.audience),['customer']);
-    check('Settlement does not repeat preparation',(await spool()).filter(row=>row.orderId===prepId).length,2);
+    await poll(async()=>journal().filter(row=>row.order_id===prepId),rows=>rows.length===2,'Direct pickup payment lost the original phone preparation');
+    check('Direct pickup establishes original unpaid preparation',(await spool()).filter(row=>row.orderId===prepId).map(row=>row.audience),['customer']);
+    check('Unavailable barista remains recoverable after payment',journal().find(row=>row.order_id===prepId&&row.audience==='barista').state,'blocked');
     check('Phone sale is attributed to collecting cashier/register',[paid.cashier_id,paid.register_id,paid.pager_number,Number(paid.exchange_rate)],[actors.secondCashier.id,newRegister.id,null,16]);
     check('Explicit member earns points only at payment',(await db.query('select points,(total_spent*100)::integer spent_cents from customers where id=$1',[member])).rows[0],{points:61,spent_cents:11000});
     check('One stock consumption',(await db.query('select quantity from pos_inventory_items where product_id=$1',[product])).rows[0].quantity,9);
@@ -185,6 +171,30 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     check('Separate walk-in draft survives phone payment',await pageB.getByRole('button',{name:'Editar Agua natural',exact:true}).count(),1);
     check('Separate pager remains7',await pageB.getByRole('button',{name:'Control de entrega: 7',exact:true}).count(),1);
     check('Separate persisted walk-in draft unchanged',await pageB.evaluate(()=>Object.fromEntries(Object.entries(localStorage).filter(([key])=>key.includes('cart_draft')))),beforeDraft);
+    // A paid order must remain reachable even when its original preparation
+    // was absent or blocked. Recovery uses the same identity and copies.
+    await poll(()=>pageB.locator('.print-dispatch-body > button').last().isEnabled(),enabled=>enabled,'Paid print status check did not finish');
+    queue=await findPhone(pageB,phone,'Pagados');
+    check('A paid phone order cannot be charged again from its detail',await queue.getByRole('button',{name:'Cobrar pedido',exact:true}).count(),0);
+    await twoSizes(pageB,'phone-paid-preparation-recovery');
+    await writeFile(faultsFile,JSON.stringify({barista:'uncertain'}));
+    await queue.getByRole('button',{name:'Comprobar comanda',exact:true}).click();
+    await poll(spool,rows=>rows.filter(row=>row.orderId===prepId).length===2,'Paid order could not recover its missing barista preparation');
+    const prepared=(await spool()).filter(row=>row.orderId===prepId);check('Preparation sends customer and barista once',prepared.map(row=>row.audience).sort(),['barista','customer']);
+    assert.match(JSON.stringify(prepared),/PENDIENTE DE PAGO/);assert.doesNotMatch(JSON.stringify(prepared),/TICKET DE VENTA|Recibido MXN|CONTROL:/);
+    for(const document of prepared)assert.match(JSON.stringify(document.document),/Para Llevar/,'The selected service appears on each preparation document');
+    await poll(async()=>journal().find(row=>row.order_id===prepId&&row.audience==='barista')?.state,state=>state==='uncertain','Lost mock spool acknowledgment was not retained');
+    await poll(()=>pageB.locator('.print-dispatch-body > button').last().isEnabled(),enabled=>enabled,'Preparation status check did not finish');
+    await queue.waitFor({state:'hidden'});await pageB.locator('.print-dispatch > summary').click();
+    await pageB.getByText('Salida por comprobar',{exact:true}).waitFor();await audit(pageB,'phone-shared-preparation-uncertain');
+    await pageB.locator('.print-dispatch > summary').click();await writeFile(faultsFile,'{}');
+    queue=await findPhone(pageB,phone,'Pagados');
+    const repeated=pageB.waitForResponse(response=>new URL(response.url()).pathname==='/api/phone-printing'&&response.request().method()==='POST');
+    await queue.getByRole('button',{name:'Comprobar comanda',exact:true}).click();await repeated;
+    check('Repeated paid preparation does not resend uncertain paper',(await spool()).filter(row=>row.orderId===prepId).length,2);
+    check('Unknown barista acknowledgment stays uncertain',journal().find(row=>row.order_id===prepId&&row.audience==='barista').state,'uncertain');
+    check('Paid preparation recovery does not repeat the financial receipt',(await spool()).filter(row=>row.orderId===paid.id).length,1);
+    await queue.waitFor({state:'hidden'});
     await pageB.reload();await pageB.getByRole('button',{name:'Editar Agua natural',exact:true}).waitFor();
     check('Refresh does not duplicate sale',(await db.query('select count(*)::int n from orders where phone_order_id=$1',[phone.id])).rows[0].n,1);
     check('Refresh does not repeat paid receipt',(await spool()).filter(row=>row.orderId===paid.id).length,1);
@@ -209,7 +219,7 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     await pageB.route('**/rest/v1/rpc/pos_phone_list',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Prueba: no se pudo cargar la lista.'})}));
     const errorQueue=await openQueue(pageB);await errorQueue.getByRole('alert').filter({hasText:/Prueba/}).waitFor();await audit(pageB,'phone-list-error');
     await pageB.unroute('**/rest/v1/rpc/pos_phone_list');await errorQueue.getByRole('button',{name:'Actualizar pedidos',exact:true}).click();await errorQueue.getByText('No hay pedidos por cobrar.',{exact:true}).waitFor();
-    await errorQueue.getByRole('button',{name:'Cerrar Pedidos por cobrar',exact:true}).click();
+    await errorQueue.getByRole('button',{name:'Cerrar Pedidos por teléfono',exact:true}).click();
     const pages=[];await pageB.route('**/rest/v1/rpc/pos_phone_list',route=>{
       const before=route.request().postDataJSON().p_before??null;pages.push(before);
       const folios=before?[9999]:Array.from({length:200},(_,i)=>10199-i);

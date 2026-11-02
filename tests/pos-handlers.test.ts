@@ -6,6 +6,7 @@ import * as ts from 'typescript';
 import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, type CheckoutReview } from '../lib/checkout';
 import { errorMessage, validPagerNumber } from '../lib/pos-types';
 import {withDeadline} from '../lib/request-deadline';
+import {isDefinitiveWriteRejection} from '../lib/write-outcome';
 import {savedShiftHtml} from '../lib/shift-printing';
 import {confirmClosingPrints} from '../lib/closing-print-check';
 import { rememberSalePrint } from '../lib/sale-printing';
@@ -108,7 +109,7 @@ test('a cashier can stop closing when unfinished printing needs attention',async
 // Exercise the actual page handlers with browser/network dependencies replaced;
 // no request reaches Supabase and no print dialog is opened by these checks.
 function handler(name: string, context: Record<string, unknown>, file='../app/register/Register.tsx'): (...args: unknown[]) => unknown {
-  context = { clipEnabled:false,pagerNumber:1,validPagerNumber,phonePending:null,phoneBusy:false,phoneError:'',phoneOrder:false,selectedPhoneOrder:null,setSelectedPhoneOrder:()=>{},readPhoneRequest,readCheckoutReview,setCheckoutReview:()=>{},draftOwner:{current:'test-user'},ClipPaymentPending,catalogStale:false, withDeadline,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
+  context = { clipEnabled:false,pagerNumber:1,validPagerNumber,phonePending:null,phoneBusy:false,phoneError:'',phoneOrder:false,selectedPhoneOrder:null,setSelectedPhoneOrder:()=>{},readPhoneRequest,readCheckoutReview,setCheckoutReview:()=>{},draftOwner:{current:'test-user'},ClipPaymentPending,catalogStale:false, withDeadline,isDefinitiveWriteRejection,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
   const source=ts.createSourceFile('page.tsx',readFileSync(new URL(file,import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
   let body='';
   function visit(node: ts.Node) {
@@ -123,6 +124,7 @@ function handler(name: string, context: Record<string, unknown>, file='../app/re
 
 function checkoutHarness(storage=new Map<string,string>(), online=true, retire=()=>{}, timeoutMs=12_000, pagerNumber:number|null=1) {
   let calls=0,successful=false;
+  let laterResponse:unknown;const requests:unknown[]=[];
   const alerts:string[]=[];
   let settle!: (value: unknown)=>void;
   const response=new Promise(resolve=>settle=resolve);
@@ -137,10 +139,23 @@ function checkoutHarness(storage=new Map<string,string>(), online=true, retire=(
     CheckoutRejected,checkoutPayload,executeCheckout:(client:Parameters<typeof executeCheckout>[0],pending:CheckoutReview)=>executeCheckout(client,pending,timeoutMs),readCheckoutReview,rememberSalePrint,setCheckoutReview:()=>{},setSavedSale:()=>{},setLastOrderId:()=>{},setShowCheckoutModal:()=>{},setShowPostSaleModal:(v:boolean)=>successful=v,
     clearCart:()=>{},
     alert:(message:string)=>alerts.push(message),
-    supabase:{rpc:(name:string)=>{assert.equal(name,'pos_checkout');calls++;return response;}},
+    supabase:{rpc:(name:string,args:unknown)=>{assert.equal(name,'pos_checkout');calls++;requests.push(args);return laterResponse===undefined?response:Promise.resolve(laterResponse);}},
   });
-  return {fn,storage,alerts,checkoutKey,binding,get calls(){return calls;},get successful(){return successful;},settle};
+  return {fn,storage,alerts,checkoutKey,binding,requests,reply:(value:unknown)=>{laterResponse=value;},get calls(){return calls;},get successful(){return successful;},settle};
 }
+
+test('unknown SQL completion keeps checkout recovery and reuses its original identity instead of charging a new sale',async()=>{
+  for(const code of ['08006','08007','40003','PGRST002']){
+    let retired=0;const h=checkoutHarness(undefined,true,()=>{retired++;});
+    const first=h.fn(),raw=h.storage.get('test-user');assert.ok(raw);
+    h.settle({data:null,error:{code,message:'Completion unknown'}});await first;
+    assert.equal(h.storage.get('test-user'),raw,code);assert.equal(h.successful,false);assert.equal(retired,0);
+    assert.match(h.alerts[0],/No vuelvas a cobrar/);
+    h.reply({data:{id:'already-committed-sale',ticket_number:12,total:60,items:[],status:'completed',pager_number:1},error:null});
+    await h.fn();assert.equal(h.successful,true);assert.equal(retired,1);assert.equal(h.storage.has('test-user'),false);
+    assert.equal(h.requests.length,2);assert.deepEqual(h.requests[1],h.requests[0],code);
+  }
+});
 
 test('double-click on a slow transaction sends one RPC; lost response retains its exact identity',async()=>{
   const h=checkoutHarness(); const first=h.fn(); await h.fn();assert.equal(h.calls,1);
@@ -270,6 +285,21 @@ test('rejected shift opening can be corrected; unknown transport failure retains
     await fn();assert.equal(storage.has('shift:test:opening'),code==='');assert.equal(reloaded,code?1:0);
   }
 });
+
+test('opening SQL completion uncertainty retains the same request through successful recovery',async()=>{
+  for(const code of ['08006','08007','40003']){
+    const storage=new Map<string,string>(),requests:unknown[]=[];let busy=false;
+    const run=handler('handleStartShift',{
+      openingInFlight:{current:false},loading:false,loadError:null,exchangeRate:'16',parseAmount:Number,
+      calculateTotalCash:()=>100,breakdown:{100:1},dollarsInBox:'',shiftMemoryKey:{current:'uncertain-opening'},
+      setOpeningShift:(value:boolean)=>{busy=value;},localStorage:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)},
+      supabase:{rpc:async(_name:string,args:unknown)=>{requests.push(args);return requests.length===1?{data:null,error:{code,message:'Completion unknown'}}:{data:{id:'existing-shift',status:'open',initial_balance:100,exchange_rate:16,opened_at:'2026-11-02T18:00:00Z'},error:null};}},
+      alert:()=>{},fetchData:async()=>{},setRegisterId:()=>{},setStartingCash:()=>{},setExchangeRate:()=>{},setShiftStartTime:()=>{},DENOMINATIONS:[100],setBreakdown:()=>{},setDollarsInBox:()=>{},setShowApertura:()=>{},
+    });
+    await run();assert.ok(storage.get('uncertain-opening:opening'),code);assert.equal(busy,false);
+    await run();assert.deepEqual(requests[1],requests[0],code);assert.equal(storage.has('uncertain-opening:opening'),false);
+  }
+});
 test('discard never clears a request until the database confirms abandonment',async()=>{
   for(const failed of [true,false]) {
     let cleared=false;
@@ -317,7 +347,7 @@ test('editing an old draft uses current milk options while preserving the origin
 test('catalog name/price editing cannot reset stock consumed since the editor loaded',async()=>{
   let payload:Record<string,unknown>={};
   await handler('handleSave',{
-    activeTab:'items',editingId:'product',formData:{name:'Café',price:'55',category:'Bebidas',customizable:true,image_url:'',wizard_steps:[]},
+    activeTab:'items',editingId:'product',editingRevision:0,formData:{name:'Café',price:'55',category:'Bebidas',customizable:true,image_url:'',wizard_steps:[]},
     saving:{current:false},pending:false,commitChange:async(change:{fields:Record<string,unknown>})=>{payload=change.fields;},setMessage:(message:string)=>assert.fail(message),
     setShowForm:()=>{},setEditingId:()=>{},setFormData:()=>{},initialFormState:{},fetchData:()=>{},alert:(message:string)=>assert.fail(message),
   },'../app/admin/productos/page.tsx')({preventDefault:()=>{}});

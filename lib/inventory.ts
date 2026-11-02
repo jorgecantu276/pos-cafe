@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { withDeadline } from './request-deadline';
+import { isDefinitiveWriteRejection } from './write-outcome';
 
 export const inventoryUnits = ['pieza', 'rebanada', 'pastel', 'botella', 'lata', 'paquete'] as const;
 export type InventoryUnit = typeof inventoryUnits[number];
@@ -54,7 +55,7 @@ async function submitInventoryRequest(client: InventoryClient, storage: Storage,
   storage.setItem(key, raw);
   const { data, error } = await withDeadline(() => client.rpc(pending.rpc, { ...pending.args, p_request: pending.request, p_actor: pending.actor }), { timeoutMs });
   if (error) {
-    if (/^[0-9A-Z]{5}$/.test(error.code || '') && error.code !== '42501') {
+    if (isDefinitiveWriteRejection(error.code)) {
       if (storage.getItem(key) === raw) storage.removeItem(key);
       throw new InventoryRejected(error.message);
     }

@@ -3,6 +3,7 @@ import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rea
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const [targetFile, destination] = process.argv.slice(2);
@@ -70,8 +71,27 @@ cpSync(path.join(root, 'supabase/functions/clip-webhook'), path.join(destination
 mkdirSync(path.join(destination, 'backup-tools/scripts/backups'), { recursive: true });
 mkdirSync(path.join(destination, 'backup-tools/lib'), { recursive: true });
 cpSync(path.join(root, 'scripts/backups/inspect.mjs'), path.join(destination, 'backup-tools/scripts/backups/inspect.mjs'));
+cpSync(path.join(root, 'scripts/backups/restore-business.mjs'), path.join(destination, 'backup-tools/scripts/backups/restore-business.mjs'));
 cpSync(path.join(root, 'lib/business-backup-format.mjs'), path.join(destination, 'backup-tools/lib/business-backup-format.mjs'));
 cpSync(path.join(root, 'docs/business-backups.md'), path.join(destination, 'backup-tools/README.md'));
+// Recovery runs with portable Node and its own small PostgreSQL client. No npm
+// install, build tools, credentials or development-PC junctions are shipped.
+const copied = new Set();
+function recoveryDependency(name, parent = path.join(root, 'package.json')) {
+  const resolver = createRequire(parent);
+  let directory = path.dirname(resolver.resolve(name));
+  while (!existsSync(path.join(directory, 'package.json')) || JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8')).name !== name) {
+    const next = path.dirname(directory); assert.notEqual(next, directory, 'Recovery dependency package not found: ' + name); directory = next;
+  }
+  const manifest = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
+  const identity = name + '@' + manifest.version;
+  if (copied.has(identity)) return;
+  assert.ok(![...copied].some(value => value.startsWith(name + '@')), 'Conflicting recovery dependency versions: ' + name);
+  copied.add(identity);
+  cpSync(directory, path.join(destination, 'backup-tools/node_modules', name), { recursive: true, dereference: true, filter: source => path.basename(source) !== 'node_modules' });
+  for (const dependency of Object.keys(manifest.dependencies || {})) recoveryDependency(dependency, path.join(directory, 'package.json'));
+}
+recoveryDependency('pg');
 writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: 1, builtAt: new Date().toISOString(),
   sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   sourceDirty: !!execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(),
@@ -79,7 +99,7 @@ writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: 
   fixtureOnly: url.protocol === 'http:',
 }, null, 2));
 writeFileSync(path.join(destination, 'pos-cafe-config.example.json'), JSON.stringify({ SupabaseUrl: url.origin, SupabaseAnonKey: key,
-  SupabaseServiceRoleKey: '', Port: 3000, PrintMode: 'mock', PrintDataDirectory: '', ReceiptIssuerFile: '', StickerStockConfirmed: false,
+  SupabaseServiceRoleKey: '', Port: 3000, PrintMode: 'mock', PrintDataDirectory: '', RequireExistingPrintJournal: false, ReceiptIssuerFile: '', StickerStockConfirmed: false,
   BackupDirectory: '', BackupRecoveryKeyFile: '',
   ClipEnabled: false, ClipTokenFile: '', ClipSerial: 'AA61B2325A1302219', ClipWebhookUrl: '',
 }, null, 2));

@@ -1,6 +1,6 @@
 # Revisión de integración y preparación
 
-Fecha: **2 de noviembre de 2026**, America/Matamoros. Alcance: UI actual, CLIP, controles 1–30, inventario y pedidos por teléfono con pago al recoger; migraciones locales 017–019.
+Fecha: **2 de noviembre de 2026**, America/Matamoros. Alcance: UI actual, CLIP, controles 1–30, inventario y pedidos por teléfono con pago al recoger; migraciones 017–021 y preparación de entrega.
 
 ## Dictamen
 
@@ -8,7 +8,7 @@ Fecha: **2 de noviembre de 2026**, America/Matamoros. Alcance: UI actual, CLIP, 
 
 **No activar el cobro automático CLIP todavía.** Faltan la habilitación efectiva de PinPad, el token privado, la configuración de la app instalada y una transacción real de aceptación autorizada. El receptor desplegado no inicia cargos.
 
-El inventario de la rama anterior está integrado en Catálogo, con activación inicial apagada, reservas CLIP y devoluciones explícitas. **Las migraciones 017–019 solo se han ensayado localmente; siguen pendientes en el backend alojado y deben desplegarse antes de instalar esta app en el café.** El control 1–30 se exige en mostrador; el pedido por teléfono persistido permite preparar sin pagar y cobrar al recoger sin control. Ver [pedidos por teléfono](phone-orders.md), [inventario](inventory.md) y [calidad frente a benchmarks](quality-review.md).
+El inventario de la rama anterior está integrado en Catálogo, con activación inicial apagada, reservas CLIP y devoluciones explícitas. **017–021 ya están desplegadas al cliente, con respaldo previo/posterior y huellas conservadas de las 31 tablas existentes.** El control 1–30 se exige en mostrador; el pedido por teléfono persistido permite preparar sin pagar y cobrar al recoger sin control. Ver [pedidos por teléfono](phone-orders.md), [inventario](inventory.md) y [calidad frente a benchmarks](quality-review.md).
 
 ## Conexiones revisadas
 
@@ -18,13 +18,13 @@ El inventario de la rama anterior está integrado en Catálogo, con activación 
 | Venta manual | `pos_checkout` valida actor, turno, precios, extras, cliente y recibido; venta/comprobante/puntos en una transacción. | PostgreSQL, UI y Auth/PostgREST sintéticos. La misma identidad recupera el mismo comprobante. |
 | Caja y corte | Resumen autoritativo, gastos con diario y corte recuperable; administración consulta al cajero realmente activo. | Concurrencia y revisión de diferencias probadas; aceptación de la app completa en la PC pendiente. |
 | Entrega de caja | El saliente cuenta/elige al receptor; el entrante se autentica y confirma recibido. | Una caja física, permisos y pruebas touch del cierre. |
-| Catálogo y favoritos | Guardado recuperable con diario privado; editar/desactivar conserva ventas; caja detecta el cambio de menú. | Migración 013; permisos, replay, respuestas perdidas y actualización explícita de precios. |
+| Catálogo y favoritos | Guardado recuperable, desactivación/reactivación con el mismo ID; caja detecta el cambio de menú. | Migraciones 013/020; revisión, replay, respuestas perdidas y actualización explícita de precios. |
 | Clientes | Alta, corrección, compras paginadas y artículos/modificadores guardados. | Migración 014; venta, historial y reversión de puntos al cancelar. Canje sin regla nueva. |
 | Control 1–30 | Selección obligatoria en mostrador → payload → `orders.pager_number`/snapshot → cliente y cada taza/continuación. | Migraciones 015/018/019; la excepción requiere un pedido telefónico persistido. La siguiente orden vuelve a mostrador y las recuperaciones históricas se conservan. Base física manual. |
-| Teléfono / pago al recoger | Guardado separado de venta, reserva y preparación sin pagar → cola compartida → cobro único con precio acordado y turno actual. | Migración 019 local; contacto no da de alta socio, puntos solo al cobrar, cancelación con cantidades vendibles/merma, preparación y recibo pagado con identidades de impresión distintas. |
+| Teléfono / pago al recoger | Guardado separado de venta, reserva y preparación sin pagar → cola compartida → cobro único con precio acordado y turno actual. | Migraciones 019/020 desplegadas; recuperación de preparación desde Pagados y cobro directo sin comanda previa, conservando identidades y bloqueos de impresión. |
 | CLIP | Cotización congelada → claim persistido → un POST → GET autenticado → liquidación atómica → diario de impresión. | Migración 016; proveedor simulado con PostgreSQL real. Apagado, sin token real ni aceptación bancaria. |
 | Receptor CLIP | Nonce por solicitud; guarda una pista del identificador; no aprueba ventas. | Función v1 ACTIVE en el cliente. HTTP/permisos comprobados sin crear pagos. |
-| Inventario | Configuración apagada → activación explícita → conteo/CSV → descuento atómico → devolución parcial auditada. CLIP reserva antes de cobrar. | Migración 017 local, permisos, concurrencia, respuestas perdidas, Auth/PostgREST y conteo cero desde navegador real. Sin cantidades heredadas ni despliegue cloud. |
+| Inventario | Configuración apagada → activación explícita → conteo/CSV → descuento atómico → devolución parcial auditada. CLIP reserva antes de cobrar. | Migración 017 desplegada, apagada; permisos, concurrencia, respuestas perdidas, Auth/PostgREST y conteo cero ensayados con datos sintéticos. Sin cantidades heredadas. |
 | Impresión | Snapshot confirmado → USB/Bluetooth independientes, con estado persistente por copia. | Render y pruebas HTTP; aceptación física anterior documentada. El control nuevo está probado en render, no en papel del café. |
 | Equipo / respaldos | API/perfil con permisos de administrador; snapshot cifrado y clave fuera del respaldo. | Pruebas de autorización, fallos parciales y recuperación. La configuración privada y el resguardo real aún requieren instalación. |
 
@@ -34,10 +34,10 @@ Código: [checkout](../lib/checkout.ts), [CLIP](../lib/clip-server.ts), [RPC fin
 
 | Verificación | Resultado registrado |
 | --- | --- |
-| `npm test` | 242 pruebas: UI real, recuperación, teléfono entre turnos, inventario, CLIP, controles y render Windows. |
-| `npm run test:db` | 2,700 comprobaciones; incluye 121 de teléfono, control presencial, recuperación histórica, inventario apagado/activo, reservas CLIP y gateway con proveedor simulado. |
+| `npm test` | Pruebas del commit: UI real, recuperación, teléfono entre turnos, inventario, CLIP, controles y render Windows. |
+| `npm run test:db` | 2,792 comprobaciones; incluye 121 de teléfono, control presencial, recuperación histórica, inventario apagado/activo, reservas CLIP y gateway con proveedor simulado. |
 | TypeScript y lint | Sin errores ni advertencias. |
-| Producción / paquete Windows | Build aislado y paquete reubicado; 2,276 hashes de archivos verificados. |
+| Producción / paquete Windows | Build aislado y paquete reubicado; verificar el manifiesto y las huellas del candidato exacto, sin reutilizar cifras de otro paquete. |
 | Dependencias | Auditorías completas y de runtime: 0 vulnerabilidades al revisar este cambio. |
 | Auth/PostgREST y app HTTP | `npm run test:admin-http`: cuatro áreas, roles, pager y CLIP apagado, en una instancia nueva con API/DB 55481/55482 y app 3111. No reutiliza la vista previa existente. |
 | SQL → impresión HTTP | Seis comprobantes después de las 16 migraciones retenidas, inventario activo y control 30; mismo snapshot en endpoints/impresoras simulados, sin descontar dos veces. |
@@ -51,11 +51,11 @@ La revisión encontró y corrigió un rechazo incorrecto en el POST de CLIP cuan
 
 Se verificaron el enlace CLI y el destino privado del cliente; no se migró el backend histórico de `.env.local`.
 
-- Las 15 migraciones retenidas están sincronizadas; las nuevas son **013–016**. El dry-run posterior no encuentra pendientes.
+- Las 20 migraciones retenidas están sincronizadas; el último despliegue agrega **017–021** con huellas verificadas de las 31 tablas previas. El dry-run posterior no encuentra pendientes.
 - `clip-webhook` v1 está activo. La excepción de JWT corresponde solo a ese receptor con nonce; no abre las RPC financieras al navegador.
 - GET devuelve 405; sin nonce, 400; una solicitud/nonce desconocidos devuelve 200 sin guardar pagos ni pistas.
 - Solo el servicio puede liquidar CLIP; anónimos/autenticados no pueden aprobar pagos ni leer el diario privado.
-- Respaldo cifrado previo y verificado al descifrar; las huellas de las **28 tablas existentes** conservaron la venta, 82 productos, snapshots y configuración.
+- El despliegue 013–016 preservó las 28 tablas que existían entonces. El posterior 017–021 tuvo sus propios respaldos cifrados previo/posterior y preservó las **31 tablas existentes**; después hay 39 tablas. Venta, 82 productos, snapshots y configuración se conservan.
 - CLIP permanece **apagado**, el token sigue como placeholder y las tablas de pagos/pistas están vacías. No se cambió la app/configuración de la PC del café.
 
 Ver [registro de despliegue](clip-payments.md#authorized-cloud-deployment--november-2-2026).
@@ -73,9 +73,9 @@ Ver [registro de despliegue](clip-payments.md#authorized-cloud-deployment--novem
 
 No se presentan como terminados:
 
-- Vista y reactivación de productos, extras y empleados desactivados. Se conservan los registros; las pantallas actuales muestran activos.
-- Debounce de búsquedas en Ventas/Clientes. Evitar respuestas obsoletas no implica que ya esté aplicado.
-- Desplegar 017 y 018. Registrar los conteos reales al activar inventario. Compartir existencias entre paquetes/sueltos, ingredientes y convertir pasteles a rebanadas requieren reglas posteriores del negocio.
+- Catálogo y Equipo ya permiten ver inactivos y reactivar con el mismo ID, revisión y solicitud recuperable.
+- Búsquedas de Ventas/Clientes con espera breve al escribir; se conservan la cancelación de solicitudes y la protección contra respuestas obsoletas.
+- Registrar los conteos reales al activar inventario; al entregar permanece apagado. Compartir existencias entre paquetes/sueltos, ingredientes y convertir pasteles a rebanadas requieren reglas posteriores del negocio.
 - Definir el canje de puntos con el dueño. No se inventó una regla ni se implementó el módulo de cupones retirado.
 
 ## Recuperación y rollback

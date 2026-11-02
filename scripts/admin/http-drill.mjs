@@ -46,6 +46,12 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   const anonymous = createClient(config.api, config.anon, { auth: { persistSession: false, autoRefreshToken: false } }); sessions.push(anonymous);
+  const teamColumns='id,full_name,username,role,avatar_url,is_active,management_revision';
+  const actualTeam=ok(await admin.from('profiles').select(teamColumns));
+  assert.ok(actualTeam.some(profile=>profile.id===actors.admin.id)&&actualTeam.some(profile=>profile.id===actors.cashier.id));
+  assert.equal(typeof ok(await cashier.from('profiles').select(teamColumns).eq('id',actors.cashier.id).single()).management_revision,'number');
+  for(const table of ['products','extras'])ok(await cashier.from(table).select('*'));
+  pass('Real UI projections load through Auth/PostgREST, including the staff revision column');
   const payload = { actor_id: actors.admin.id, kind: 'product', action: 'save', id: null,
     fields: { name: 'Café de aceptación', price: 55, category: 'Bebidas', customizable: true, image_url: '', wizard_steps: ['Leche'] } };
   for (const client of [cashier, anonymous]) assert.ok((await client.rpc('pos_save_catalog', { p_request: randomUUID(), p_payload: payload })).error);

@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 // Separate fresh synthetic stack. Existing staging, archives and hosted data
 // are never read or reconciled. Each run owns a new project and test volumes.
 export async function freshLocalApi({ portBase = 55471 } = {}) {
-  assert.ok([55471,55481,55501].includes(portBase), 'Only dedicated loopback test port families are allowed');
+  assert.ok([55471,55481,55501,55521].includes(portBase), 'Only dedicated loopback test port families are allowed');
   const portPrefix=String(portBase).slice(0,-1);
   await dockerCheck();
   const project = `pos-cafe-admin-${randomUUID().slice(0, 8)}`, network = `supabase_network_${project}`;
@@ -36,6 +36,12 @@ export async function freshLocalApi({ portBase = 55471 } = {}) {
   if (!names.includes(network)) await run('docker', ['network', 'create', '--label', `pos-cafe.admin-test=${project}`, '--opt', 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1', network]);
   const [net] = JSON.parse(await run('docker', ['network', 'inspect', network]));
   assert.equal(net.Labels?.['pos-cafe.admin-test'], project); assert.equal(net.Options?.['com.docker.network.bridge.host_binding_ipv4'], '127.0.0.1');
+  const cleanupNetwork=async()=>{
+    const [owned]=JSON.parse(await run('docker',['network','inspect',network]));
+    assert.equal(owned.Labels?.['pos-cafe.admin-test'],project);
+    assert.equal(Object.keys(owned.Containers||{}).length,0,'Never remove a network with active containers');
+    await run('docker',['network','rm',owned.Id]);
+  };
   let db;
   try {
     await cliRun(['start', '--exclude', 'realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor,studio,inbucket']);
@@ -55,6 +61,6 @@ export async function freshLocalApi({ portBase = 55471 } = {}) {
     for (const statement of baselineStatements(JSON.parse(source.snapshot))) await db.query(statement);
     const config = { api: status.API_URL, database: status.DB_URL, anon: status.ANON_KEY, service: status.SERVICE_ROLE_KEY };
     const service = createClient(config.api, config.service, { auth: { persistSession: false, autoRefreshToken: false } });
-    return { config, db, service, install: () => db.query(source.migration), async cleanup() { await db.end(); await cliRun(['stop', '--no-backup']); } };
-  } catch (error) { await db?.end(); await cliRun(['stop']).catch(() => {}); throw error; }
+    return { config, db, service, install: () => db.query(source.migration), async cleanup() { await db.end(); await cliRun(['stop', '--no-backup']); await cleanupNetwork(); } };
+  } catch (error) { await db?.end(); await cliRun(['stop']).then(cleanupNetwork).catch(() => {}); throw error; }
 }

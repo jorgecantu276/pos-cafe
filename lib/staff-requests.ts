@@ -1,4 +1,6 @@
 export const staffPendingKey = 'pos_staff_change_pending:v1';
+export const staffWriteLock='pos_staff_write:v1';
+export const staffActiveKey=(actor:string)=>`pos_staff_active:v1:${actor}`;
 export type StaffPending = { operation: 'create' | 'edit' | 'deactivate'; username: string; id?: string };
 type Storage = Pick<globalThis.Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export class StaffRequestUncertain extends Error {}
@@ -12,7 +14,17 @@ export function readStaffPending(storage: Storage): StaffPending | null {
 }
 export function acknowledgeStaffPending(storage: Storage) { storage.removeItem(staffPendingKey); }
 
-export async function saveStaffChange(storage: Storage, pending: StaffPending, payload: Record<string, unknown>, options: { fetch?: typeof fetch; timeoutMs?: number } = {}) {
+type StaffOptions={fetch?:typeof fetch;timeoutMs?:number;actor?:string};
+export async function saveStaffChange(storage: Storage, pending: StaffPending, payload: Record<string, unknown>, options:StaffOptions = {}) {
+  if(!options.actor)return performStaffChange(storage,pending,payload,options);
+  if(!navigator.locks)throw new Error('Actualiza Chrome o Edge para guardar usuarios.');
+  return navigator.locks.request(staffWriteLock,{ifAvailable:true},async lock=>{
+    if(!lock)throw new Error('Otra ventana está guardando un usuario.');
+    if(storage.getItem(staffActiveKey(options.actor!)))throw new StaffRequestUncertain('Comprueba la activación pendiente antes de editar usuarios.');
+    return performStaffChange(storage,pending,payload,options);
+  });
+}
+async function performStaffChange(storage:Storage,pending:StaffPending,payload:Record<string,unknown>,options:StaffOptions) {
   if (readStaffPending(storage)) throw new StaffRequestUncertain('Hay un cambio sin confirmar. Revisa el resultado antes de enviar otro.');
   // Do not persist the password or full payload. Never replay this operation automatically.
   storage.setItem(staffPendingKey, JSON.stringify(pending));

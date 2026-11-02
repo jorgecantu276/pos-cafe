@@ -41,7 +41,7 @@ test('shared phone printing retains two preparations across payment, while the p
     const query={select:()=>query,eq:()=>query,abortSignal:()=>query,single:async()=>({error:null,data:table==='profiles'?{role:'cashier',is_active:true}:{id:saleId,ticket_number:99,status:'completed',cashier_id:actor,receipt_snapshot:paid}})};return query;
   },async rpc(name:string,args:{p_id:string}){
     assert.equal(name,'pos_phone_print_state');assert.equal(args.p_id,phone.id);
-    return{error:null,data:{...phone,status,paid_sale_status:status==='paid'?saleStatus:null}};
+    return{error:null,data:{...phone,status,paid_order_id:status==='paid'?saleId:null,paid_sale_status:status==='paid'?saleStatus:null}};
   }} as unknown as SupabaseClient;
   const config=printConfig({POS_PRINT_MODE:'mock',POS_PRINT_DATA_DIR:directory});
   const request=(body:unknown,endpoint='phone-printing')=>new Request(`http://127.0.0.1:3111/api/${endpoint}`,{method:'POST',headers:{'X-Pos-Print':'1'},body:JSON.stringify(body)});
@@ -63,5 +63,27 @@ test('shared phone printing retains two preparations across payment, while the p
     status='cancelled';
     await assert.rejects(handlePhonePrintRequest(request({phoneOrderId:phone.id}),client,journal,config),/cancelado/);
     assert.equal(submitted.length,3);
+  }finally{journal.close();assert.equal(path.dirname(directory),path.resolve(tmpdir()));rmSync(directory,{recursive:true,force:true});}
+});
+
+test('direct pickup establishes missing preparation, survives restart and never repeats an uncertain barista handoff',async()=>{
+  const directory=mkdtempSync(path.join(tmpdir(),'pos-phone-pickup-')),phone=phoneOrder(),actor=randomUUID(),saleId=randomUUID();let offline=true,uncertain=false,saleStatus='completed';
+  const sent:{id:string;audience:PrintAudience}[]=[];
+  const adapter={async prepare(job:{orderId:string;audience:PrintAudience}){if(offline&&job.audience==='barista')throw Error('Bluetooth desconectado');return{async submit(){sent.push({id:job.orderId,audience:job.audience});if(uncertain&&job.audience==='barista')throw Error('Acuse perdido');},dispose(){}};}};
+  let journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);
+  const paid={...phone.snapshot,id:saleId,ticket_number:99,status:'completed',payment_method:'efectivo',tender_mxn:220,tender_usd:0,exchange_rate:16,change_mxn:0,phone_order_id:phone.id,phone_folio:phone.folio};
+  const client={auth:{getUser:async()=>({data:{user:{id:actor}},error:null})},from(table:string){const query={select:()=>query,eq:()=>query,abortSignal:()=>query,single:async()=>({data:table==='profiles'?{role:'cashier',is_active:true}:{id:saleId,ticket_number:99,status:saleStatus,cashier_id:actor,receipt_snapshot:paid},error:null})};return query;},async rpc(name:string){assert.equal(name,'pos_phone_print_state');return{data:{...phone,status:'paid',paid_order_id:saleId,paid_sale_status:saleStatus},error:null};}} as unknown as SupabaseClient;
+  const config=printConfig({POS_PRINT_MODE:'mock',POS_PRINT_DATA_DIR:directory}),request=()=>new Request('http://127.0.0.1/api/printing',{method:'POST',headers:{'X-Pos-Print':'1'},body:JSON.stringify({orderId:saleId})});
+  try{
+    // A's saving browser never wrote an outbox. B takes payment directly.
+    assert.equal(journal.get(phone.created_by,`phone:${phone.id}`).length,0);await handlePrintRequest(request(),client,journal,config);
+    assert.equal(journal.get(phone.created_by,`phone:${phone.id}`).length,2);assert.equal(sent.length,2);assert.equal(journal.get(phone.created_by,`phone:${phone.id}`).find(job=>job.audience==='barista')?.state,'blocked');
+    journal.close();journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);offline=false;uncertain=true;
+    await handlePrintRequest(request(),client,journal,config);assert.equal(sent.length,3);assert.equal(journal.get(phone.created_by,`phone:${phone.id}`).find(job=>job.audience==='barista')?.state,'uncertain');
+    await handlePrintRequest(request(),client,journal,config);assert.equal(sent.length,3);journal.close();journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);
+    await handlePrintRequest(request(),client,journal,config);assert.equal(sent.length,3,'Restart and replay cannot resend accepted or uncertain copies');
+    saleStatus='cancelled';await assert.rejects(handlePrintRequest(request(),client,journal,config),/completada/);assert.equal(sent.length,3);
+    const phoneRequest=new Request('http://127.0.0.1/api/phone-printing',{method:'POST',headers:{'X-Pos-Print':'1'},body:JSON.stringify({phoneOrderId:phone.id})});
+    await assert.rejects(handlePhonePrintRequest(phoneRequest,client,journal,config),/cancelado/);assert.equal(sent.length,3);
   }finally{journal.close();assert.equal(path.dirname(directory),path.resolve(tmpdir()));rmSync(directory,{recursive:true,force:true});}
 });

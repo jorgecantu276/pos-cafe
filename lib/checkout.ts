@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CartItem } from '../store/useCartStore';
 import { withDeadline } from './request-deadline';
 import { validPagerNumber } from './pos-types';
+import { isDefinitiveWriteRejection } from './write-outcome';
 
 export interface CheckoutPayload {
   register_id: string;
@@ -97,9 +98,9 @@ export async function executeCheckout(client: Pick<SupabaseClient, 'rpc'>, pendi
   }
   const { data, error } = await withDeadline(() => client.rpc('pos_checkout', { p_request: pending.requestId, p_payload: pending.payload }), { timeoutMs });
   if (error) {
-    // A PostgreSQL error confirms rollback. A transport failure says nothing
-    // about commit, so it must retain the exact request for recovery.
-    if (/^[0-9A-Z]{5}$/.test(error.code || '')) throw new CheckoutRejected(error.message);
+    // Only a known rejection can retire the request. A SQLSTATE describing a
+    // lost connection or unknown completion still needs exact-identity recovery.
+    if (isDefinitiveWriteRejection(error.code)) throw new CheckoutRejected(error.message);
     throw new Error(error.message);
   }
   if (!data?.id || data.ticket_number == null || !Array.isArray(data.items) || !Number.isFinite(data.total)) throw new Error('No se confirmó la venta. Compruébala antes de volver a cobrar.');

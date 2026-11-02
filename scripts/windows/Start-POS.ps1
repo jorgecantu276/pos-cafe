@@ -65,6 +65,7 @@ if (-not [IO.Path]::IsPathRooted($dataDirectory)) { throw 'PrintDataDirectory re
 $dataDirectory = [IO.Path]::GetFullPath($dataDirectory)
 if ($dataDirectory.StartsWith('\\') -or $dataDirectory.TrimEnd('\').Equals($releaseDirectory.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase) -or $dataDirectory.StartsWith($releaseDirectory, [StringComparison]::OrdinalIgnoreCase)) { throw 'El registro de impresion debe estar en un disco local, fuera de la carpeta de version.' }
 if ($config.PrintMode -notin @('mock', 'windows')) { throw 'PrintMode requiere mock o windows.' }
+if ($config.RequireExistingPrintJournal -eq $true -and -not (Test-Path -LiteralPath (Join-Path $dataDirectory ($config.PrintMode + '-jobs.sqlite')) -PathType Leaf)) { throw 'No se encontro el registro anterior de impresion. Revisa la ruta antes de abrir esta version.' }
 if ($release.fixtureOnly -and $config.PrintMode -eq 'windows') { throw 'Una compilacion de prueba local no puede activar impresion fisica.' }
 if ($config.ReceiptIssuerFile -and -not [IO.Path]::IsPathRooted([string]$config.ReceiptIssuerFile)) { throw 'ReceiptIssuerFile requiere una ruta absoluta.' }
 if ($config.PrintMode -eq 'windows' -and (-not $config.ReceiptIssuerFile -or -not (Test-Path -LiteralPath $config.ReceiptIssuerFile -PathType Leaf))) { throw 'Configura los datos fiscales del emisor antes de imprimir tickets de venta.' }

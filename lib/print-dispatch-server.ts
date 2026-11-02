@@ -5,6 +5,7 @@ import type { PrintConfig } from './windows-print-server';
 import { AccessError, isAuthUnavailable } from './user-management';
 import { readReceiptIssuer } from './receipt-issuer-server';
 import { withDeadline } from './request-deadline';
+import {dispatchPhonePreparation,ensurePhonePreparation,readPhonePreparation} from './phone-preparation-server';
 
 export function requireLocalPrintRequest(request: Request) {
   const url = new URL(request.url), origin = request.headers.get('origin');
@@ -81,20 +82,26 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
   let issuer;
   try { issuer = readReceiptIssuer(); }
   catch { /* The customer job is visibly withheld; a fiscal-config error must not stop barista instructions. */ }
-  // A phone order already has its separately journaled preparation copy.
-  // Taking its payment prints only the financial customer receipt.
+  // A saving cashier may have lost the response before recording a local print
+  // intent. Payment must also establish that original preparation in this journal.
   const phoneSale=typeof sale.data.receipt_snapshot?.phone_order_id==='string';
   if(phoneSale&&input.audience==='barista')throw new AccessError('La preparación del pedido está en su comanda por teléfono.',409);
   journal.ensure(owner, order, config.queues, { issuer },phoneSale?'customer':undefined);
+  const preparation=phoneSale&&!recovery?await readPhonePreparation(client,order.phone_order_id!,request.signal):null;
+  if(preparation){
+    if(preparation.status!=='paid'||preparation.paid_order_id!==order.id||preparation.paid_sale_status!=='completed')throw new AccessError('No se pudo confirmar el pedido pagado antes de imprimir.',409);
+    ensurePhonePreparation(journal,preparation,config);
+  }
   if (recovery) {
     try { journal.authorizeRecovery({ requestId: input.requestId,actor: user.id,owner,orderId: input.orderId,audience: input.audience,action:input.action,reason:input.reason.trim() }); }
     catch (error) { throw new AccessError(error instanceof Error ? error.message : 'No se pudo resolver esta copia.',409); }
   }
-  return { mode: config.mode, canManage: administrator,...(phoneSale?{expectedCopies:1}:{}), jobs: await journal.dispatch(owner, order.id, phoneSale?'customer':input.audience, async () => {
+  const [jobs]=await Promise.all([journal.dispatch(owner, order.id, phoneSale?'customer':input.audience, async () => {
     const guardSignal = AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]);
     const current = await withDeadline(() => client.from('orders').select('status,cashier_id').eq('id', order.id).abortSignal(guardSignal).single(), { signal: guardSignal });
     if (current.error || !current.data || current.data.cashier_id !== owner)
       throw new Error('No se pudo confirmar la venta antes de imprimir. Recupera esta misma copia; no vuelvas a cobrar.');
     return current.data.status === 'completed';
-  }) };
+  }),preparation?dispatchPhonePreparation(client,journal,preparation,request.signal):Promise.resolve()]);
+  return { mode: config.mode, canManage: administrator,...(phoneSale?{expectedCopies:1}:{}),jobs};
 }

@@ -71,6 +71,23 @@ test('phone backup contract requires durable state without rejecting archives ma
   }
 });
 
+test('reactivation backup contract requires revisions and request journals without changing older archive validation', () => {
+  const key=randomBytes(32),current=structuredClone(archive),state=JSON.parse(current.snapshotJson);
+  const content='-- Synthetic migration 020 contract';
+  Object.assign(current.contract.files,{'migrations/202611020020_delivery_readiness.sql':{content,sha256:sha256(Buffer.from(content))}});
+  assert.throws(()=>encryptBusinessArchive(current,key),/reactivación/);
+  for(const name of ['cafe_private.staff_status_requests','cafe_private.catalog_requests'])state.tables[name]={columns:[{name:'id',type:'uuid'}],rows:[]};
+  current.snapshotJson=JSON.stringify(state);
+  assert.throws(()=>encryptBusinessArchive(current,key),/revisiones/);
+  for(const [name,column] of [['public.products','catalog_revision'],['public.extras','catalog_revision'],['public.profiles','management_revision']]) {
+    state.tables[name].columns.push({name:column,type:'bigint'});
+    for(const row of state.tables[name].rows)row[column]=0;
+  }
+  current.snapshotJson=JSON.stringify(state);
+  assert.deepEqual(decryptBusinessArchive(encryptBusinessArchive(current,key),key),current);
+  assert.deepEqual(decryptBusinessArchive(encryptBusinessArchive(archive,key),key),archive);
+});
+
 test('daily backups publish verified bytes once per Matamoros day and retain the last good archive after failure', async () => {
   const f = await fixture();
   try {

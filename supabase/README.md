@@ -36,8 +36,7 @@ all 15 retained versions are synchronized. The CLIP receiver is deployed, but
 automatic charging remains OFF with a placeholder token. An encrypted backup
 and fingerprints verified preservation of all 28 existing exported tables.
 Do not reapply these migrations or migrate the historical development target.
-Migrations 017–019 have been rehearsed ONLY on fresh local databases. None is deployed
-to that hosted client. The matching app requires all three even while inventory is OFF.
+Migrations 017–021 are now deployed to that verified hosted client. Encrypted pre/post backups and fingerprints preserved all 31 existing tables; inventory remains OFF. The matching app requires this complete contract even while inventory is OFF.
 Migration 018 requires a manually selected pager number 1–30 for new in-person
 checkout and CLIP preparation. Migration 019 accepts a persisted phone order
 without a pager, prepares it unpaid and charges it once at pickup. It preserves earlier orders, snapshots and

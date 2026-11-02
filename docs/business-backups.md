@@ -74,14 +74,48 @@ triggers or foreign-key restoration.
 
 ## Recovery limits and print journal
 
-This is a logical business-data export, not a complete Supabase project restore.
+This is a logical business-data export, not a complete Supabase project export.
 It does not include Storage objects, provider/service configuration, API keys,
-JWT secrets, Auth sessions, database roles/extensions or a hosted restore
-orchestration. Hosted Auth import and full project restoration have not been
-validated by these tests. Before live use, a recovery engineer must rehearse
-loading the matching schema and these rows/sequence counters into a separate
-compatible target, check staff/customer access and reconcile any sales after
-the snapshot. Never load a backup over a live café database to test it.
+JWT secrets, Auth sessions, or database roles/extensions. Provision those first
+on a separate compatible recovery system; they are not recreated by the data
+importer. A hosted-provider project restore remains a separate procedure.
+
+`scripts/backups/restore-business.mjs` restores the encrypted automatic archive
+into a matching **empty local Supabase target**, with a PostgreSQL recovery
+administrator. It refuses remote targets, existing business data/sessions,
+column/type drift and non-default settings. The only permitted initial rows
+are the untouched drawer, favorites and inventory singletons from migrations.
+It never executes SQL embedded in the archive or alters the active café DB.
+
+The import is one transaction. It suppresses write side effects only while
+loading already-accounted rows, genuinely rebuilds/validates foreign keys,
+compares exact JSONB row multisets and restores sequence values/`is_called`.
+Constraints, normal triggers and RLS remain installed for subsequent activity.
+Wrong relationships and an interruption roll back data and sequence changes.
+Original Auth users/identities are imported; old sessions are not restored.
+
+The operational drill `npm run test:restore-business` provisions two fresh
+isolated Auth/PostgREST/PostgreSQL stacks, creates an actual automatic encrypted
+archive, imports it using the shipped CLI, logs in with the original staff
+credentials, recovers a receipt, pays a reserved phone order, checks stock and
+new folios, and closes its drawer. It also proves rejection of non-empty
+targets, broken foreign keys and transaction interruption. These are synthetic
+operations, not a restore over the hosted business or a test on café hardware.
+
+The Windows package includes portable Node and the recovery CLI's PostgreSQL
+client under `backup-tools`; no npm install is needed to run the importer:
+
+```
+.\node.exe .\backup-tools\scripts\backups\restore-business.mjs C:\private\backup.posbackup C:\private\recovery.key C:\private\empty-target.json
+```
+
+The private target JSON contains `database` (the new loopback PostgreSQL URL)
+and `confirmEmptyTarget: "RESTORE EMPTY LOCAL POS"`. It belongs to the recovery
+engineer, outside Git and releases. Prepare the matching schema/roles/Auth
+configuration before import; reconcile transactions after the snapshot and
+build the POS for the recovered API endpoint before trading there. Do not
+attempt an automatic merge back into the hosted business. Preserve the key
+separately from the USB holding the encrypted archive.
 
 The durable local Windows print journal is deliberately excluded from these
 cloud business snapshots. Preserve its current external directory across every
