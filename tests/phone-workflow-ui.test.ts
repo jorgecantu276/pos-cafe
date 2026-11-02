@@ -47,6 +47,7 @@ for(const appearance of ['owner','prototype','workspace'] as const)test(`actual 
     if(name==='pos_phone_list')return{data:phoneOrder?.status==='pending'?[phoneOrder]:[],error:null};
     if(name==='pos_phone_get')return{data:phoneOrder,error:null};
     if(name==='pos_checkout'){
+      assert.ok(salePrinting.pendingSalePrints(dom.window.localStorage,'mi_cafe_checkout_review:actor').includes('phone:phone-order'),'Preparation intent must exist before payment RPC, including direct pickup');
       assert.equal(payment,undefined,'Only one sale may be collected');payment=args.p_payload as checkout.CheckoutPayload;
       assert.ok(phoneOrder);phoneOrder={...phoneOrder,status:'paid',paid_order_id:'paid-order',revision:1};
       return{data:{...phoneOrder.snapshot,id:'paid-order',ticket_number:1,status:'completed',phone_order_id:phoneOrder.id,phone_folio:1,source:'phone',customer_name:phoneOrder.contact_name,payment_method:payment.payment_method,tender_mxn:payment.tender_mxn,tender_usd:payment.tender_usd,change_mxn:0,exchange_rate:16,pager_number:null},error:null};
@@ -75,10 +76,14 @@ for(const appearance of ['owner','prototype','workspace'] as const)test(`actual 
     // local preparation intent. The queue must restore that intent before pay.
     salePrinting.forgetSalePrint(dom.window.localStorage,'mi_cafe_checkout_review:actor','phone:phone-order');
     await add();const counterDraft=dom.window.localStorage.getItem(drafts.cartDraftKey('actor'));await click(button('Pedidos por cobrar'));await click(button('Abrir pedido 1'));assert.match(dom.window.document.body.textContent!,/Precio guardado/);
-    assert.equal(salePrinting.pendingSalePrints(dom.window.localStorage,'mi_cafe_checkout_review:actor').length,0);await click(button('Comprobar comanda'));
+    assert.equal(salePrinting.pendingSalePrints(dom.window.localStorage,'mi_cafe_checkout_review:actor').length,0);
+    if(appearance!=='workspace'){
+    await click(button('Comprobar comanda'));
     assert.equal(payment,undefined);assert.deepEqual(salePrinting.pendingSalePrints(dom.window.localStorage,'mi_cafe_checkout_review:actor'),['phone:phone-order']);assert.match(dom.window.document.body.textContent!,/Comprueba el estado de impresión/);
     await click(button('Pedidos por cobrar'));await click(button('Abrir pedido 1'));await click(button('Comprobar comanda'));assert.deepEqual(salePrinting.pendingSalePrints(dom.window.localStorage,'mi_cafe_checkout_review:actor'),['phone:phone-order'],'Repeated checking must keep the original preparation identity');
-    await click(button('Pedidos por cobrar'));await click(button('Abrir pedido 1'));await click(button('Cobrar pedido'));
+    await click(button('Pedidos por cobrar'));await click(button('Abrir pedido 1'));
+    }
+    await click(button('Cobrar pedido'));
     assert.match(dom.window.document.body.textContent!,/Pedido por teléfono #1/);assert.equal((dom.window.document.querySelector('[aria-label="Tipo de pedido"]') as HTMLSelectElement).disabled,true);assert.equal(cart.useCartStore.getState().getTotal(),50);await click(button('Importe exacto'));await click(button('Confirmar pago'));
     const collected=payment as checkout.CheckoutPayload|undefined;assert.ok(collected);assert.equal(collected.phone_order_id,'phone-order');assert.equal(collected.pager_number,null);assert.equal(collected.expected_total,50);assert.equal(collected.tender_mxn,50);assert.equal(collected.phone_order_revision,0);assert.equal(collected.customer_id,'existing-member');assert.equal(collected.order_type,'Para Llevar');
     assert.equal(cart.useCartStore.getState().getTotal(),50);assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('actor')),counterDraft,'Collecting a phone order must not retire the counter draft');

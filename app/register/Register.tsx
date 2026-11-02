@@ -24,7 +24,7 @@ import { openPrintWindow } from '@/lib/printing';
 import PrintDispatch from './PrintDispatch';
 import PagerPicker from './PagerPicker';
 import PhoneOrders,{PhoneOrderContact} from './PhoneOrders';
-import {beginPhoneRequest,completePhoneRequest,getPhoneOrder,readPhoneRequest,submitPhoneRequest,validPhoneContact,withPhoneLock,type PhoneOrder,type PhoneRequest,type PhoneReturn} from '@/lib/phone-orders';
+import {beginPhoneRequest,canPrintPhoneOrder,completePhoneRequest,getPhoneOrder,readPhoneRequest,submitPhoneRequest,validPhoneContact,withPhoneLock,type PhoneOrder,type PhoneRequest,type PhoneReturn} from '@/lib/phone-orders';
 import { printSavedShift } from '@/lib/shift-printing';
 import { confirmClosingPrints } from '@/lib/closing-print-check';
 import { printHistoricalReceipt } from '@/lib/receipt-reprint';
@@ -662,7 +662,7 @@ const handleSaveAndClose = async () => {
     try {
       const current=await getPhoneOrder(supabase,order.id);
       if(draftOwner.current!==actor)return false;
-      if(current.status!=='pending')throw new Error('Este pedido ya no está por cobrar. Actualiza la lista.');
+      if(!canPrintPhoneOrder(current))throw new Error('Este pedido no admite una comanda nueva. Actualiza la lista.');
       const id=rememberPhonePrint(localStorage,`mi_cafe_checkout_review:${actor}`,current);
       setPhonePrintId(id);setSavedPhone(current);setPhonePrintNotice(`Pedido #${current.folio} · Comprueba el estado de impresión`);setShowPhoneOrders(false);
       return true;
@@ -731,6 +731,10 @@ const handleSaveAndClose = async () => {
           localStorage.setItem(checkoutKey, writtenReview);
         }
         setCheckoutReview(review);
+        if(review.payload?.phone_order_id){
+          const phone=selectedPhoneOrder?.id===review.payload.phone_order_id?selectedPhoneOrder:await getPhoneOrder(supabase,review.payload.phone_order_id);
+          if(canPrintPhoneOrder(phone))rememberPhonePrint(localStorage,checkoutKey,phone);
+        }
         const order = await executeCheckout(supabase, review);
         const phonePayment=Boolean(review.payload?.phone_order_id);
         if (order.status === 'cancelled') {

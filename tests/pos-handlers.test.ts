@@ -317,7 +317,7 @@ test('editing an old draft uses current milk options while preserving the origin
 test('catalog name/price editing cannot reset stock consumed since the editor loaded',async()=>{
   let payload:Record<string,unknown>={};
   await handler('handleSave',{
-    activeTab:'items',editingId:'product',formData:{name:'Café',price:'55',category:'Bebidas',customizable:true,image_url:'',wizard_steps:[]},
+    activeTab:'items',editingId:'product',editingRevision:0,formData:{name:'Café',price:'55',category:'Bebidas',customizable:true,image_url:'',wizard_steps:[]},
     saving:{current:false},pending:false,commitChange:async(change:{fields:Record<string,unknown>})=>{payload=change.fields;},setMessage:(message:string)=>assert.fail(message),
     setShowForm:()=>{},setEditingId:()=>{},setFormData:()=>{},initialFormState:{},fetchData:()=>{},alert:(message:string)=>assert.fail(message),
   },'../app/admin/productos/page.tsx')({preventDefault:()=>{}});

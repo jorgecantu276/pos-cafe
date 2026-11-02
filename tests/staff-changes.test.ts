@@ -59,6 +59,21 @@ test('staff edit validates optional passwords, requires server configuration bef
   } finally { if (previous == null) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previous; }
 });
 
+test('current staff editor uses revisioned profile-only RPC and never forwards its stale active flag', async () => {
+  const h=routeHarness();
+  const response=await h.patch({...person,password:'',management_revision:2});
+  assert.equal(response.status,200);
+  assert.deepEqual(h.calls,[['profile','pos_edit_staff_profile',{
+    p_id:id,p_name:'ana',p_username:'ana',p_role:'cashier',p_avatar:person.avatar_url,p_revision:2,
+  }]]);
+  const previous=process.env.SUPABASE_SERVICE_ROLE_KEY;process.env.SUPABASE_SERVICE_ROLE_KEY='test-only-server-secret';
+  try {
+    const denied=routeHarness({profileError:{code:'P0001',message:'El equipo cambió. Actualiza antes de guardar'}});
+    assert.equal((await denied.patch({...person,management_revision:2})).status,400);
+    assert.equal(denied.calls.some(call=>(call as unknown[])[0]==='password'),false);
+  } finally {if(previous==null)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=previous;}
+});
+
 function storageHarness() {
   const values = new Map<string, string>();
   return { values, storage: { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } } };

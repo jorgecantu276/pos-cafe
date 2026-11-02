@@ -3,6 +3,7 @@ import type { Product } from '../store/useCartStore';
 // UI query projections, aligned with the verified schema and receipt contract.
 // Nullable legacy fields stay nullable; their display defaults are explicit.
 export interface ProductRow {
+  catalog_revision?:number;
   pos_inventory_items?: Product['inventory'] | Product['inventory'][];
   id: string;
   name: string;
@@ -14,6 +15,7 @@ export interface ProductRow {
   wizard_steps: string[] | null;
 }
 export interface ExtraRow {
+  catalog_revision?:number;
   id: string;
   name: string;
   price: number | null;
@@ -37,6 +39,7 @@ export interface LoginProfile {
   avatar_url: string | null;
 }
 export interface StaffProfile extends LoginProfile {
+  management_revision?:number;
   role: string | null;
   is_active: boolean;
 }

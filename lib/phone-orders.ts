@@ -8,6 +8,7 @@ type Memory=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
 export interface PhoneOrder {
   id:string;folio:number|string;status:'pending'|'paid'|'cancelled';contact_name:string;contact_phone:string;customer_id:string|null;
   created_by:string;created_at:string;revision:number;paid_order_id:string|null;
+  paid_sale_status?:string|null;
   snapshot:{items:CartItem[];total:number;customer_name:string;order_type:string;order_note:string;created_at:string;source:'phone';inventory_reserved:boolean};
 }
 export interface PhonePayload {items:CheckoutPayload['items'];expected_total:number;contact_name:string;contact_phone:string;customer_id:string|null;order_type:string;order_note:string}
@@ -28,8 +29,16 @@ export function readPhoneOrder(value:unknown):PhoneOrder {
   }
   return order;
 }
-export async function listPhoneOrders(client:Client,search='',signal?:AbortSignal,before:string|null=null):Promise<PhoneOrder[]> {
-  const {data,error}=await withDeadline(()=>client.rpc('pos_phone_list',{p_status:'pending',p_search:search,p_before:before}),{signal});
+export const canPrintPhoneOrder=(order:PhoneOrder)=>order.status==='pending'||(order.status==='paid'&&order.paid_sale_status==='completed');
+export function phoneOrderStatusLabel(order:PhoneOrder){
+  if(order.status==='pending')return 'Sin pagar';
+  if(order.status==='cancelled')return 'Cancelado';
+  if(order.paid_sale_status==='completed')return 'Pagado';
+  if(['cancelled','canceled'].includes(order.paid_sale_status??''))return 'Venta cancelada';
+  return 'Estado sin comprobar';
+}
+export async function listPhoneOrders(client:Client,search='',signal?:AbortSignal,before:string|null=null,status:'pending'|'paid'='pending'):Promise<PhoneOrder[]> {
+  const {data,error}=await withDeadline(()=>client.rpc('pos_phone_list',{p_status:status,p_search:search,p_before:before}),{signal});
   if(error)throw new Error(error.message);if(!Array.isArray(data))throw new Error('No se pudieron cargar los pedidos.');return data.map(readPhoneOrder);
 }
 export async function getPhoneOrder(client:Client,id:string):Promise<PhoneOrder> {
