@@ -4,7 +4,8 @@ import ProductPhoto from '@/components/ProductPhoto';
 
 import { type ProductRow, type ExtraRow, errorMessage } from '@/lib/pos-types';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { announceCatalogChange, readCatalogRequest, saveCatalogChange, type CatalogChange } from '@/lib/catalog-management';
 import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
 import LoadFailure from '@/app/LoadFailure';
@@ -13,6 +14,10 @@ import { PlusCircle, Trash2, Edit2, Loader2, Layers } from 'lucide-react';
 export default function ProductosPage() {
   const [activeTab, setActiveTab] = useState<'items' | 'extras'>('items');
   const [showForm, setShowForm] = useState(false);
+  const saving = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState('');
   
   const [editingId, setEditingId] = useState<string | number | null>(null);
 
@@ -24,18 +29,25 @@ export default function ProductosPage() {
   const [formData, setFormData] = useState(initialFormState);
 
   const loadCatalog = useCallback(async (signal: AbortSignal) => {
+    const auth = await supabase.auth.getUser();
+    if (auth.error || !auth.data.user) throw Error('Inicia sesión.');
     const [products, extras] = await Promise.all([
       supabase.from('products').select('*').order('name').abortSignal(signal),
       supabase.from('extras').select('*').order('phase').abortSignal(signal),
     ]);
     if (products.error) throw products.error;
     if (extras.error) throw extras.error;
-    return { products: (products.data || []) as ProductRow[], extras: (extras.data || []) as ExtraRow[] };
+    // Reading an unreadable request must keep editing blocked, with recovery visible.
+    let pending = true;
+    try { pending = Boolean(readCatalogRequest(localStorage, auth.data.user.id)); } catch { /* preserve recovery */ }
+    return { actor: auth.data.user.id, pending, products: (products.data || []) as ProductRow[], extras: (extras.data || []) as ExtraRow[] };
   }, []);
-  const { data: { products, extras }, loading, error: loadError, reload: fetchData } = useResource(loadCatalog, { products: [], extras: [] });
+  const applyCatalog = useCallback((data: { pending: boolean }) => setPending(data.pending), []);
+  const { data: { actor, products, extras }, loading, error: loadError, reload: fetchData } = useResource(loadCatalog, { actor: '', pending: false, products: [] as ProductRow[], extras: [] as ExtraRow[] }, applyCatalog);
 
 
   const handleEdit = (item: ProductRow | ExtraRow, type: 'items' | 'extras') => {
+    if (saving.current || pending) return;
     setActiveTab(type);
     setEditingId(item.id);
     setFormData({
@@ -53,6 +65,7 @@ export default function ProductosPage() {
   };
 
   const handleToggleForm = () => {
+    if (saving.current || pending) return;
     if (showForm) {
       setEditingId(null);
       setFormData(initialFormState);
@@ -62,52 +75,37 @@ export default function ProductosPage() {
     setShowForm(!showForm);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const commitChange = async (change?: CatalogChange) => {
+    if (saving.current) return;
+    saving.current = true; setBusy(true); setMessage('');
     try {
-      if (!formData.name.trim() || !Number.isFinite(Number(formData.price)) || Number(formData.price)<0
-        ) throw new Error('Revisa nombre y precio.');
-      if (activeTab === 'items') {
-        const payload = { 
-          name: formData.name, 
-          price: parseFloat(formData.price),
-          category: formData.category,
-          customizable: formData.customizable,
-          image_url: formData.image_url,
-          wizard_steps: formData.customizable ? formData.wizard_steps : [] 
-        };
-
-        if (editingId) {
-          const { error } = await supabase.from('products').update(payload).eq('id', editingId);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from('products').insert([payload]);
-          if (error) throw error;
-        }
-      } else {
-        const payload = { 
-          name: formData.name, 
-          price: parseFloat(formData.price), 
-          phase: formData.phase 
-        };
-
-        if (editingId) {
-          const { error } = await supabase.from('extras').update(payload).eq('id', editingId);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from('extras').insert([payload]);
-          if (error) throw error;
-        }
-      }
-      
+      await saveCatalogChange(supabase, localStorage, actor, change);
+      announceCatalogChange();
+      setPending(false); setMessage('Catálogo guardado. La caja avisará para actualizar el menú.');
       setShowForm(false);
       setEditingId(null);
       setFormData(initialFormState);
-      fetchData();
+      await fetchData();
     } catch (error: unknown) {
-      console.error("Error al guardar:", error);
-      alert(`No se pudo guardar: ${errorMessage(error)}`);
+      setMessage(`No se pudo confirmar el guardado: ${errorMessage(error)}`);
+      try { setPending(Boolean(readCatalogRequest(localStorage, actor))); } catch { setPending(true); }
+    } finally { saving.current = false; setBusy(false); }
+  };
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (saving.current || pending) return;
+    const price = Number(formData.price);
+    if (!formData.name.trim() || !formData.price.trim() || !Number.isFinite(price) || price < 0 || price > 1000000 || Math.round(price * 100) / 100 !== price) {
+      setMessage('Revisa nombre y precio. Usa hasta dos decimales.'); return;
     }
+    await commitChange({ kind: activeTab === 'items' ? 'product' : 'extra', action: 'save', id: editingId ? String(editingId) : null,
+      fields: activeTab === 'items' ? { name: formData.name.trim(), price, category: formData.category.trim(), customizable: formData.customizable,
+        image_url: formData.image_url.trim(), wizard_steps: formData.customizable ? formData.wizard_steps : [] }
+        : { name: formData.name.trim(), price, phase: formData.phase.trim() } });
+  };
+  const deactivate = async (id: string, kind: CatalogChange['kind']) => {
+    if (saving.current || pending) return;
+    if (confirm('¿Desactivar este producto o extra? Su historial se conservará.')) await commitChange({ kind, action: 'deactivate', id });
   };
 
   // Las opciones habituales también se muestran cuando todavía no hay productos.
@@ -117,7 +115,7 @@ export default function ProductosPage() {
   const defaultPhases = ['Tamaño', 'Tipo de Leche', 'Endulzante', 'Sabor'];
   const uniquePhases = Array.from(new Set([...defaultPhases, ...extras.map(e => e.phase)]));
 
-  const groupedExtras = extras.reduce<Record<string, ExtraRow[]>>((acc, current) => {
+  const groupedExtras = extras.filter(extra => extra.active !== false).reduce<Record<string, ExtraRow[]>>((acc, current) => {
     if (!acc[current.phase]) acc[current.phase] = [];
     acc[current.phase].push(current);
     return acc;
@@ -129,6 +127,9 @@ export default function ProductosPage() {
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500 pb-20">
+      {message && <p role="status" className="rounded-xl border bg-white p-4">{message}</p>}
+      {pending && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p>Hay un guardado sin confirmar. Recupéralo antes de hacer otro cambio.</p><button type="button" disabled={busy} onClick={() => void commitChange()} className="mt-2 rounded-xl border bg-white p-3 font-semibold">{busy ? 'Confirmando…' : 'Recuperar guardado pendiente'}</button></div>}
+      <fieldset disabled={busy || pending} className="min-w-0 space-y-6">
       <header className="flex justify-between items-end">
         <div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Catálogo</h2>
@@ -217,7 +218,7 @@ export default function ProductosPage() {
           )}
 
           <button type="submit" className={`bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30 py-3 ${activeTab === 'items' ? 'lg:col-span-4' : 'lg:col-span-1'}`}>
-            {editingId ? 'Guardar cambios' : 'Guardar nuevo'}
+            {busy ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Guardar nuevo'}
           </button>
         </form>
       )}
@@ -249,10 +250,10 @@ export default function ProductosPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => handleEdit(p, 'items')} className="bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors p-2.5 rounded-xl">
+                <button aria-label={`Editar ${p.name}`} onClick={() => handleEdit(p, 'items')} className="bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors p-2.5 rounded-xl">
                   <Edit2 size={18}/>
                 </button>
-                <button aria-label={`Desactivar ${p.name}`} onClick={async () => { if(confirm('¿Desactivar este producto? Su historial se conservará.')) { const r=await supabase.from('products').update({is_active:false}).eq('id', p.id); if(r.error){alert(errorMessage(r.error));return;} fetchData(); } }} className="bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors p-2.5 rounded-xl">
+                <button aria-label={`Desactivar ${p.name}`} onClick={() => void deactivate(p.id, 'product')} className="bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors p-2.5 rounded-xl">
                   <Trash2 size={18}/>
                 </button>
               </div>
@@ -271,10 +272,10 @@ export default function ProductosPage() {
                     <p className="text-sm font-bold text-slate-400">+ ${Number(e.price).toFixed(2)}</p>
                   </div>
                   <div className="flex items-center gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => handleEdit(e, 'extras')} className="bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors p-2.5 rounded-xl">
+                    <button aria-label={`Editar ${e.name}`} onClick={() => handleEdit(e, 'extras')} className="bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors p-2.5 rounded-xl">
                       <Edit2 size={18}/>
                     </button>
-                    <button onClick={async () => { if(confirm('¿Seguro que deseas eliminar este extra?')) { await supabase.from('extras').delete().eq('id', e.id); fetchData(); } }} className="bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors p-2.5 rounded-xl">
+                    <button aria-label={`Desactivar ${e.name}`} onClick={() => void deactivate(e.id, 'extra')} className="bg-slate-100 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors p-2.5 rounded-xl">
                       <Trash2 size={18}/>
                     </button>
                   </div>
@@ -284,6 +285,7 @@ export default function ProductosPage() {
           ))
         )}
       </div>
+      </fieldset>
     </div>
   );
 }

@@ -22,7 +22,8 @@
     "test:lifecycle": "node scripts/lifecycle/drill.mjs",
     "test:cashiers": "node scripts/cashiers/drill.mjs",
     "test:shift-http": "node scripts/shift/http-drill.mjs",
-    "test:reports-http": "node scripts/reports/http-drill.mjs"
+    "test:reports-http": "node scripts/reports/http-drill.mjs",
+    "test:admin-http": "node scripts/admin/http-drill.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",

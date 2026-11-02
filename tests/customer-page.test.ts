@@ -10,6 +10,7 @@ import * as management from '../lib/customer-management';
 import * as reports from '../lib/reports';
 import * as types from '../lib/pos-types';
 import * as deadline from '../lib/request-deadline';
+import * as resource from '../lib/use-resource';
 
 test('actual CRM retains a lost correction for recovery, blocks other edits and refreshes after confirmation',async()=>{
   const dom=new JSDOM('<div id="root"></div>',{url:'http://127.0.0.1'}),saved=new Map<string,PropertyDescriptor|undefined>();
@@ -20,6 +21,7 @@ test('actual CRM retains a lost correction for recovery, blocks other edits and 
   const calls:unknown[]=[],loads=new Set<unknown>();let lost=true;
   const client={auth:{getUser:async()=>({data:{user:{id:'manager'}},error:null}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},
     rpc:(name:string,args:{p_request:string;p_payload:{customer_id:string;name:string;phone:string}})=>{
+      if (name === 'pos_customer_history') { const response = Promise.resolve({ error: null, data: { captured_at:'2026-11-02T12:00:00Z',as_of:'2026-11-02T12:00:00Z',page:0,page_size:50,summary:{rows:1,sales:55},orders:[{id:'sale',ticket_number:27,created_at:'2026-11-02T12:00:00Z',total:55,status:'completed',payment_method:'efectivo',order_items:[{quantity:1,total_price:55,notes:'Sin azúcar',product_snapshot:{name:'Café histórico'}}]}] } }); return Object.assign(response,{abortSignal:()=>response}); }
       assert.equal(name,'pos_edit_customer');calls.push(args);
       const response=Promise.resolve(lost?{data:null,error:{message:'Respuesta perdida',code:''}}:{error:null,data:{request_id:args.p_request,
         customer:{id:args.p_payload.customer_id,name:args.p_payload.name,phone:args.p_payload.phone,points:173,total_spent:345.25}}});
@@ -34,6 +36,10 @@ test('actual CRM retains a lost correction for recovery, blocks other edits and 
   const source=readFileSync(new URL('../app/admin/clientes/page.tsx',import.meta.url),'utf8');
   const compiled=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   const exports:{default?:ComponentType}={},require=createRequire(import.meta.url);
+  const historyExports:{default?:ComponentType}={};
+  const historyCompiled=ts.transpileModule(readFileSync(new URL('../app/admin/clientes/CustomerHistory.tsx',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
+  new Function('require','exports',historyCompiled)((name:string)=>name==='@/lib/use-resource'?resource:imports[name]??require(name),historyExports);
+  imports['./CustomerHistory']={...historyExports,__esModule:true};
   new Function('require','exports',compiled)((name:string)=>imports[name]??require(name),exports);
   const root=createRoot(dom.window.document.getElementById('root')!);
   const button=(label:string)=>{const node=[...dom.window.document.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')??b.textContent?.trim())===label);assert.ok(node,`Missing ${label}`);return node;};
@@ -56,6 +62,11 @@ test('actual CRM retains a lost correction for recovery, blocks other edits and 
     assert.equal(dom.window.document.querySelector('[aria-label="Corrección pendiente"]'),null);
     assert.match(dom.window.document.querySelector('[role="status"]')!.textContent!,/Datos guardados: Ana.*528682345678/);
     assert.equal(button('Corregir datos de Ana').disabled,false);
+    await click('Ver compras');
+    const history=dom.window.document.querySelector('[aria-label="Compras de Ana"]');
+    assert.ok(history); assert.match(history.textContent!,/Folio 27/); assert.match(history.textContent!,/1 × Café histórico/); assert.match(history.textContent!,/Sin azúcar/);
+    assert.doesNotMatch(dom.window.document.body.textContent!,/Sin correo/);
+    await click('Cerrar historial'); assert.equal(dom.window.document.querySelector('[aria-label="Compras de Ana"]'),null);
   }finally{
     await act(async()=>root.unmount());dom.window.close();
     for(const[key,descriptor]of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}

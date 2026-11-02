@@ -8,6 +8,7 @@ import { errorMessage, type ProductRow } from '@/lib/pos-types';
 import { loadRegisterShortcuts, readRegisterShortcutsRequest, recoverRegisterShortcuts, saveRegisterShortcuts, type RegisterShortcuts } from '@/lib/register-shortcuts';
 import LoadFailure from '@/app/LoadFailure';
 import './favoritos.css';
+import { announceCatalogChange } from '@/lib/catalog-management';
 
 interface FavoritesData { actor: string; products: ProductRow[]; config: RegisterShortcuts; pending: boolean }
 
@@ -25,7 +26,8 @@ function FavoritesEditor({ data, reload, confirmed, onSaved }: { data: Favorites
     try {
       if (recover) await recoverRegisterShortcuts(supabase, localStorage, data.actor);
       else await saveRegisterShortcuts(supabase, localStorage, data.actor, { product_ids: chosen, revision: data.config.revision });
-      setPending(false); onSaved('Favoritos guardados. Se mostrarán en caja al actualizar el menú.');
+      announceCatalogChange();
+      setPending(false); onSaved('Favoritos guardados. La caja avisará para actualizar el menú.');
       await reload();
     } catch (error) {
       setMessage(errorMessage(error));

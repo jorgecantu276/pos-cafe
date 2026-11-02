@@ -1,8 +1,6 @@
 'use client';
 
-import { type ShiftDraft } from '@/lib/pos-types';
-
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
 import LoadFailure from '@/app/LoadFailure';
@@ -10,18 +8,15 @@ import {loadSavedShift,printSavedShift} from '@/lib/shift-printing';
 import {openPrintWindow} from '@/lib/printing';
 import { loadReport, reportParams, reportQuery, reportDate, reportMoney, reportPeriod, type ShiftReport } from '@/lib/reports';
 import { ReportFilters, ReportPagination } from '../ReportControls';
-import { loadShiftSummary, type ShiftSummary } from '@/lib/shift-state';
+import { loadActiveDrawer } from '@/lib/active-drawer';
 import { Receipt, CreditCard, User, AlertCircle, Loader2, History, FileText } from 'lucide-react';
 
 export default function CortesPage() {
 
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<ShiftSummary | null>(null);
-  
-  // Estados del Turno Activo
-  const [shiftActive, setShiftActive] = useState(false);
-  const [shiftDetails, setShiftDetails] = useState<ShiftDraft | null>(null);
+  const loadActive = useCallback((signal: AbortSignal) => loadActiveDrawer(supabase, signal), []);
+  const { data: active, loading, error: loadError, reload: reloadActive } = useResource(loadActive, null);
+  const summary = active?.summary ?? null;
+  const shiftActive = summary !== null;
 
   // Estado del Historial de Cortes
   const [query, setQuery] = useState(reportQuery('all'));
@@ -34,36 +29,6 @@ export default function CortesPage() {
     catch(error){target.close();alert(error instanceof Error?error.message:'No se pudo recuperar el corte guardado.');}
   };
 
-  useEffect(() => {
-    const fetchAllData = async () => {
-      try {
-        setLoading(true);
-        
-        // 1. Obtener usuario actual
-        const { data: { user } } = await supabase.auth.getUser();
-
-        if (!user) throw new Error('Sesión no disponible');
-        const { data: activeRegister, error: registerError } = await supabase.from('cash_registers')
-          .select('id,opened_at,initial_balance,exchange_rate').eq('opened_by',user.id).eq('status','open').maybeSingle();
-        if (registerError) throw registerError;
-        if (activeRegister) {
-          const verified = await loadShiftSummary(supabase, activeRegister.id);
-          setSummary(verified);
-          setShiftDetails({ startingCash:Number(activeRegister.initial_balance), shiftStartTime:activeRegister.opened_at,
-            expenses: verified.expenses });
-          setShiftActive(true);
-        }
-
-      } catch (error) {
-        setLoadError(error instanceof Error ? error.message : 'No se pudieron consultar los cortes.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAllData();
-  }, []);
-
   if (loading) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
@@ -72,11 +37,11 @@ export default function CortesPage() {
     );
   }
 
-  if (loadError) return <div role="alert" className="p-8 text-red-600">{loadError} <button className="underline" onClick={() => window.location.reload()}>Reintentar conexión</button></div>;
+  if (loadError) return <LoadFailure message={loadError} retry={reloadActive} />;
 
   // MATEMÁTICAS DEL TURNO ACTIVO
-  const startingCash = shiftDetails?.startingCash || 0;
-  const expensesList = shiftDetails?.expenses || [];
+  const startingCash = summary?.starting_cash ?? 0;
+  const expensesList = summary?.expenses ?? [];
   const totalExpenses = expensesList.reduce((sum, exp) => sum + Number(exp.amount), 0);
   const totalSales = summary?.total_sales ?? 0;
   const salesByMethod = summary?.payments ?? {};
@@ -91,14 +56,14 @@ export default function CortesPage() {
           <h2 className="text-4xl font-semibold text-[#1d1d1f] tracking-tight">Caja</h2>
           <p className="text-[#86868b] text-sm font-bold uppercase tracking-widest mt-1">Turno actual e historial de cierres</p>
         </div>
-        <button className="rounded-xl border bg-white p-3" onClick={() => window.location.reload()}>Actualizar página</button>
+        <button className="rounded-xl border bg-white p-3" onClick={() => { void reloadActive(); void reloadHistory(); }}>Actualizar caja</button>
       </header>
 
       {/* 🟢 SECCIÓN 1: TURNO EN VIVO */}
       <section className="space-y-6">
         <div className="flex items-center gap-3 px-2">
           <div className={`w-2.5 h-2.5 rounded-full ${shiftActive ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></div>
-          <h3 className="text-lg font-bold text-[#1d1d1f]">Turno de esta cuenta</h3>
+          <h3 className="text-lg font-bold text-[#1d1d1f]">{shiftActive ? `Caja a cargo de ${active?.drawer.active?.cashier_name}` : 'Caja cerrada'}</h3>
         </div>
 
         {!shiftActive ? (
@@ -106,9 +71,9 @@ export default function CortesPage() {
             <div className="bg-slate-50 p-5 rounded-full mb-4">
               <AlertCircle size={32} className="text-slate-400" />
             </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Sin turno propio abierto</h3>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">{active?.drawer.handoff ? `Entrega pendiente para ${active.drawer.handoff.to_name}` : 'No hay un turno abierto'}</h3>
             <p className="max-w-sm text-slate-500 text-sm font-medium">
-              Esta cuenta no tiene una caja abierta. El historial muestra los cortes de todos los cajeros.
+              El historial muestra los cortes de todos los cajeros.
             </p>
           </div>
         ) : (

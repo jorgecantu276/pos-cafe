@@ -9,6 +9,7 @@ import './prototype.css';
 import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
 import RecentTickets from './RecentTickets';
 import { loadRegisterShortcuts } from '@/lib/register-shortcuts';
+import { catalogChangeKey, catalogFingerprint, loadLiveCatalog } from '@/lib/catalog-management';
 import './workspace.css';
 
 import { catalogProduct, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
@@ -69,6 +70,8 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
   const [favoritesError, setFavoritesError] = useState('');
   const [favoritesLoading, setFavoritesLoading] = useState(true);
   const [favoritesAttempt, setFavoritesAttempt] = useState(0);
+  const [catalogStale, setCatalogStale] = useState(false);
+  const [catalogCheckError, setCatalogCheckError] = useState('');
   const [dbExtras, setDbExtras] = useState<ExtraRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [ticketSearchTerm, setTicketSearchTerm] = useState(''); // 🟢 ESTADO PARA BUSCAR TICKET
@@ -220,6 +223,7 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
     catch { setCheckoutReview({ startedAt:'Registro pendiente ilegible', total:0 }); }
     setProducts(data.products);
     setDbExtras(data.extras);
+    setCatalogStale(false); setCatalogCheckError('');
     cartDraft.current?.disconnect(); cartDraft.current = null;
     useCartStore.getState().clearCart();
     setActiveCustomer(null); setCustomerRestoring(false); setCustomerError(null); setDraftError(null);
@@ -249,6 +253,33 @@ export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'p
     } else { setRegisterId(''); setExpenses([]); setCashSales(0); setExchangeRate(data.drawer.rate ? String(data.drawer.rate) : ''); setShowApertura(true); }
   }, [router]);
   const { loading, error: loadError, reload: fetchData } = useResource(loadPOS, null, applyPOS);
+
+  useEffect(() => {
+    if (loading || !drawerActor || (sessionActor !== null && sessionActor !== drawerActor)) return;
+    const controller = new AbortController();
+    let checking = false;
+    const current = catalogFingerprint(products, dbExtras, favoriteProductIds);
+    const check = async () => {
+      if (checking || document.visibilityState === 'hidden') return;
+      checking = true;
+      try {
+        const latest = await withDeadline(() => loadLiveCatalog(supabase, controller.signal), { signal: controller.signal });
+        if (!controller.signal.aborted) { setCatalogStale(latest !== current); setCatalogCheckError(''); }
+      } catch {
+        if (!controller.signal.aborted) setCatalogCheckError('No se pudo comprobar si el menú cambió.');
+      } finally { checking = false; }
+    };
+    const changed = (event: StorageEvent) => { if (event.key === catalogChangeKey || event.key === null) void check(); };
+    const poll = window.setInterval(() => void check(), 30_000);
+    window.addEventListener('focus', check); window.addEventListener(catalogChangeKey, check); window.addEventListener('storage', changed);
+    return () => { controller.abort(); window.clearInterval(poll); window.removeEventListener('focus', check); window.removeEventListener(catalogChangeKey, check); window.removeEventListener('storage', changed); };
+  }, [loading, drawerActor, sessionActor, products, dbExtras, favoriteProductIds]);
+
+  const refreshCatalog = () => {
+    if (loading || selectedProduct || showCheckoutModal || checkoutInFlight.current || checkoutReview || expenseInFlight.current || closingShift.current || openingInFlight.current) return;
+    setFavoritesAttempt(value => value + 1);
+    void fetchData();
+  };
 
   const calculateTotalCash = () => {
     const pesos = Object.entries(breakdown).reduce((sum, [den, qty]) => sum + (Number(den) * qty), 0);
@@ -531,6 +562,7 @@ const handleSaveAndClose = async () => {
   };
 
   const handleOpenCheckout = () => {
+    if (catalogStale) { alert('El menú cambió. Actualízalo y revisa el pedido antes de cobrar.'); return; }
     if (loading || loadError || draftError || customerError || customerRestoring || closingShift.current || shiftSaved.current) return;
     if (checkoutReview || checkoutInFlight.current) {
       alert('Revisa la venta pendiente antes de iniciar otro cobro.');
@@ -572,6 +604,7 @@ const handleSaveAndClose = async () => {
 
         let review = existing;
         if (!review) {
+          if (catalogStale) throw new Error('El menú cambió. Cierra el cobro, actualiza y revisa el pedido.');
           if (!binding || draftError || customerRestoring || (activeCustomer?.id ?? null) !== customerId)
             throw new Error('Revisa la recuperación del borrador y su cliente antes de cobrar.');
           const orderTotal = getTotal();
@@ -680,6 +713,7 @@ const handleSaveAndClose = async () => {
   const totalReceivedCombinedMXN = parseAmount(amountReceivedMXN) + (parseAmount(amountReceivedUSD) * parseAmount(exchangeRate));
   const isPaymentInsufficient = (paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && totalReceivedCombinedMXN < getTotal();
 
+  const catalogNotice = (catalogStale || catalogCheckError) && <div role="status" className="relative z-10 flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950"><span>{catalogStale ? 'El menú cambió. Actualiza y revisa el pedido antes de cobrar.' : catalogCheckError} {(selectedProduct || showCheckoutModal) && 'Cierra la ventana actual para actualizar.'}{checkoutReview && 'Primero resuelve la venta pendiente.'}</span><button type="button" className="rounded-xl border bg-white px-4 py-2 font-semibold disabled:opacity-50" disabled={loading || !!selectedProduct || showCheckoutModal || !!checkoutReview || isProcessingCheckout || isClosingShift || savingExpense || openingShift} onClick={refreshCatalog}>Actualizar menú</button></div>;
   const printStatus = <PrintDispatch key={printCheckoutKey} checkoutKey={printCheckoutKey} latestOrderId={savedSale?.id} />;
   const RegisterView = appearance === 'workspace' ? WorkspaceRegister : PrototypeRegister;
   const CheckoutView = appearance === 'workspace' ? WorkspaceCheckout : PrototypeCheckout;
@@ -918,6 +952,7 @@ const handleSaveAndClose = async () => {
         customerSearchError={customerSearchError} customerSearching={customerSearching} onRetryCustomerSearch={()=>void handleCustomerSearchInput(customerSearch)} customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
         onNewCustomer={handleOpenCustomerModal} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
         orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
+        {catalogNotice}
         {!showPostSaleModal && printStatus}
         {loadError && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
@@ -973,6 +1008,7 @@ const handleSaveAndClose = async () => {
         </>}/> : <>
       {/* POS PRINCIPAL */}
       <div className="flex-1 flex flex-col p-8 overflow-hidden">
+        {catalogNotice}
         {!showPostSaleModal && printStatus}
         {loadError && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">

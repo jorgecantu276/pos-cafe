@@ -1,3 +1,4 @@
+import * as catalogManagement from '../lib/catalog-management';
 import * as drawer from '../lib/drawer';
 import DrawerGate from '../app/register/DrawerGate';
 import * as deadline from '../lib/request-deadline';
@@ -82,7 +83,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
         return Object.assign(result,{abortSignal:()=>result});
       }
       assert.equal(name, 'pos_checkout'); submitted = args.p_payload;
-      return { error: null, data: { id: 'fixture-order', ticket_number: 1234, status: 'completed', total: 80,
+      return { error: null, data: { id: 'fixture-order', ticket_number: 1234, status: 'completed', total: fixtureProduct.price,
         items: [{ id: 'fixture-line', quantity: 1, product: { ...fixtureProduct, category: 'Bebidas', image_url: undefined } }],
         customer_name: 'Invitado', created_at: '2026-10-27T12:10:00Z', order_type: 'En Local', order_note: '',
         payment_method: 'tarjeta', tender_mxn: 0, tender_usd: 0, exchange_rate: 20, change_mxn: 0 } };
@@ -98,7 +99,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
   const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020,
     module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   const exports: { default?: ComponentType<{appearance:'owner'|'prototype'|'workspace'}> } = {};
-  imports['@/lib/register-shortcuts'] = shortcuts;
+  imports['@/lib/register-shortcuts'] = shortcuts; imports['@/lib/catalog-management'] = catalogManagement;
   imports['./RecentTickets'] = { default: RecentTickets, __esModule: true };
   new Function('require', 'exports', compiled)((name: string) => name === '@/components/ProductPhoto' ? { default: ProductPhoto, __esModule: true } : imports[name] ?? nodeRequire(name), exports);
   const button = (text: string) => {
@@ -189,6 +190,28 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     screen=dom.window.document.getElementById('root')!.firstElementChild!;
     assert.equal(cart.useCartStore.getState().getTotal(),80);
     assert.equal(Boolean(submitted),false, 'Restoring a draft must never submit a payment');
+    let expectedTotal=80;
+    if (appearance==='workspace') {
+      const unchangedDraft=dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user'));
+      await click(button('Editar Cappuccino'));
+      fixtureProduct.price=85;
+      await act(async()=>{dom.window.dispatchEvent(new dom.window.Event('focus'));});
+      assert.match(screen.textContent!,/El menú cambió/);
+      assert.equal(button('Actualizar menú').disabled,true,'Catalog replacement waits for the open editor');
+      assert.equal(cart.useCartStore.getState().getTotal(),80);
+      assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user')),unchangedDraft);
+      await click(button('Cerrar Cappuccino'));
+      await click(button('Cobrar'));
+      assert.equal(screen.querySelector('dialog[aria-label="Cobrar"]'),null,'Known changed catalog cannot open a new checkout');
+      await click(button('Actualizar menú'));
+      expectedTotal=85;
+      assert.equal(cart.useCartStore.getState().getTotal(),85);
+      assert.equal(cart.useCartStore.getState().customerId,'local-member');
+      assert.equal(cart.useCartStore.getState().orderNote,'Entrega en puerta');
+      assert.equal(cart.useCartStore.getState().orderType,'Para Llevar');
+      assert.doesNotMatch(screen.textContent!,/El menú cambió/);
+      assert.ok(alerts.some(message=>/precios del borrador/.test(message))); alerts.length=0;
+    }
     if (process.env.POS_UI_PREVIEW) writeFileSync(process.env.POS_UI_PREVIEW, screen.outerHTML);
     await click(button(appearance==='owner'?'Pagar Ahora':'Cobrar'));
     if(appearance==='owner'){assert.match(screen.textContent!,/Detalles de Orden/);await click(button('Continuar'));assert.match(screen.textContent!,/Finalizar Venta/);}
@@ -197,7 +220,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     await click(button('Tarjeta'));
     if(appearance!=='owner'){assert.equal(button('Confirmar Pago').disabled,true);await click(screen.querySelector(appearance==='workspace'?'.workspace-card-confirm input':'.prototype-card-confirm input')!);}
     await click(button('Confirmar Pago'));
-    assert.equal(submitted?.payment_method, 'tarjeta'); assert.equal(submitted?.expected_total, 80);
+    assert.equal(submitted?.payment_method, 'tarjeta'); assert.equal(submitted?.expected_total, expectedTotal);
     assert.equal(submitted?.order_type, 'Para Llevar'); assert.equal(submitted?.order_note, 'Entrega en puerta');
     assert.equal(submitted?.customer_id, 'local-member');
     assert.match(dom.window.document.body.textContent!, appearance==='workspace'?/Venta guardada/:/Venta guardada/);

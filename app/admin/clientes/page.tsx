@@ -10,10 +10,12 @@ import { withDeadline } from '@/lib/request-deadline';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Star, Phone, Mail, TrendingUp } from 'lucide-react';
+import { Search, Star, Phone } from 'lucide-react';
+import CustomerHistory from './CustomerHistory';
 
 export default function ClientesPage() {
   const [query, setQuery] = useState({ search: '', page: 0 });
+  const [historyCustomer, setHistoryCustomer] = useState<{ id: string; name: string } | null>(null);
   const load = useCallback((signal: AbortSignal) => loadReport<CustomerReport>(supabase, 'pos_customer_report', { p_search: query.search, p_page: query.page }, signal), [query]);
   const { data: report, loading, error, reload } = useResource<CustomerReport | null>(load, null);
   const filtered = report?.customers ?? [];
@@ -101,6 +103,7 @@ export default function ClientesPage() {
       <p className="text-sm text-slate-500">Las compras mostradas excluyen ventas canceladas y pendientes. Los puntos se muestran por separado.</p>
       {correctionError && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4">{correctionError}</p>}
       {correctionMessage && <p role="status" className="rounded-xl bg-emerald-50 p-4">{correctionMessage}</p>}
+      {historyCustomer && <CustomerHistory key={historyCustomer.id} customer={historyCustomer} onClose={() => setHistoryCustomer(null)}/>}
       {pending && <section aria-label="Corrección pendiente" className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
         <p>Corrección sin confirmar: {pending.payload.name} · {pending.payload.phone}. Recupera la misma solicitud antes de modificar otros datos.</p>
         <button type="button" disabled={saving} className="rounded-xl border bg-white p-3 font-bold" onClick={() => void correctCustomer(true)}>{saving ? 'Verificando corrección…' : 'Recuperar la misma corrección'}</button>
@@ -136,7 +139,6 @@ export default function ClientesPage() {
               setEditing({ customer_id: customer.id, name: customer.name, phone: customer.phone ?? '' }); setCorrectionError(''); setCorrectionMessage('');
             }}>Corregir datos</button>
             <div className="space-y-2 mt-4">
-              <p className="text-xs text-slate-400 flex items-center gap-2"><Mail size={14}/> {'Sin correo'}</p>
               <p className="text-xs text-slate-400 flex items-center gap-2"><Phone size={14}/> {customer.phone || 'Sin teléfono'}</p>
             </div>
             <div className="mt-6 pt-6 border-t border-slate-50 flex justify-between items-center">
@@ -144,9 +146,7 @@ export default function ClientesPage() {
                  <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Compras completadas</p>
                  <p className="text-xl font-black text-slate-900">{reportMoney(customer.completed_spent)}</p>
                </div>
-               <div className="bg-emerald-50 text-emerald-600 p-2 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                 <TrendingUp size={20}/>
-               </div>
+               <button type="button" className="rounded-xl border px-3 py-2 text-sm font-bold" onClick={() => setHistoryCustomer({ id: customer.id, name: customer.name })}>Ver compras</button>
             </div>
           </div>
         ))}

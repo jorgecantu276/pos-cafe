@@ -1,3 +1,4 @@
+import * as catalogManagement from '../lib/catalog-management';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -26,7 +27,7 @@ test('actual favorites page retains ordered draft after lost save, blocks replac
   }};
   const config={product_ids:[first,second],revision:4};
   const imports:Record<string,unknown>={
-    '@/lib/register-shortcuts':shortcuts,'@/lib/pos-types':types,'@/lib/supabase':{supabase:client},
+    '@/lib/register-shortcuts':shortcuts,'@/lib/catalog-management':catalogManagement,'@/lib/pos-types':types,'@/lib/supabase':{supabase:client},
     '@/lib/use-resource':{useResource:()=>{const[,refresh]=useState(0);return{data:{actor:'owner',config:{...config},products:[{id:first,name:'Americano',price:50,is_active:true},{id:second,name:'Latte',price:70,is_active:true}],pending:false},loading:false,error:null,reload:async()=>{reloads++;refresh(value=>value+1);}};}},
     '@/app/LoadFailure':{default:()=>null,__esModule:true},'./favoritos.css':{},
   };

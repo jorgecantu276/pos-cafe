@@ -51,7 +51,7 @@ try {
   assert.equal(existsSync(path.join(relocated,'database-migrations/202610280003_inventory.sql')),false);
   assert.ok(existsSync(path.join(relocated,'database-migrations/202610300005_single_drawer.sql')));
   assert.ok(existsSync(path.join(relocated,'database-migrations/202610300006_loyalty_phone.sql')));
-  for(const name of ['202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql','202610300010_register_shortcuts.sql','202610300011_recent_tickets.sql','202610300012_business_backups.sql','schema.snapshot.json'])assert.ok(existsSync(path.join(relocated,'database-migrations',name)));
+  for(const name of ['202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql','202610300010_register_shortcuts.sql','202610300011_recent_tickets.sql','202610300012_business_backups.sql','202611020013_catalog_requests.sql','202611020014_customer_history.sql','schema.snapshot.json'])assert.ok(existsSync(path.join(relocated,'database-migrations',name)));
   for(const name of ['Open-POS.cmd','Install-POS-shortcut.ps1'])assert.ok(existsSync(path.join(relocated,name)));
   for(const name of ['backup-tools/scripts/backups/inspect.mjs','backup-tools/lib/business-backup-format.mjs'])assert.ok(existsSync(path.join(relocated,name)));
   // Mismatched runtime config is rejected before binding a server port.

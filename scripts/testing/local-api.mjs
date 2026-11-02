@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { Client } from 'pg';
+import { createClient } from '@supabase/supabase-js';
+import { root, work, run, dockerCheck } from '../staging/runtime.mjs';
+import { baselineStatements } from '../staging/safety.mjs';
+import { sourceFiles } from '../staging/bootstrap.mjs';
+import { randomUUID } from 'node:crypto';
+
+// Separate fresh synthetic stack. Existing staging, archives and hosted data
+// are never read or reconciled. Each run owns a new project and test volumes.
+export async function freshLocalApi() {
+  await dockerCheck();
+  const project = `pos-cafe-admin-${randomUUID().slice(0, 8)}`, network = `supabase_network_${project}`;
+  const directory = path.join(work, 'admin-api', project), bin = path.join(directory, 'docker-bin');
+  await mkdir(path.join(directory, 'supabase'), { recursive: true }); await mkdir(bin, { recursive: true });
+  const configText = (await readFile(path.join(root, 'supabase/staging/config.toml'), 'utf8'))
+    .replaceAll('pos-cafe-staging-local', project).replaceAll('5545', '5547');
+  await writeFile(path.join(directory, 'supabase/config.toml'), configText);
+  const require = createRequire(import.meta.url), pkg = require('supabase/package.json');
+  const cli = path.join(path.dirname(require.resolve('supabase/package.json')), pkg.bin.supabase);
+  let env = { ...process.env };
+  if (process.platform === 'win32') {
+    const source = path.join(bin, 'loopback.cs'), launcher = path.join(bin, 'docker.exe');
+    await writeFile(source, (await readFile(path.join(root, 'scripts/staging/docker-loopback.cs'), 'utf8')).replaceAll('5545', '5547'));
+    await run(path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/target:exe', `/out:${launcher}`, source]);
+    await run(launcher, ['--pos-cafe-self-test']);
+    env = { ...env, POS_CAFE_REAL_DOCKER: path.join(process.env.LOCALAPPDATA, 'Programs/DockerDesktop/resources/bin/docker.exe'), PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+  }
+  const cliRun = args => run(process.execPath, [cli, ...args, '--workdir', directory], { env });
+  const names = (await run('docker', ['network', 'ls', '--format', '{{.Name}}'])).trim().split(/\r?\n/);
+  if (!names.includes(network)) await run('docker', ['network', 'create', '--label', `pos-cafe.admin-test=${project}`, '--opt', 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1', network]);
+  const [net] = JSON.parse(await run('docker', ['network', 'inspect', network]));
+  assert.equal(net.Labels?.['pos-cafe.admin-test'], project); assert.equal(net.Options?.['com.docker.network.bridge.host_binding_ipv4'], '127.0.0.1');
+  let db;
+  try {
+    await cliRun(['start', '--exclude', 'realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor,studio,inbucket']);
+    const status = JSON.parse(await cliRun(['status', '-o', 'json']));
+    assert.equal(status.API_URL, 'http://127.0.0.1:55471');
+    const dbUrl = new URL(status.DB_URL); assert.equal(dbUrl.hostname, '127.0.0.1'); assert.equal(dbUrl.port, '55472'); assert.equal(dbUrl.pathname, '/postgres');
+    const containers = (await run('docker', ['ps', '--filter', `name=_${project}$`, '--format', '{{.ID}}'])).trim().split(/\r?\n/).filter(Boolean);
+    assert.ok(containers.length >= 4);
+    for (const info of JSON.parse(await run('docker', ['inspect', ...containers]))) {
+      assert.ok(info.Name.endsWith(`_${project}`) && info.NetworkSettings.Networks[network]);
+      for (const bindings of Object.values(info.NetworkSettings.Ports || {})) for (const binding of bindings || []) assert.equal(binding.HostIp, '127.0.0.1');
+    }
+    db = new Client({ connectionString: status.DB_URL }); await db.connect();
+    assert.equal(Number((await db.query("select count(*) n from pg_tables where schemaname='public'")).rows[0].n), 0, 'Requires a fresh empty test database; retained test volumes are never reset automatically');
+    assert.equal(Number((await db.query('select count(*) n from auth.users')).rows[0].n), 0);
+    const source = await sourceFiles();
+    for (const statement of baselineStatements(JSON.parse(source.snapshot))) await db.query(statement);
+    const config = { api: status.API_URL, database: status.DB_URL, anon: status.ANON_KEY, service: status.SERVICE_ROLE_KEY };
+    const service = createClient(config.api, config.service, { auth: { persistSession: false, autoRefreshToken: false } });
+    return { config, db, service, install: () => db.query(source.migration), async cleanup() { await db.end(); await cliRun(['stop', '--no-backup']); } };
+  } catch (error) { await db?.end(); await cliRun(['stop']).catch(() => {}); throw error; }
+}

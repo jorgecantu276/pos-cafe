@@ -1,3 +1,4 @@
+import * as catalogManagement from '../lib/catalog-management';
 import * as drawer from '../lib/drawer';
 import DrawerGate from '../app/register/DrawerGate';
 import * as deadline from '../lib/request-deadline';
@@ -77,7 +78,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     './WorkspaceRegister':{default:WorkspaceRegister,WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog,__esModule:true},'./workspace.css':{},
     '@/lib/pos-types':types,'@/lib/use-resource':resource,'@/lib/cart-draft':drafts,'next/navigation':{useRouter:()=>router}};
   const source=readFileSync(new URL('../app/register/Register.tsx',import.meta.url),'utf8');
-  imports['@/lib/register-shortcuts'] = shortcuts;
+  imports['@/lib/register-shortcuts'] = shortcuts; imports['@/lib/catalog-management'] = catalogManagement;
   imports['./RecentTickets'] = { default: RecentTickets, __esModule: true };
   const compiled=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   const exports:{default?:ComponentType<{appearance:'workspace'}>}={},nodeRequire=createRequire(import.meta.url);
