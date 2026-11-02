@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Archive, ChevronRight, Printer, UsersRound } from 'lucide-react';
+import { Archive, ChevronRight, Printer, UsersRound, CreditCard } from 'lucide-react';
 
 export default function ConfigurationPage() {
   return <div className="workspace-admin-menu workspace-admin-simple">
@@ -9,5 +9,6 @@ export default function ConfigurationPage() {
       <Link href="/admin/respaldos"><span className="workspace-admin-menu-icon"><Archive size={23}/></span><span className="workspace-admin-menu-label"><strong>Respaldos</strong><small>Estado y copias de recuperación</small></span><ChevronRight size={18} aria-hidden="true"/></Link>
     </nav>
     <Link className="workspace-admin-settings-link" href="/admin/impresion"><Printer size={18} aria-hidden="true"/>Revisar impresión pendiente</Link>
+    <Link className="workspace-admin-settings-link" href="/admin/clip"><CreditCard size={18} aria-hidden="true"/>Terminal CLIP</Link>
   </div>;
 }

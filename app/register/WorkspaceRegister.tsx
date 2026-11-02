@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import ProductPhoto from '@/components/ProductPhoto';
+import PagerPicker from './PagerPicker';
 import { Keyboard, Minus, Plus, Search, X, Pencil, Trash2, Printer, UserRound, ChevronRight, Coffee, Settings2, ArrowRight } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/pos-types';
 
@@ -170,11 +171,11 @@ export function WorkspaceCheckout(p: CheckoutProps) {
       {p.method === 'Mixto' && <p className="workspace-caption">1 USD = {p.exchangeRate} MXN</p>}
       <div className={`workspace-change ${received < p.total ? 'is-short' : ''}`}><span>{received < p.total ? 'Faltan MXN' : 'Cambio MXN'}</span><strong>{money(Math.abs(received - p.total))}</strong></div>
     </div>}
-    {p.method === 'Tarjeta' && <label className="workspace-card-confirm"><input type="checkbox" disabled={p.busy} checked={cardConfirmed} onChange={event => setCardConfirmed(event.target.checked)} />Pago aprobado en la terminal</label>}
+    {p.method === 'Tarjeta' && !p.clipEnabled && <label className="workspace-card-confirm"><input type="checkbox" disabled={p.busy} checked={cardConfirmed} onChange={event => setCardConfirmed(event.target.checked)} />Pago aprobado en la terminal</label>}
     {p.method === 'Otro' && <p className="workspace-caption">Registra la venta después de recibir el pago.</p>}
-    </section><section className="workspace-checkout-keypad">{cash && <WorkspaceKeyboard numeric label={`Teclado ${currency}`} disabled={p.busy} value={String(currency === 'MXN' ? p.mxn : p.usd)} onChange={key} />}<button type="button" className="workspace-note-toggle" aria-expanded={notes} disabled={p.busy} onClick={() => setNotes(!notes)}>{p.note || 'Nota de la orden'}</button>
+    </section><section className="workspace-checkout-keypad">{p.onPagerNumber&&<PagerPicker value={p.pagerNumber??null} onChange={p.onPagerNumber} disabled={p.busy}/>}{cash && <WorkspaceKeyboard numeric label={`Teclado ${currency}`} disabled={p.busy} value={String(currency === 'MXN' ? p.mxn : p.usd)} onChange={key} />}<button type="button" className="workspace-note-toggle" aria-expanded={notes} disabled={p.busy} onClick={() => setNotes(!notes)}>{p.note || 'Nota de la orden'}</button>
     {notes && <><input aria-label="Notas de la orden" maxLength={1000} value={p.note} disabled={p.busy} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard disabled={p.busy} value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
-  </section></div></div><footer><button type="button" className="workspace-primary" disabled={p.busy || p.insufficient || (p.method === 'Tarjeta' && !cardConfirmed)} onClick={p.onConfirm}>{p.busy ? 'Confirmando…' : 'Confirmar Pago'}</button></footer></WorkspaceDialog>;
+  </section></div></div><footer><button type="button" className="workspace-primary" disabled={p.busy || p.insufficient || (p.method === 'Tarjeta' && !p.clipEnabled && !cardConfirmed)} onClick={p.onConfirm}>{p.busy ? 'Confirmando…' : p.method==='Tarjeta'&&p.clipEnabled?'Enviar a CLIP':'Confirmar Pago'}</button></footer></WorkspaceDialog>;
 }
 
 export function WorkspaceOpening(p: {

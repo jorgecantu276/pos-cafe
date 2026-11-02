@@ -6,6 +6,21 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { saleDocuments } from '../lib/sale-printing';
 
+test('pager identity repeats on every physical barista continuation and is prominent on the customer receipt', {skip:process.platform!=='win32'},()=>{
+  const docs=saleDocuments({id:'pager',ticket_number:1288,status:'completed',total:50,pager_number:30,
+    items:[{id:'cup',quantity:1,product:{id:'coffee',name:'Café americano',price:50,category:'Bebidas',note:'Sin azúcar. '.repeat(120)}}],
+    customer_name:'Ana',order_type:'En Local',order_note:'',created_at:'2026-11-02T17:00:00Z',payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:20,change_mxn:0});
+  const render=(audience:'customer'|'barista')=>{
+    const result=spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
+      {input:JSON.stringify({...docs[audience],verticalLabel:audience==='barista',fontPoints:9,widthMm:audience==='barista'?56.9:71.88,heightMm:audience==='barista'?32:210.06})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
+    assert.equal(result.status,0,result.stderr||result.stdout);return JSON.parse(result.stdout) as {lines:string[]}[];
+  };
+  const barista=render('barista');assert.ok(barista.length>1);
+  for(const page of barista){assert.match(page.lines.join(' '),/CONTROL 30/);assert.match(page.lines.join(' '),/#1288/);}
+  assert.match(render('customer').flatMap(page=>page.lines).join(' '),/CONTROL: 30/);
+});
+
 test('reference design fits customer/folio, large drink, four modifiers and dated footer on one label', { skip: process.platform !== 'win32' }, () => {
   const doc = saleDocuments({id:'reference',ticket_number:1287,status:'completed',total:110,
     items:[{id:'cup',quantity:1,product:{id:'matcha',name:'Iced Matcha Latte',price:110,category:'Bebidas',

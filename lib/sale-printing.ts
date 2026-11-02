@@ -51,6 +51,10 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
   if (options.testOnly || !issuerComplete) add('PRUEBA DE IMPRESIÓN · NO ES UNA VENTA', 'heading');
   add(`Folio: ${ticket} · ${date}`);
   add(`Cliente: ${text(order.customer_name) || 'Público en general'}`);
+  if (order.pager_number != null) {
+    if (!Number.isInteger(order.pager_number) || order.pager_number < 1 || order.pager_number > 30) throw new Error('Control de entrega inválido.');
+    add(`CONTROL: ${order.pager_number}`, 'receipt-heading');
+  }
   add(text(order.order_type)); add('', 'separator');
   add('CANT.      P.UNITARIO        IMPORTE');
   add('', 'separator');
@@ -101,8 +105,8 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
     if (item.product.note) { lines.push(text(item.product.note)); styles.push('note'); }
     if (order.order_note) { lines.push(`ORDEN: ${text(order.order_note)}`); styles.push('modifier'); }
     const time = new Date(order.created_at).toLocaleTimeString('es-MX', { timeZone: 'America/Matamoros', hour: '2-digit', minute: '2-digit', hour12: false });
-    lines.push(`#${ticket} · ${++unit}/${units} · ${text(order.order_type)} · ${time}`); styles.push('footer');
-    referenceLabels.push({ folio:`#${ticket}`,cup:`${unit}/${units}`,service:text(order.order_type),
+    lines.push(`#${ticket} · ${++unit}/${units} · ${order.pager_number != null ? `CONTROL: ${order.pager_number} · ` : ''}${text(order.order_type)} · ${time}`); styles.push('footer');
+    referenceLabels.push({ folio:order.pager_number != null ? `CONTROL ${order.pager_number} · #${ticket}` : `#${ticket}`,cup:`${unit}/${units}`,service:text(order.order_type),
       date:new Date(order.created_at).toLocaleDateString('es-MX',{timeZone:'America/Matamoros',day:'2-digit',month:'2-digit',year:'2-digit'}),
       time:new Date(order.created_at).toLocaleTimeString('en-US',{timeZone:'America/Matamoros',hour:'2-digit',minute:'2-digit',hour12:true}) });
     baristaStyles.push(styles);

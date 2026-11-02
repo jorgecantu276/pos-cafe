@@ -1,3 +1,4 @@
+import ClipPaymentStatus from '../app/register/ClipPaymentStatus';
 import * as catalogManagement from '../lib/catalog-management';
 import * as drawer from '../lib/drawer';
 import DrawerGate from '../app/register/DrawerGate';
@@ -28,7 +29,7 @@ import * as shiftState from '../lib/shift-state';
 import PrototypeRegister, {PrototypeCheckout,PrototypeCustomization} from '../app/register/PrototypeRegister';
 import WorkspaceRegister, {WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog} from '../app/register/WorkspaceRegister';
 
-for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['workspace','cashier'],['workspace','admin']] as const) test(`the actual ${appearance} ${role} POS preserves recovery and automatically dispatches both synthetic copies`, async () => {
+for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['prototype','cashier',false],['workspace','cashier',false],['workspace','admin',false],['workspace','admin',true]] as const) test(`the actual ${appearance} ${role} POS ${clipEnabled?'with CLIP ':''}preserves recovery and automatically dispatches both synthetic copies`, async () => {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://127.0.0.1' });
   Object.defineProperty(dom.window.navigator,'locks',{value:{request:async (_key:string,_options:unknown,action:(lock:object)=>Promise<unknown>)=>action({})}});
   const saved = new Map<string, PropertyDescriptor | undefined>();
@@ -39,6 +40,13 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     navigator: dom.window.navigator, localStorage: dom.window.localStorage,
     alert: (message: string) => alerts.push(message), IS_REACT_ACT_ENVIRONMENT: true,
     fetch: async (url:string, options:RequestInit) => {
+      if(url.startsWith('/api/payments/clip?')) return Response.json({error:'No encontrado'},{status:404});
+      if(url==='/api/payments/clip') {
+        assert.equal(clipEnabled,true);assert.equal(options.method,'POST');const body=JSON.parse(options.body as string);
+        assert.equal(body.payload.payment_method,'tarjeta');
+        const result=await client.rpc('pos_checkout',{p_payload:body.payload});
+        return Response.json({state:'completed',requestId:body.requestId,order:result.data});
+      }
       assert.equal(url, '/api/printing');
       if(options.method==='POST') {
         const body=JSON.parse(options.body as string);assert.equal(body.orderId,'fixture-order');dispatches.push(body.orderId);
@@ -98,8 +106,9 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
   const source = readFileSync(new URL('../app/register/Register.tsx', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020,
     module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
-  const exports: { default?: ComponentType<{appearance:'owner'|'prototype'|'workspace'}> } = {};
+  const exports: { default?: ComponentType<{appearance:'owner'|'prototype'|'workspace';clipEnabled?:boolean}> } = {};
   imports['@/lib/register-shortcuts'] = shortcuts; imports['@/lib/catalog-management'] = catalogManagement;
+  imports['./ClipPaymentStatus'] = { default: ClipPaymentStatus, __esModule: true };
   imports['./RecentTickets'] = { default: RecentTickets, __esModule: true };
   new Function('require', 'exports', compiled)((name: string) => name === '@/components/ProductPhoto' ? { default: ProductPhoto, __esModule: true } : imports[name] ?? nodeRequire(name), exports);
   const button = (text: string) => {
@@ -108,7 +117,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
   };
   const click = async (element: Element) => { await act(async () => element.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))); };
   try {
-    await act(async () => root.render(createElement(exports.default!,{appearance})));
+    await act(async () => root.render(createElement(exports.default!,{appearance,clipEnabled})));
     assert.equal(button(appearance==='owner'?'Pagar Ahora':'Cobrar').disabled, true);
     await act(async () => { release(); });
     assert.equal(dom.window.document.querySelector('[role="alert"]'), null);
@@ -174,7 +183,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     await act(async () => root.unmount());
     assert.equal(cart.useCartStore.getState().items.length, 0);
     root = createRoot(dom.window.document.getElementById('root')!);
-    await act(async () => root.render(createElement(exports.default!,{appearance})));
+    await act(async () => root.render(createElement(exports.default!,{appearance,clipEnabled})));
     screen = dom.window.document.getElementById('root')!.firstElementChild!;
     assert.equal(cart.useCartStore.getState().getTotal(), 80);
     assert.equal(cart.useCartStore.getState().orderNote, 'Entrega en puerta');
@@ -186,7 +195,7 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('fixture-user')),beforeSwitch);
     authenticatedUser='fixture-user';
     await act(async()=>root.unmount()); root=createRoot(dom.window.document.getElementById('root')!);
-    await act(async()=>root.render(createElement(exports.default!,{appearance})));
+    await act(async()=>root.render(createElement(exports.default!,{appearance,clipEnabled})));
     screen=dom.window.document.getElementById('root')!.firstElementChild!;
     assert.equal(cart.useCartStore.getState().getTotal(),80);
     assert.equal(Boolean(submitted),false, 'Restoring a draft must never submit a payment');
@@ -218,8 +227,8 @@ for(const [appearance, role] of [['owner','cashier'],['prototype','cashier'],['w
     else if(appearance==='prototype') assert.match(screen.textContent!,/Cobrar orden/);
     else assert.ok(screen.querySelector('dialog[aria-label="Cobrar"]'));
     await click(button('Tarjeta'));
-    if(appearance!=='owner'){assert.equal(button('Confirmar Pago').disabled,true);await click(screen.querySelector(appearance==='workspace'?'.workspace-card-confirm input':'.prototype-card-confirm input')!);}
-    await click(button('Confirmar Pago'));
+    if(appearance!=='owner'&&!clipEnabled){assert.equal(button('Confirmar Pago').disabled,true);await click(screen.querySelector(appearance==='workspace'?'.workspace-card-confirm input':'.prototype-card-confirm input')!);}
+    await click(button(clipEnabled?'Enviar a CLIP':'Confirmar Pago'));
     assert.equal(submitted?.payment_method, 'tarjeta'); assert.equal(submitted?.expected_total, expectedTotal);
     assert.equal(submitted?.order_type, 'Para Llevar'); assert.equal(submitted?.order_note, 'Entrega en puerta');
     assert.equal(submitted?.customer_id, 'local-member');

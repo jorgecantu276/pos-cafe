@@ -9,7 +9,7 @@ import { root, work } from './runtime.mjs';
 
 export async function sourceFiles() {
   const snapshot = await readFile(path.join(root, 'supabase/schema.snapshot.json'), 'utf8');
-  const migration = (await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300005_single_drawer.sql','202610300006_loyalty_phone.sql','202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql','202610300010_register_shortcuts.sql','202610300011_recent_tickets.sql','202610300012_business_backups.sql','202611020013_catalog_requests.sql','202611020014_customer_history.sql']
+  const migration = (await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300005_single_drawer.sql','202610300006_loyalty_phone.sql','202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql','202610300010_register_shortcuts.sql','202610300011_recent_tickets.sql','202610300012_business_backups.sql','202611020013_catalog_requests.sql','202611020014_customer_history.sql','202611020015_order_pager.sql','202611020016_clip_payments.sql']
     .map(file => readFile(path.join(root, 'supabase/migrations', file), 'utf8')))).join('\n');
   return { snapshot, migration, hash: fingerprint(snapshot, migration) };
 }

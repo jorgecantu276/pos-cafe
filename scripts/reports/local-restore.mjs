@@ -10,7 +10,7 @@ import {sourceFiles,verifyIdentity} from '../staging/bootstrap.mjs';
 import {fingerprint,project} from '../staging/safety.mjs';
 
 export async function reportClone(){
-  const source=await sourceFiles(),files=['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300005_single_drawer.sql','202610300006_loyalty_phone.sql','202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql','202610300010_register_shortcuts.sql','202610300011_recent_tickets.sql','202610300012_business_backups.sql','202611020013_catalog_requests.sql','202611020014_customer_history.sql'];
+  const source=await sourceFiles(),files=['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300005_single_drawer.sql','202610300006_loyalty_phone.sql','202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql','202610300010_register_shortcuts.sql','202610300011_recent_tickets.sql','202610300012_business_backups.sql','202611020013_catalog_requests.sql','202611020014_customer_history.sql','202611020015_order_pager.sql','202611020016_clip_payments.sql'];
   const migrations=await Promise.all(files.map(f=>readFile(path.join(root,'supabase/migrations',f),'utf8')));
   const hashes=migrations.map((_,i)=>fingerprint(source.snapshot,migrations.slice(0,i+1).join('\n')));
   const directory=path.join(work,'recovery');let selected;

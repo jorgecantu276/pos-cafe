@@ -8,6 +8,7 @@ import PrototypeRegister, {PrototypeCheckout, PrototypeCustomization} from './Pr
 import './prototype.css';
 import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
 import RecentTickets from './RecentTickets';
+import ClipPaymentStatus from './ClipPaymentStatus';
 import { loadRegisterShortcuts } from '@/lib/register-shortcuts';
 import { catalogChangeKey, catalogFingerprint, loadLiveCatalog } from '@/lib/catalog-management';
 import './workspace.css';
@@ -28,7 +29,7 @@ import './printing.css';
 import { rememberSalePrint } from '@/lib/sale-printing';
 import { saveShiftBeforeExit, type ShiftReport } from '@/lib/shift';
 import { closeShift, expenseRequestKey, loadShiftSummary, recoverPendingExpenses, recoverShiftClose, restoreShiftExpenses, saveShiftExpenses, type ShiftSummary } from '@/lib/shift-state';
-import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, withCheckoutLock, type CheckoutReview, type SavedOrder } from '@/lib/checkout';
+import { CheckoutRejected, ClipPaymentPending, checkoutPayload, executeCheckout, readCheckoutReview, withCheckoutLock, type CheckoutReview, type SavedOrder } from '@/lib/checkout';
 import { bindCartDraft, cartDraftKey, type CartDraftBinding } from '@/lib/cart-draft';
 import { withDeadline } from '@/lib/request-deadline';
 import {
@@ -40,9 +41,9 @@ import {
 // DENOMINACIONES DE DINERO
 const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.50];
 
-export default function POSPage({appearance='workspace'}:{appearance?:'owner'|'prototype'|'workspace'}={}) {
+export default function POSPage({appearance='workspace',clipEnabled=false}:{appearance?:'owner'|'prototype'|'workspace';clipEnabled?:boolean}={}) {
   const { items, addItem, removeItem, replaceItem, updateQuantity, getTotal, clearCart,
-    orderType, orderNote, customerId, setOrderType, setOrderNote, setCustomerId } = useCartStore();
+    orderType, orderNote, pagerNumber, customerId, setOrderType, setOrderNote, setPagerNumber, setCustomerId } = useCartStore();
   const router = useRouter();
   const cartDraft = useRef<CartDraftBinding | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -611,10 +612,11 @@ const handleSaveAndClose = async () => {
           if (!registerId || !items.length || !Number.isFinite(orderTotal) || orderTotal <= 0 || isPaymentInsufficient) throw new Error('Revisa la orden, el turno y el importe recibido.');
           const cash = ['Efectivo','Mixto'].includes(paymentMethod);
           review = { startedAt: new Date().toISOString(), total: orderTotal, requestId: binding.requestId(),
+            ...(clipEnabled && paymentMethod==='Tarjeta' ? {provider:'clip' as const} : {}),
             payload: checkoutPayload(items, {
               register_id: registerId, expected_total: orderTotal, payment_method: paymentMethod.toLowerCase(),
               tender_mxn: cash ? parseAmount(amountReceivedMXN) : 0, tender_usd: cash ? parseAmount(amountReceivedUSD) : 0,
-              customer_id: customerId, order_type: orderType, order_note: orderNote,
+              customer_id: customerId, order_type: orderType, order_note: orderNote, ...(pagerNumber ? {pager_number:pagerNumber} : {}),
             }),
           };
           // Persist the exact identity and payload before the first request.
@@ -654,7 +656,7 @@ const handleSaveAndClose = async () => {
       try { needsReview = Boolean(checkoutKey && localStorage.getItem(checkoutKey)); }
       catch { /* Storage failure must not hide the original save error. */ }
       if (needsReview) setShowCheckoutModal(false);
-      alert((error instanceof Error ? errorMessage(error) : 'No se confirmó la venta.') + (needsReview ? '\nNo vuelvas a cobrar. Usa recuperar venta para consultar o completar la misma transacción.' : ''));
+      if (!(error instanceof ClipPaymentPending)) alert((error instanceof Error ? errorMessage(error) : 'No se confirmó la venta.') + (needsReview ? '\nNo vuelvas a cobrar. Usa recuperar venta para consultar o completar la misma transacción.' : ''));
     } finally {
       if (stillCurrent()) { checkoutInFlight.current = false; setIsProcessingCheckout(false); }
     }
@@ -1007,6 +1009,7 @@ const handleSaveAndClose = async () => {
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p className="font-bold">Venta pendiente de revisión{checkoutReview.ticketNumber != null ? ` · Folio ${checkoutReview.ticketNumber}` : ''}</p>
             <p>No vuelvas a cobrar. Importe: ${checkoutReview.total.toFixed(2)} · Inicio: {checkoutReview.startedAt}</p>
+            {checkoutReview.provider==='clip' && checkoutReview.requestId && <ClipPaymentStatus requestId={checkoutReview.requestId} onReady={() => void processCheckout()}/>}
             <div className="mt-2 flex gap-4">
               <a href="/admin/ventas" target="_blank" rel="noopener noreferrer" className="font-semibold underline">Revisar historial</a>
               {checkoutReview.requestId && checkoutReview.payload && <button className="font-semibold underline" onClick={processCheckout}>Recuperar la misma venta</button>}
@@ -1259,6 +1262,7 @@ const handleSaveAndClose = async () => {
 
       </>}
       {showCheckoutModal&&appearance!=='owner'&&<CheckoutView total={getTotal()} method={paymentMethod} mxn={amountReceivedMXN} usd={amountReceivedUSD} exchangeRate={parseAmount(exchangeRate)}
+        pagerNumber={pagerNumber} onPagerNumber={setPagerNumber} clipEnabled={clipEnabled}
         orderType={orderType} note={orderNote} busy={isProcessingCheckout} insufficient={isPaymentInsufficient} onMethod={method=>{setPaymentMethod(method);setAmountReceivedMXN('');setAmountReceivedUSD('');}}
         onMXN={setAmountReceivedMXN} onUSD={setAmountReceivedUSD} onOrderType={setOrderType} onNote={setOrderNote} onConfirm={()=>void processCheckout()} onClose={()=>setShowCheckoutModal(false)}/>}
       {selectedProduct&&dynamicSteps.length>0&&appearance!=='owner'&&<CustomizationView product={selectedProduct} steps={dynamicSteps} index={customizationStep} extras={activeExtras} dbExtras={dbExtras}
@@ -1295,6 +1299,7 @@ const handleSaveAndClose = async () => {
              {/* 🟢 PASO 1: TIPO DE ORDEN Y NOTAS */}
              {checkoutStep === 1 && (
                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                 <label>Control de entrega (1–30)<input aria-label="Control de entrega" type="number" min="1" max="30" inputMode="numeric" value={pagerNumber??''} onChange={e=>setPagerNumber(e.target.value===''?null:Number(e.target.value))}/></label>
                  <div className="mb-6 space-y-6">
                     <div>
                       <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-3">Tipo de Orden</label>
@@ -1396,6 +1401,7 @@ const handleSaveAndClose = async () => {
 
       {showPostSaleModal && appearance==='workspace' && <WorkspaceDialog title="Venta guardada" onClose={handleNextOrder} className="workspace-sale">
         <div className="workspace-dialog-content"><p className="workspace-caption">Folio #{savedSale?.ticket_number ?? lastOrderId}</p><p className="workspace-sale-total">${(savedSale?.total ?? getTotal()).toFixed(2)} MXN</p>
+          {savedSale?.pager_number != null && <p className="font-bold">Entregar control #{savedSale.pager_number}</p>}
           <p>Cliente → USB · Barra → Bluetooth. La venta no se vuelve a cobrar al reintentar impresión.</p>
           {printStatus}
         </div><footer><button className="workspace-primary" onClick={handleNextOrder}>Nueva venta</button></footer>

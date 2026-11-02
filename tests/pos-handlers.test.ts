@@ -1,3 +1,4 @@
+import { ClipPaymentPending } from '../lib/checkout';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -105,7 +106,7 @@ test('a cashier can stop closing when unfinished printing needs attention',async
 // Exercise the actual page handlers with browser/network dependencies replaced;
 // no request reaches Supabase and no print dialog is opened by these checks.
 function handler(name: string, context: Record<string, unknown>, file='../app/register/Register.tsx'): (...args: unknown[]) => unknown {
-  context = { catalogStale:false, withDeadline,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
+  context = { clipEnabled:false,pagerNumber:null,ClipPaymentPending,catalogStale:false, withDeadline,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
   const source=ts.createSourceFile('page.tsx',readFileSync(new URL(file,import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
   let body='';
   function visit(node: ts.Node) {

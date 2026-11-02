@@ -30,9 +30,11 @@ interface CartStore {
   items: CartItem[];
   orderType: string;
   orderNote: string;
+  pagerNumber: number | null;
   customerId: string | null;
   setOrderType: (value: string) => void;
   setOrderNote: (value: string) => void;
+  setPagerNumber: (value: number | null) => void;
   setCustomerId: (value: string | null) => void;
   addItem: (product: Product) => void;
   removeItem: (itemId: string) => void;
@@ -69,9 +71,10 @@ export function customizeProduct(product: Product, extras: CartExtra[], note: st
 
 export const createCartStore = () => create<CartStore>((set, get) => ({
   items: [],
-  orderType: 'En Local', orderNote: '', customerId: null,
+  orderType: 'En Local', orderNote: '', pagerNumber: null, customerId: null,
   setOrderType: orderType => set({ orderType }),
   setOrderNote: orderNote => set({ orderNote }),
+  setPagerNumber: pagerNumber => set({ pagerNumber }),
   setCustomerId: customerId => set({ customerId }),
   
   addItem: (product) => {
@@ -113,7 +116,7 @@ export const createCartStore = () => create<CartStore>((set, get) => ({
     )
   })),
 
-  clearCart: () => set({ items: [], orderType: 'En Local', orderNote: '', customerId: null }),
+  clearCart: () => set({ items: [], orderType: 'En Local', orderNote: '', pagerNumber: null, customerId: null }),
 
   getTotal: () => get().items.reduce((acc, item) => 
     acc + cents(item.product.price) * item.quantity, 0
