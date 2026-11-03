@@ -769,7 +769,7 @@ const handleSaveAndClose = async () => {
       try { needsReview = Boolean(checkoutKey && localStorage.getItem(checkoutKey)); }
       catch { /* Storage failure must not hide the original save error. */ }
       if (needsReview) setShowCheckoutModal(false);
-      if (!(error instanceof ClipPaymentPending)) alert((error instanceof Error ? errorMessage(error) : 'No se confirmó la venta.') + (needsReview ? '\nNo vuelvas a cobrar. Pulsa Comprobar venta para revisar el cobro pendiente.' : ''));
+      else if (!(error instanceof ClipPaymentPending)) alert(error instanceof Error ? errorMessage(error) : 'No se confirmó la venta.');
     } finally {
       if (stillCurrent()) { checkoutInFlight.current = false; setIsProcessingCheckout(false); }
     }
@@ -1128,11 +1128,12 @@ const handleSaveAndClose = async () => {
         {checkoutReview && !isProcessingCheckout && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p className="font-bold">Venta sin confirmar{checkoutReview.ticketNumber != null ? ` · Folio ${checkoutReview.ticketNumber}` : ''}</p>
-            <p>No vuelvas a cobrar. Importe: ${checkoutReview.total.toFixed(2)} · Inicio: {checkoutReview.startedAt}</p>
+            <p>No vuelvas a cobrar al cliente. Comprueba esta venta antes de continuar.</p>
+            <p>Importe: ${checkoutReview.total.toFixed(2)} · Inicio: {checkoutReview.startedAt}</p>
+            {checkoutReview.requestId && checkoutReview.payload && <button type="button" className="mt-2 min-h-11 rounded-xl bg-[#0066cc] px-4 py-2 font-semibold text-white" onClick={processCheckout}>Comprobar venta</button>}
             {checkoutReview.provider==='clip' && checkoutReview.requestId && <ClipPaymentStatus requestId={checkoutReview.requestId} onReady={() => void processCheckout()}/>}
             <div className="mt-2 flex gap-4">
               <a href="/admin/ventas" target="_blank" rel="noopener noreferrer" className="font-semibold underline">Revisar historial</a>
-              {checkoutReview.requestId && checkoutReview.payload && <button className="font-semibold underline" onClick={processCheckout}>Comprobar venta</button>}
               {checkoutReview.requestId && <button className="font-semibold underline" onClick={handleDiscardCheckout}>Quitar pedido pendiente</button>}
               {!checkoutReview.requestId && <button className="font-semibold underline" onClick={() => {
                 if (!confirm('¿El responsable ya revisó esta venta? Se vaciará el pedido para evitar cobrarlo de nuevo.')) return;
@@ -1186,10 +1187,11 @@ const handleSaveAndClose = async () => {
         {checkoutReview && !isProcessingCheckout && (
           <div role="alert" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p className="font-bold">Venta sin confirmar{checkoutReview.ticketNumber != null ? ` · Folio ${checkoutReview.ticketNumber}` : ''}</p>
-            <p>No vuelvas a cobrar. Importe: ${checkoutReview.total.toFixed(2)} · Inicio: {checkoutReview.startedAt}</p>
+            <p>No vuelvas a cobrar al cliente. Comprueba esta venta antes de continuar.</p>
+            <p>Importe: ${checkoutReview.total.toFixed(2)} · Inicio: {checkoutReview.startedAt}</p>
+            {checkoutReview.requestId && checkoutReview.payload && <button type="button" className="mt-2 min-h-11 rounded-xl bg-[#0066cc] px-4 py-2 font-semibold text-white" onClick={processCheckout}>Comprobar venta</button>}
             <div className="mt-2 flex gap-4">
               <a href="/admin/ventas" target="_blank" rel="noopener noreferrer" className="font-semibold underline">Revisar historial</a>
-              {checkoutReview.requestId && checkoutReview.payload && <button className="font-semibold underline" onClick={processCheckout}>Comprobar venta</button>}
               {checkoutReview.requestId && <button className="font-semibold underline" onClick={handleDiscardCheckout}>Quitar pedido pendiente</button>}
               {!checkoutReview.requestId && <button className="font-semibold underline" onClick={() => {
                 if (!confirm('¿El responsable ya revisó esta venta? Se vaciará el pedido para evitar cobrarlo de nuevo.')) return;

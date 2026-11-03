@@ -150,7 +150,7 @@ test('unknown SQL completion keeps checkout recovery and reuses its original ide
     const first=h.fn(),raw=h.storage.get('test-user');assert.ok(raw);
     h.settle({data:null,error:{code,message:'Completion unknown'}});await first;
     assert.equal(h.storage.get('test-user'),raw,code);assert.equal(h.successful,false);assert.equal(retired,0);
-    assert.match(h.alerts[0],/No vuelvas a cobrar/);
+    assert.equal(h.alerts.length,0);
     h.reply({data:{id:'already-committed-sale',ticket_number:12,total:60,items:[],status:'completed',pager_number:1},error:null});
     await h.fn();assert.equal(h.successful,true);assert.equal(retired,1);assert.equal(h.storage.has('test-user'),false);
     assert.equal(h.requests.length,2);assert.deepEqual(h.requests[1],h.requests[0],code);
@@ -168,7 +168,7 @@ test('actual checkout handler releases a stalled confirmation and keeps its pers
   const first = h.fn(); assert.equal(h.calls, 1);
   const pending = h.storage.get('test-user'); await first;
   assert.equal(h.storage.get('test-user'), pending); assert.equal(h.successful, false);
-  assert.match(h.alerts[0], /conexión no respondió.*\nNo vuelvas a cobrar/);
+  assert.equal(h.alerts.length, 0);
   h.settle({ data: { id: 'one-sale', ticket_number: 12, total: 60, items: [], status: 'completed', pager_number:1 }, error: null });
   await h.fn(); assert.equal(h.successful, true); assert.equal(h.storage.has('test-user'), false);
 });
@@ -190,7 +190,7 @@ test('confirmed sale cannot clear its recovery guard if unpaid-draft retirement 
   const run=h.fn();
   h.settle({data:{id:'order',ticket_number:12,total:60,items:[],status:'completed',pager_number:1},error:null}); await run;
   assert.equal(h.successful,false); assert.ok(JSON.parse(h.storage.get('test-user')!).requestId);
-  assert.match(h.alerts[0],/No vuelvas a cobrar/);
+  assert.equal(h.alerts.length,0);
 });
 
 test('confirmed sale retains checkout recovery if the print outbox cannot be saved',async()=>{
@@ -199,7 +199,7 @@ test('confirmed sale retains checkout recovery if the print outbox cannot be sav
   }
   const h=checkoutHarness(new FailedPrintStorage());const run=h.fn();
   h.settle({data:{id:'order',ticket_number:12,total:60,items:[],status:'completed',pager_number:1},error:null});await run;
-  assert.ok(h.storage.has('test-user'));assert.equal(h.successful,false);assert.match(h.alerts[0],/No vuelvas a cobrar/);
+  assert.ok(h.storage.has('test-user'));assert.equal(h.successful,false);assert.equal(h.alerts.length,0);
 });
 
 test('a checkout response arriving after cashier switch only retires its original cashier record',async()=>{
