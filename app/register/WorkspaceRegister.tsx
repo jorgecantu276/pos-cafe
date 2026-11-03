@@ -56,7 +56,7 @@ const ProductButton = memo(function ProductButton({ product, disabled, onProduct
 }) {
   return <button className="workspace-product has-photo" disabled={disabled || !productAvailable(product)}
     onClick={() => onProduct(product)} title={product.name} aria-label={`${product.name}, ${money(Number(product.price))}`}>
-    <ProductPhoto product={product} width={56} height={56} illustrativeFallback={false} />
+    <ProductPhoto product={product} width={56} height={56} />
     <span className="workspace-product-copy"><strong>{product.name}</strong><span>{money(Number(product.price))}</span>{productStockLabel(product) && <small>{productStockLabel(product)}</small>}</span>
   </button>;
 });
