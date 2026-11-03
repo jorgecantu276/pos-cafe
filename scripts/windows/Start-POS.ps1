@@ -1,4 +1,4 @@
-param([string]$ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'pos-cafe-config.json'), [switch]$NoBrowser)
+﻿param([string]$ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'pos-cafe-config.json'), [switch]$NoBrowser, [switch]$DesktopApp)
 $ErrorActionPreference = 'Stop'
 
 function Get-CafeHash([string]$Value) {
@@ -86,6 +86,16 @@ if ($config.ClipTokenFile) {
 $server = Join-Path $PSScriptRoot 'app\server.js'
 if (-not (Test-Path -LiteralPath $node -PathType Leaf) -or -not (Test-Path -LiteralPath $server -PathType Leaf)) { throw 'Esta version esta incompleta. Pide de nuevo el paquete preparado para Windows.' }
 $baseUrl = "http://127.0.0.1:$port"
+function Open-CafeWindow {
+  if (-not $DesktopApp) { Start-Process $baseUrl; return }
+  $browser = @(
+    (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe')
+    (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe')
+  ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+  if (-not $browser) { throw 'No se encontró Microsoft Edge para abrir Cariñito Mío POS.' }
+  $profile = Join-Path $env:LOCALAPPDATA 'CarinitoMioPOS\Ventana'
+  Start-Process -FilePath $browser -ArgumentList @("--app=$baseUrl", '--disable-background-mode', ('--user-data-dir="' + $profile + '"')) -PassThru
+}
 $configId = Get-CafeHash ($ConfigPath.ToLowerInvariant() + "`n" + $configText + "`n" + $clipToken)
 $releaseId = Get-CafeHash ($releaseDirectory.ToLowerInvariant() + "`n" + $releaseText)
 $statePath = $ConfigPath + '.instance.json'
@@ -104,7 +114,7 @@ try {
       if ($owner -and ($owner.releaseId -cne $releaseId -or $owner.configId -cne $configId)) { throw 'Ya hay otra version o configuracion de esta caja abierta. Cierra su ventana antes de cambiar de version o configuracion.' }
       if (Test-CafeInstance $owner) {
         Write-Host 'La caja ya estaba abierta. Se abre la misma caja en el navegador.'
-        if (-not $NoBrowser) { Start-Process $baseUrl }
+        if (-not $NoBrowser) { Open-CafeWindow | Out-Null }
         return
       }
       Start-Sleep -Milliseconds 500
@@ -185,8 +195,12 @@ public sealed class CafeProcessJob : IDisposable {
     if ($ready) {
       Write-Host "Caja disponible en $baseUrl - cierra esta ventana para detenerla."
       if ($config.PrintMode -eq 'mock') { Write-Host 'IMPRESION SIMULADA: no se enviara papel.' }
-      if (-not $NoBrowser -and -not $browserOpened) { Start-Process $baseUrl; $browserOpened = $true }
-      while (-not $child.HasExited) { Start-Sleep -Milliseconds 250; $child.Refresh() }
+      if (-not $NoBrowser -and -not $browserOpened) { $cafeWindow = Open-CafeWindow; $browserOpened = $true }
+      while (-not $child.HasExited) {
+        if ($DesktopApp -and $cafeWindow -and $cafeWindow.HasExited) { return }
+        Start-Sleep -Milliseconds 250
+        $child.Refresh()
+      }
     } elseif (-not $child.HasExited) {
       Stop-Process -Id $child.Id -ErrorAction SilentlyContinue
       $child.WaitForExit(5000) | Out-Null
