@@ -53,3 +53,9 @@ El desarrollo y las simulaciones no sustituyen esta aceptación. Registrar respo
 Ya existe confirmación del usuario para V8 y el seguimiento V9/reference-v2. Lo nuevo pendiente en papel son los controles y los documentos telefónicos desde la app completa. No repetir la afirmación de que nunca se aceptaron las impresoras; ver [registro físico](printer-acceptance-2026-10-31.md).
 
 La aprobación de calidad para publicar exige las pruebas de aplicación, SQL, HTTP/navegador, restauración y paquetes del árbol final. La aprobación para sustituir el POS incluye además los resultados en esta PC, su red y sus dos impresoras.
+
+## Fotos del catálogo
+
+En **Administración → Catálogo → Productos**, abre un producto, elige **Subir foto** y guarda los cambios. Se aceptan archivos JPG, PNG y WebP de hasta 5 MB. La opción **Usar enlace** conserva el flujo anterior y **Quitar foto** recupera la imagen ilustrativa en Caja.
+
+Antes de habilitar la carga en un entorno, aplica la migración 022 en su proyecto de Supabase con Storage activo. Las fotos son públicas por enlace para que Caja pueda mostrarlas, y solo una cuenta de administración puede subir archivos. El respaldo de la base conserva los enlaces. Conserva también una copia de los archivos del bucket catalog-photos para recuperar las fotos si se pierde o cambia el proyecto. Mantén los archivos anteriores mientras algún respaldo pueda referenciarlos.

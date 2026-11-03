@@ -12,6 +12,14 @@ import LoadFailure from '@/app/LoadFailure';
 import { PlusCircle, Trash2, Loader2 } from 'lucide-react';
 import CatalogEditor from './CatalogEditor';
 
+async function uploadCatalogPhoto(file: File, extension: string) {
+  const bucket = supabase.storage.from('catalog-photos');
+  const path = `${crypto.randomUUID()}.${extension}`;
+  const { error } = await bucket.upload(path, file, { contentType: file.type });
+  if (error) throw error;
+  return bucket.getPublicUrl(path).data.publicUrl;
+}
+
 export default function ProductosPage() {
   const [activeTab, setActiveTab] = useState<'items' | 'extras'>('items');
   const [showForm, setShowForm] = useState(false);
@@ -148,6 +156,6 @@ export default function ProductosPage() {
         {!shown && <p className="catalog-empty">{total ? 'No hay resultados con esta búsqueda y filtro.' : `No hay ${activeTab === 'items' ? 'productos' : 'extras'} ${status==='active'?'activos':'inactivos'}.`}</p>}
       </div>
     </fieldset>
-    {showForm && <CatalogEditor type={activeTab} editing={editingId !== null} values={formData} onChange={setFormData} categories={uniqueCategories} phases={uniquePhases} busy={busy} pending={pending} message={message} onSubmit={handleSave} onClose={closeForm}/>}
+    {showForm && <CatalogEditor type={activeTab} editing={editingId !== null} values={formData} onChange={setFormData} categories={uniqueCategories} phases={uniquePhases} busy={busy} pending={pending} message={message} onUploadPhoto={uploadCatalogPhoto} onSubmit={handleSave} onClose={closeForm}/>}
   </div>;
 }

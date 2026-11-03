@@ -83,7 +83,7 @@ test('favorites display owner order, hide inactive items and keep the entire sea
   await render(async(screen)=>{assert.match(screen.querySelector('[aria-label="Favoritos"]')!.textContent!,/Cargando favoritos/);assert.equal(screen.querySelectorAll('.workspace-product').length,2);},createElement(WorkspaceRegister,{...props,favoriteProductIds:[],favoritesLoading:true}));
   await render(async(screen,click)=>{
     assert.equal(screen.querySelector('[aria-label="Favoritos"]'),null);
-    assert.equal(screen.querySelectorAll('.workspace-product img').length,0);
+    assert.equal(screen.querySelectorAll('.workspace-product img').length,3);
     assert.equal(screen.querySelector('[aria-label="Categorías del menú"] a')?.textContent,'Elegir favoritos');
     await click('Postres');
     assert.deepEqual([...screen.querySelectorAll('.workspace-product strong')].map(node=>node.textContent),['Brownie']);

@@ -28,7 +28,19 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
   const calls: Args[] = []; let release!: (value: unknown) => void;
   const firstResponse = new Promise(resolve => { release = resolve; });
   const replays=new Map<string,unknown>();let loseReactivation=true;
-  const client = { auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) },
+  const photoUrl = 'https://storage.example.test/catalog-photos/photo.png';
+  let uploaded: File | undefined;
+  const client = { storage: { from: (bucket: string) => {
+    assert.equal(bucket, 'catalog-photos');
+    return {
+      upload: async (path: string, file: File) => {
+        assert.match(path, /^[0-9a-f-]+\.png$/);
+        uploaded = file;
+        return { error: null };
+      },
+      getPublicUrl: () => ({ data: { publicUrl: photoUrl } }),
+    };
+  } }, auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) },
     from: (table: string) => { const query = Object.assign(Promise.resolve({ data: structuredClone(fixtures[table]), error: null }), { select: () => query, order: () => query, abortSignal: () => query }); return query; },
     rpc: (name: string, args: Args) => {
       assert.equal(name, 'pos_save_catalog'); calls.push(args);
@@ -65,9 +77,16 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
     await act(async () => { category.value = ''; category.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
     assert.equal(calls.length, 0, 'Finding products performs no catalog writes');
     await click('Editar Café');
+    const fileInput = dom.window.document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const photo = new dom.window.File(['test'], 'photo.png', { type: 'image/png' });
+    Object.defineProperty(fileInput, 'files', { value: [photo] });
+    await act(async () => fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })));
+    assert.equal(uploaded, photo);
+    assert.equal(dom.window.document.querySelector<HTMLInputElement>('input[name="image_url"]')?.value, photoUrl);
     const fields = [...dom.window.document.querySelectorAll('dialog input:not([type="checkbox"]),dialog select')];
     assert.ok(fields.every(e => (e as HTMLInputElement).labels?.length), 'Every catalog field has a persistent label');
     await act(async () => { const form = dom.window.document.querySelector('form')!; form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); });
+    assert.match(JSON.stringify(calls[0].p_payload), /storage\.example\.test\/catalog-photos\/photo\.png/);
     assert.equal(calls.length, 1); assert.ok(dom.window.document.querySelector('fieldset')!.disabled);
     await act(async () => release({ error: { code: '', message: 'Respuesta perdida' } }));
     assert.match(dom.window.document.body.textContent!, /Respuesta perdida/); assert.ok(management.readCatalogRequest(dom.window.localStorage, 'owner'));
