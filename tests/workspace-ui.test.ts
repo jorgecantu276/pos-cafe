@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { act, createElement, useState, type ReactNode, type ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
-import WorkspaceRegister,{ MenuVariantDialog, WorkspaceOpening, WorkspaceCustomization, WorkspaceCheckout } from '../app/register/WorkspaceRegister';
+import WorkspaceRegister,{ WorkspaceOpening, WorkspaceCustomization, WorkspaceCheckout } from '../app/register/WorkspaceRegister';
 import { favoriteMenuCards, matchesMenuCard, menuCards } from '../lib/menu-cards';
 
 async function render(work: (screen: Document, click: (label: string) => Promise<void>) => Promise<void>, component: ReactNode) {
@@ -56,7 +56,9 @@ test('drink families match searches and favorites without losing the selected pr
   await render(async (_screen, click) => {
     await click('Ceremonial$140.00');
     assert.equal(selected, 'x');
-  }, createElement(MenuVariantDialog, { card: matcha, onChoose: id => { selected = id; }, onClose: () => {} }));
+  }, createElement(WorkspaceCustomization, { product: null, family: matcha, onVariant: id => { selected = id; },
+    steps: [], index: 0, extras: [], dbExtras: [], note: '', onNote: () => {}, onStep: () => {}, onOption: () => {},
+    onConfirm: () => assert.fail('No se puede agregar una familia sin elegir variante'), onClose: () => {} }));
 });
 
 for(const isAdmin of [false,true]) test(`workspace ${isAdmin?'admin':'cashier'} opening preserves role navigation, fractional dollars and denomination counts`, async () => {

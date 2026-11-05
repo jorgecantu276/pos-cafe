@@ -140,7 +140,7 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     const flavors=cashier.getByRole('dialog',{name:'Iced Coffee',exact:true});
     await audit(cashier,'iced-coffee-flavors');
     await flavors.getByRole('button',{name:/^Caramelo\s*\$/}).click();
-    const customization=cashier.getByRole('dialog',{name:'Iced coffee caramelo',exact:true});
+    const customization=flavors;
     await customization.getByRole('group',{name:'Tipo de Leche',exact:true}).waitFor();
     assert.equal(await customization.getByRole('group',{name:'Tipo de Leche',exact:true}).getByRole('button').count(),7);
     await customization.getByRole('button',{name:/^almendra/i}).click();

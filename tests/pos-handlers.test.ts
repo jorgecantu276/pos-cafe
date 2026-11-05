@@ -318,7 +318,7 @@ test('opening a customization edit leaves the original line intact until confirm
   useCartStore.getState().addItem(customizeProduct({id:'coffee',name:'Coffee',price:50,category:'Bebidas'},[{name:'Vainilla',price:10}],''));
   const original=useCartStore.getState().items[0];
   handler('handleEditItem',{
-    products:[],buildWizardSteps:()=>[{}],setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},setEditingItemId:()=>{},setEditingQuantity:(quantity:number)=>assert.equal(quantity,original.quantity),setDynamicSteps:()=>{},setCustomizationStep:()=>{},
+    products:[],cards:[],setSelectedFamilyId:()=>{},buildWizardSteps:()=>[{}],setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},setEditingItemId:()=>{},setEditingQuantity:(quantity:number)=>assert.equal(quantity,original.quantity),setDynamicSteps:()=>{},setCustomizationStep:()=>{},
   })(original);
   assert.deepEqual(useCartStore.getState().items,[original]);
 });
@@ -332,7 +332,7 @@ test('editing an old draft uses current milk options while preserving the origin
   const products=[{...original.product,price:100,customizable:true,wizard_steps:['Tipo de Leche']}];
   let selected=original.product,steps:Array<{id:string}>=[];
   const buildWizardSteps=handler('buildWizardSteps',{useCallback:(fn:unknown)=>fn,dbExtras:extras});
-  handler('handleEditItem',{products,buildWizardSteps,setSelectedProduct:(value:typeof selected)=>selected=value,
+  handler('handleEditItem',{products,cards:[],setSelectedFamilyId:()=>{},buildWizardSteps,setSelectedProduct:(value:typeof selected)=>selected=value,
     setActiveExtras:(value:unknown)=>assert.deepEqual(value,extras),setProductNote:(value:string)=>assert.equal(value,'sin hielo'),
     setEditingItemId:(value:string)=>assert.equal(value,original.id),setEditingQuantity:(value:number)=>assert.equal(value,2),
     setDynamicSteps:(value:typeof steps)=>steps=value,setCustomizationStep:()=>{},})(original);
@@ -340,7 +340,7 @@ test('editing an old draft uses current milk options while preserving the origin
   assert.equal(selected.price,65);assert.equal(selected.basePrice,50);assert.equal(JSON.stringify(useCartStore.getState().items[0]),snapshot);
   handler('handleConfirmAdd',{selectedProduct:selected,products,items:[original],editingItemId:original.id,editingQuantity:2,dynamicSteps:steps,
     customizeProduct,activeExtras:extras,productNote:'sin hielo',productAvailable:()=>true,replaceItem:useCartStore.getState().replaceItem,
-    setEditingItemId:()=>{},setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},alert:()=>assert.fail()})();
+    closeCustomization:()=>{},alert:()=>assert.fail()})();
   const saved=useCartStore.getState().items[0];assert.equal(saved.quantity,2);assert.equal(saved.product.price,65);assert.equal(saved.product.note,'sin hielo');assert.deepEqual(saved.product.displayExtras,extras);
   useCartStore.getState().clearCart();
 });

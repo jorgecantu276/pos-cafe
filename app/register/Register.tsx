@@ -6,7 +6,7 @@ import DrawerGate from './DrawerGate';
 import { loadDrawerStatus, recoverDrawerRequest, beginDrawerHandoff, enrollCustomer, hasDrawerRequest, type DrawerStatus } from '@/lib/drawer';
 import PrototypeRegister, {PrototypeCheckout, PrototypeCustomization} from './PrototypeRegister';
 import './prototype.css';
-import WorkspaceRegister, { MenuVariantDialog, WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
+import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
 import RecentTickets from './RecentTickets';
 import ClipPaymentStatus from './ClipPaymentStatus';
 import { loadRegisterShortcuts } from '@/lib/register-shortcuts';
@@ -157,8 +157,8 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   const [showPostSaleModal, setShowPostSaleModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null);
-  const ownerCards = useMemo(() => appearance === 'owner' || selectedFamilyId ? menuCards(products) : [], [appearance, products, selectedFamilyId]);
-  const selectedFamily = ownerCards.find(card => card.id === selectedFamilyId);
+  const cards = useMemo(() => menuCards(products), [products]);
+  const selectedFamily = cards.find(card => card.id === selectedFamilyId);
   const [activeExtras, setActiveExtras] = useState<CartExtra[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingQuantity, setEditingQuantity] = useState(1);
@@ -573,9 +573,28 @@ const handleSaveAndClose = async () => {
 
   const handleMenuCardClick = useCallback((card: MenuCard) => {
     if (!cartDraft.current || draftError || loading || loadError || !menuCardAvailable(card)) return;
-    if (card.variants && card.variants.length > 1) setSelectedFamilyId(card.id);
+    if (card.variants && card.variants.length > 1) {
+      setSelectedProduct(null);
+      setEditingItemId(null);
+      setProductNote('');
+      setActiveExtras([]);
+      setDynamicSteps([]);
+      setCustomizationStep(0);
+      setSelectedFamilyId(card.id);
+    }
     else handleProductClick(card.variants?.[0].product ?? card);
   }, [draftError, loading, loadError, handleProductClick]);
+
+  const handleVariant = (id: string) => {
+    const product = selectedFamily?.variants?.find(variant => variant.product.id === id)?.product;
+    if (!product || !productAvailable(product) || selectedProduct?.id === id) return;
+    const steps = buildWizardSteps(product);
+    setSelectedProduct(product);
+    setDynamicSteps(steps);
+    setActiveExtras(previous => previous.filter(extra =>
+      steps.some(step => step.id === extra.phase && step.options.includes(extra.name))));
+    setCustomizationStep(0);
+  };
 
   const handleEditItem = (item: CartItem) => {
     const current = products.find(product => product.id === item.product.id);
@@ -584,6 +603,8 @@ const handleSaveAndClose = async () => {
     const steps = configured.length ? configured : [{id:'notes',title:'Notas',options:[],exclusive:false}];
 
     setSelectedProduct(editable);
+    setSelectedFamilyId(cards.find(card => (card.variants?.length ?? 0) > 1 &&
+      card.variants?.some(variant => variant.product.id === item.product.id))?.id ?? null);
     setActiveExtras(item.product.displayExtras || []);
     setProductNote(item.product.note || '');
     setEditingItemId(item.id);
@@ -602,10 +623,28 @@ const handleSaveAndClose = async () => {
     const productWithExtras = customizeProduct(selectedProduct, activeExtras, productNote);
     if (editingItemId) replaceItem(editingItemId, productWithExtras, editingQuantity);
     else addItem(productWithExtras);
+    closeCustomization();
+  };
+
+  const closeCustomization = () => {
+    setSelectedFamilyId(null);
     setEditingItemId(null);
     setSelectedProduct(null);
     setActiveExtras([]);
     setProductNote('');
+  };
+
+  const chooseExtra = (name: string, index = customizationStep) => {
+    const step = dynamicSteps[index];
+    const matches = (extra: CartExtra) => extra.name === name && (!extra.phase || extra.phase === step.id);
+    const selected = activeExtras.some(matches);
+    const extra = dbExtras.find(e => e.phase === step.id && e.name === name && e.active);
+    if (!extra) return;
+    setActiveExtras(selected ? activeExtras.filter(e => !matches(e)) : [
+      ...activeExtras.filter(e => !step.exclusive || e.phase !== step.id),
+      { id: extra.id, phase: step.id, name, price: Number(extra.price ?? 0) },
+    ]);
+    if (appearance === 'prototype' && !selected && step.exclusive) setCustomizationStep(Math.min(customizationStep + 1, lastStepIndex));
   };
 
   const handleOpenCheckout = () => {
@@ -834,7 +873,7 @@ const handleSaveAndClose = async () => {
     fetchData();
   };
 
-  const filteredProducts = appearance === 'owner' ? ownerCards.filter(p => matchesMenuCard(p, searchTerm)) : [];
+  const filteredProducts = appearance === 'owner' ? cards.filter(p => matchesMenuCard(p, searchTerm)) : [];
   const groupedProducts = filteredProducts.reduce<Record<string, MenuCard[]>>((acc, p) => {
     const cat = p.category || "Sin Categoría";
     if (!acc[cat]) acc[cat] = [];
@@ -852,7 +891,11 @@ const handleSaveAndClose = async () => {
   const RegisterView = appearance === 'workspace' ? WorkspaceRegister : PrototypeRegister;
   const CheckoutView = appearance === 'workspace' ? WorkspaceCheckout : PrototypeCheckout;
   const PaymentView=selectedPhoneOrder?WorkspaceCheckout:CheckoutView;
-  const CustomizationView = appearance === 'workspace' ? WorkspaceCustomization : PrototypeCustomization;
+  const customizationProps = {
+    steps: dynamicSteps, index: customizationStep, extras: activeExtras, dbExtras,
+    note: productNote, onNote: setProductNote, onStep: setCustomizationStep,
+    onOption: chooseExtra, onConfirm: handleConfirmAdd, onClose: closeCustomization,
+  };
   const drawerBlocked = Boolean(showApertura && drawer && (drawer.handoff || (drawer.active && drawer.active.cashier_id !== drawerActor) || drawer.rate === null));
   const phoneNotice=<>{(phonePending||phoneError)&&<div role="alert" className="phone-order-notice"><div><strong>{phonePending?'Pedido sin confirmar':'Revisa el pedido'}</strong><span>{phoneError||'Comprueba si se guardó antes de volver a enviarlo.'}</span></div>{phonePending&&<button type="button" disabled={phoneBusy||isProcessingCheckout} onClick={()=>void handlePhoneRequest(true)}>Comprobar pedido</button>}{!phonePending&&<button type="button" onClick={()=>void fetchData()}>Revisar pedido</button>}</div>}{savedPhone&&<div role="status" className="phone-order-notice"><span>{phonePrintNotice||(savedPhone.status==='paid'?`Pedido #${savedPhone.folio} pagado`:savedPhone.status==='cancelled'?`Pedido #${savedPhone.folio} cancelado. Avisa a barra.`:`Pedido #${savedPhone.folio} guardado · Sin pagar`)}</span><button type="button" onClick={()=>{setSavedPhone(null);setShowPhoneOrders(true);}}>Ver pedidos</button><button type="button" aria-label="Cerrar aviso de pedido guardado" onClick={()=>setSavedPhone(null)}>×</button></div>}</>;
 
@@ -1414,21 +1457,12 @@ const handleSaveAndClose = async () => {
         pagerNumber={selectedPhoneOrder?null:pagerNumber} onPagerNumber={selectedPhoneOrder?undefined:setPagerNumber} clipEnabled={clipEnabled} phoneOrderLabel={selectedPhoneOrder?`Pedido por teléfono #${selectedPhoneOrder.folio} · ${selectedPhoneOrder.contact_name}`:undefined}
         orderType={selectedPhoneOrder?.snapshot.order_type??orderType} note={selectedPhoneOrder?.snapshot.order_note??orderNote} busy={isProcessingCheckout} insufficient={isPaymentInsufficient} onMethod={method=>{if(method===paymentMethod)return;setPaymentMethod(method);setAmountReceivedMXN('');setAmountReceivedUSD('');}}
         onMXN={setAmountReceivedMXN} onUSD={setAmountReceivedUSD} onOrderType={selectedPhoneOrder?()=>{}:setOrderType} onNote={selectedPhoneOrder?()=>{}:setOrderNote} onConfirm={()=>void processCheckout()} onClose={()=>{setShowCheckoutModal(false);setSelectedPhoneOrder(null);}}/>}
-      {selectedFamily && <MenuVariantDialog card={selectedFamily} onClose={() => setSelectedFamilyId(null)} onChoose={id => {
-        const variant = selectedFamily.variants?.find(({ product }) => product.id === id);
-        if (variant) { setSelectedFamilyId(null); handleProductClick(variant.product); }
-      }} />}
-      {selectedProduct&&dynamicSteps.length>0&&appearance!=='owner'&&<CustomizationView product={selectedProduct} steps={dynamicSteps} index={customizationStep} extras={activeExtras} dbExtras={dbExtras}
-        note={productNote} onNote={setProductNote} onStep={setCustomizationStep}
-        quantity={editingItemId?editingQuantity:undefined}
-        onQuantity={setEditingQuantity}
-        onRemove={editingItemId?()=>{removeItem(editingItemId);setSelectedProduct(null);setEditingItemId(null);setActiveExtras([]);setProductNote('');}:undefined}
-        onOption={(optName:string,stepIndex:number=customizationStep)=>{
-          const step=dynamicSteps[stepIndex],matches=(extra:CartExtra)=>extra.name===optName&&(!extra.phase||extra.phase===step.id);
-          const selected=activeExtras.some(matches),extra=dbExtras.find(e=>e.phase===step.id&&e.name===optName);
-          setActiveExtras(selected?activeExtras.filter(e=>!matches(e)):[...activeExtras.filter(e=>!step.exclusive||e.phase!==step.id),{id:extra?.id,phase:step.id,name:optName,price:Number(extra?.price??0)}]);
-          if(appearance==='prototype'&&!selected&&step.exclusive)setCustomizationStep(Math.min(customizationStep+1,lastStepIndex));
-        }} onConfirm={handleConfirmAdd} onClose={()=>{setSelectedProduct(null);setEditingItemId(null);setActiveExtras([]);setProductNote('');}}/>}
+      {(selectedFamily || (appearance === 'workspace' && selectedProduct)) && <WorkspaceCustomization
+        {...customizationProps} product={selectedProduct} family={selectedFamily} onVariant={handleVariant}
+        quantity={editingItemId ? editingQuantity : undefined} onQuantity={setEditingQuantity}
+        onRemove={editingItemId ? () => { removeItem(editingItemId); closeCustomization(); } : undefined} />}
+      {!selectedFamily && selectedProduct && appearance === 'prototype' && <PrototypeCustomization
+        {...customizationProps} product={selectedProduct} />}
       {/* 🟢 CHECKOUT DIVIDIDO EN 2 PASOS */}
       {showCheckoutModal && appearance==='owner'&&!selectedPhoneOrder && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
@@ -1588,7 +1622,7 @@ const handleSaveAndClose = async () => {
       )}
 
       {/* WIZARD ACTUALIZADO */}
-      {selectedProduct && dynamicSteps.length > 0 && appearance==='owner' && (
+      {!selectedFamily && selectedProduct && dynamicSteps.length > 0 && appearance==='owner' && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-[130] flex items-center justify-center p-4">
           <div className="bg-white rounded-[32px] w-full max-w-xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
 

@@ -78,7 +78,7 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
   async function startPhone(page,name,quantity=1){
     await page.getByRole('region',{name:'Productos del menú'}).getByRole('button',{name:/^Iced Coffee,/i}).click();
     await page.getByRole('dialog',{name:'Iced Coffee',exact:true}).getByRole('button',{name:/^Caramelo\s*\$/}).click();
-    const dialog=page.getByRole('dialog',{name:'Iced coffee caramelo',exact:true});await dialog.getByRole('button',{name:/^almendra/i}).click();
+    const dialog=page.getByRole('dialog',{name:'Iced Coffee',exact:true});await dialog.getByRole('button',{name:/^almendra/i}).click();
     await dialog.getByRole('button',{name:'Agregar a la orden',exact:true}).click();
     if(quantity>1){await page.getByRole('button',{name:'Editar Iced coffee caramelo',exact:true}).click();
       for(let n=1;n<quantity;n++)await dialog.getByRole('button',{name:'Aumentar cantidad',exact:true}).click();

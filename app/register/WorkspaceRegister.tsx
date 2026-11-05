@@ -13,7 +13,10 @@ type RegisterProps = ComponentProps<typeof import('./PrototypeRegister').default
   favoriteProductIds?: readonly string[]; favoritesError?: string; favoritesLoading?: boolean; onRetryFavorites?: () => void; recentTicketsContent?: ReactNode;
 };
 type CheckoutProps = ComponentProps<typeof import('./PrototypeRegister').PrototypeCheckout>;
-type CustomizationProps = Omit<ComponentProps<typeof import('./PrototypeRegister').PrototypeCustomization>, 'onOption'> & {
+type CustomizationProps = Omit<ComponentProps<typeof import('./PrototypeRegister').PrototypeCustomization>, 'onOption' | 'product'> & {
+  product: ComponentProps<typeof import('./PrototypeRegister').PrototypeCustomization>['product'] | null;
+  family?: MenuCard;
+  onVariant?: (id: string) => void;
   onOption: (name: string, stepIndex: number) => void;
   quantity?: number; onQuantity?: (value: number) => void; onRemove?: () => void;
 };
@@ -59,19 +62,6 @@ const ProductButton = memo(function ProductButton({ product, disabled, onProduct
     <span className="workspace-product-copy"><strong>{product.name}</strong><span>{menuCardPrice(product)}</span>{productStockLabel(product) && <small>{productStockLabel(product)}</small>}</span>
   </button>;
 });
-
-export function MenuVariantDialog({ card, onChoose, onClose }: { card: MenuCard; onChoose: (id: string) => void; onClose: () => void }) {
-  return <WorkspaceDialog title={card.name} onClose={onClose}>
-    <div className="workspace-dialog-content">
-      <fieldset className="workspace-modifier-group"><legend>{card.variantTitle}</legend><div>
-        {card.variants?.map(({ product, label }) =>
-          <button type="button" key={product.id} disabled={!productAvailable(product)} onClick={() => onChoose(product.id)}>
-            {label}<span>{productAvailable(product) ? money(Number(product.price)) : 'Agotado'}</span>
-          </button>)}
-      </div></fieldset>
-    </div>
-  </WorkspaceDialog>;
-}
 
 export default function WorkspaceRegister(p: RegisterProps) {
   const [panel, setPanel] = useState<'customer' | 'ticket' | 'note' | null>(null);
@@ -179,10 +169,21 @@ export default function WorkspaceRegister(p: RegisterProps) {
 
 export function WorkspaceCustomization(p: CustomizationProps) {
   const [notes, setNotes] = useState(false);
+  const [showVariants, setShowVariants] = useState(false);
+  const variant = p.family?.variants?.find(({ product }) => product.id === p.product?.id);
   const choices = p.steps.map((step, index) => ({ step, index })).filter(({ step }) => step.id !== 'notes');
   const missingChoice = choices.some(({ step }) => step.required && !p.extras.some(extra => extra.phase === step.id && step.options.includes(extra.name)));
-  return <WorkspaceDialog title={p.product.name} onClose={p.onClose} className="workspace-customization"><div className="workspace-dialog-content">
+  return <WorkspaceDialog title={p.family?.name ?? p.product?.name ?? 'Producto'} onClose={p.onClose} className="workspace-customization"><div className="workspace-dialog-content">
     {p.quantity !== undefined && <div className="workspace-edit-quantity"><span>Cantidad</span><button type="button" aria-label="Reducir cantidad" disabled={p.quantity <= 1} onClick={() => p.onQuantity?.(p.quantity! - 1)}><Minus size={22} /></button><strong>{p.quantity}</strong><button type="button" aria-label="Aumentar cantidad" onClick={() => p.onQuantity?.(p.quantity! + 1)}><Plus size={22} /></button></div>}
+    {p.family && <fieldset className="workspace-modifier-group"><legend>{p.family.variantTitle}</legend><div>
+      {variant && !showVariants
+        ? <button type="button" aria-label={`Cambiar variante: ${variant.label}`} onClick={() => setShowVariants(true)}>{variant.label}<span>Cambiar</span></button>
+        : p.family.variants?.map(({ product, label }) =>
+          <button type="button" key={product.id} disabled={!productAvailable(product)} aria-pressed={product.id === p.product?.id}
+            onClick={() => { p.onVariant?.(product.id); setShowVariants(false); }}>
+            {label}<span>{productAvailable(product) ? money(Number(product.price)) : 'Agotado'}</span>
+          </button>)}
+    </div></fieldset>}
     {choices.map(({ step, index }) => <fieldset className="workspace-modifier-group" key={step.id}><legend>{step.title.replace(/^Seleccionar /, '')}{step.required && ' (elige uno)'}</legend><div>{step.options.map(name => {
       const extra = p.dbExtras.find(extra => extra.name === name && extra.phase === step.id);
       const selected = p.extras.some(extra => extra.name === name && (!extra.phase || extra.phase === step.id));
@@ -190,7 +191,7 @@ export function WorkspaceCustomization(p: CustomizationProps) {
     })}</div></fieldset>)}
     <button type="button" className="workspace-note-toggle" aria-expanded={notes} onClick={() => setNotes(!notes)}><Pencil size={17} />{p.note || 'Nota de preparación'}</button>
     {notes && <><textarea aria-label="Notas de preparación" rows={2} value={p.note} maxLength={1000} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
-  </div><footer>{p.onRemove && <button type="button" onClick={p.onRemove}>Quitar</button>}<span className="workspace-custom-price">{money((p.quantity ?? 1) * (Number(p.product.basePrice ?? p.product.price) + p.extras.reduce((sum, extra) => sum + extra.price, 0)))}</span><button type="button" className="workspace-primary" disabled={missingChoice} onClick={p.onConfirm}>{p.quantity !== undefined ? 'Guardar cambios' : 'Agregar a la orden'}</button></footer></WorkspaceDialog>;
+  </div><footer>{p.onRemove && <button type="button" onClick={p.onRemove}>Quitar</button>}{p.product && <span className="workspace-custom-price">{money((p.quantity ?? 1) * (Number(p.product.basePrice ?? p.product.price) + p.extras.reduce((sum, extra) => sum + extra.price, 0)))}</span>}<button type="button" className="workspace-primary" disabled={!p.product || missingChoice} onClick={p.onConfirm}>{p.quantity !== undefined ? 'Guardar cambios' : 'Agregar a la orden'}</button></footer></WorkspaceDialog>;
 }
 
 export function WorkspaceCheckout(p: CheckoutProps) {
