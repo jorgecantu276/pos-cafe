@@ -36,8 +36,13 @@ test('customer receipt omits issuer name and CFDI wording while preserving remai
   for(const expected of [testIssuer.rfc,testIssuer.taxRegime,testIssuer.establishmentAddress,testIssuer.postalCode,'Folio: 1234','P.UNITARIO','$110.00','$220.00','TOTAL: $220.00 MXN'])assert.ok(receipt.includes(expected));
   assert.ok(!receipt.includes(testIssuer.legalName));
   assert.equal(docs.customer.issuerComplete,true);assert.equal(docs.customer.testOnly,true);
+  assert.match(receipt,/PRUEBA DE IMPRESIÓN · NO ES UNA VENTA/);
+  for (const document of Object.values(saleDocuments(sale(), {issuer:testIssuer}))) {
+    assert.doesNotMatch(document.sections.flat().join(' '),/PRUEBA DE IMPRESIÓN|NO ES UNA VENTA|NO PREPARAR|INTENTO/i);
+  }
   assert.doesNotMatch(receipt,/CFDI|CDFI|IVA\s*(?:8|16)|mismo día|30 días|UUID|Sello Digital/i);
   const draft=saleDocuments(sale()).customer;
+  assert.doesNotMatch(draft.sections.flat().join(' '),/PRUEBA DE IMPRESIÓN|NO ES UNA VENTA/i);
   assert.equal(draft.issuerComplete,false);assert.match(draft.sections.flat().join(' '),/\[RFC DEL EMISOR\].*\[RÉGIMEN FISCAL\].*\[DOMICILIO DEL ESTABLECIMIENTO\]/);
   assert.doesNotMatch(draft.sections.flat().join(' '),/NOMBRE O RAZÓN SOCIAL/);
   const label=docs.barista;

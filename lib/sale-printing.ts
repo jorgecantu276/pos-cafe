@@ -49,7 +49,7 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
   add('Teléfono: +52 868 305 4668', 'phone');
   add('', 'separator');
   add('TICKET DE VENTA', 'receipt-heading');
-  if (options.testOnly || !issuerComplete) add('PRUEBA DE IMPRESIÓN · NO ES UNA VENTA', 'heading');
+  if (options.testOnly) add('PRUEBA DE IMPRESIÓN · NO ES UNA VENTA', 'heading');
   add(`Folio: ${ticket} · ${date}`);
   add(`Cliente: ${text(order.customer_name) || 'Público en general'}`);
   const phone=order as SavedOrder & {phone_order_id?:string;phone_folio?:number|string};

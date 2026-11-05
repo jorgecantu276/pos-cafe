@@ -26,7 +26,7 @@ import * as drafts from '../lib/cart-draft';
 import * as shiftState from '../lib/shift-state';
 import PrintDispatch from '../app/register/PrintDispatch';
 import PrototypeRegister, { PrototypeCheckout, PrototypeCustomization } from '../app/register/PrototypeRegister';
-import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from '../app/register/WorkspaceRegister';
+import WorkspaceRegister, { MenuVariantDialog, WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from '../app/register/WorkspaceRegister';
 import PagerPicker from '../app/register/PagerPicker';
 import PhoneOrders,{PhoneOrderContact} from '../app/register/PhoneOrders';
 import * as phoneOrders from '../lib/phone-orders';
@@ -80,7 +80,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
   const imports:Record<string,unknown>={ '@/lib/drawer':drawer,'./DrawerGate':{default:DrawerGate,__esModule:true},'@/lib/request-deadline':deadline, '@/lib/receipt-reprint':reprint, '@/lib/supabase':{supabase:client},'@/store/useCartStore':cart,'@/lib/checkout':checkout,
     '@/lib/printing':printing,'@/lib/sale-printing':salePrinting,'./PrintDispatch':{default:PrintDispatch,__esModule:true},'./printing.css':{},
     '@/lib/shift':shift,'@/lib/shift-state':shiftState,'./PrototypeRegister':{default:PrototypeRegister,PrototypeCheckout,PrototypeCustomization,__esModule:true},'./prototype.css':{},'./PagerPicker':{default:PagerPicker,__esModule:true},'./PhoneOrders':{default:PhoneOrders,PhoneOrderContact,__esModule:true},'@/lib/phone-orders':phoneOrders,
-    './WorkspaceRegister':{default:WorkspaceRegister,WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog,__esModule:true},'./workspace.css':{},
+    './WorkspaceRegister':{default:WorkspaceRegister,MenuVariantDialog,WorkspaceCheckout,WorkspaceCustomization,WorkspaceOpening,WorkspaceDialog,__esModule:true},'./workspace.css':{},
     '@/lib/pos-types':types,'@/lib/use-resource':resource,'@/lib/cart-draft':drafts,'next/navigation':{useRouter:()=>router}};
   const source=readFileSync(new URL('../app/register/Register.tsx',import.meta.url),'utf8');
   imports['@/lib/register-shortcuts'] = shortcuts; imports['@/lib/catalog-management'] = catalogManagement;
@@ -99,17 +99,20 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     const keyboard=dom.window.document.querySelector(selector)!;assert.ok(keyboard);
     for(const character of note)await click(button(character===' '?'Espacio':character,keyboard));
   };
-  async function add(name:string,milk:string,note:string){
-    const product=[...dom.window.document.querySelectorAll('.workspace-product')].find(p=>p.querySelector('strong')?.textContent===name);assert.ok(product);
-    await click(product);await click(button(milk));await click(button('Nota de preparación'));await typeNote(note);await click(button('Agregar a la orden'));
+  async function add(flavor:string,milk:string,note:string){
+    const cards=[...dom.window.document.querySelectorAll('.workspace-product')].filter(p=>p.querySelector('strong')?.textContent?.startsWith('Iced Coffee'));
+    assert.equal(cards.length,1);
+    await click(cards[0]);
+    await click(button(`${flavor}$95.00`,dom.window.document.querySelector('dialog[aria-label="Iced Coffee"]')!));
+    await click(button(milk));await click(button('Nota de preparación'));await typeNote(note);await click(button('Agregar a la orden'));
   }
   cart.useCartStore.getState().clearCart();
   try{
     await act(async()=>root.render(createElement(exports.default!,{appearance:'workspace'})));
-    await add('Iced coffee caramelo','Leche de avena+$15.00','sin hielo');
-    await add('Iced coffee caramelo','Entera','extra hielo');
-    await add('Iced coffee caramelo','Leche de avena+$15.00','sin hielo');
-    await add('Iced coffee vainilla','Almendra+$15.00','sin tapa');
+    await add('Caramelo','Leche de avena+$15.00','sin hielo');
+    await add('Caramelo','Entera','extra hielo');
+    await add('Caramelo','Leche de avena+$15.00','sin hielo');
+    await add('Vainilla','Almendra+$15.00','sin tapa');
     assert.equal(cart.useCartStore.getState().items.length,3);assert.equal(cart.useCartStore.getState().getTotal(),425);
     assert.deepEqual(cart.useCartStore.getState().items.map(i=>i.quantity),[2,1,1]);
     await click(button('Cambiar cantidad de Iced coffee caramelo, 2 en la orden'));
