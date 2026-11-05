@@ -8,7 +8,7 @@ interface Reply { mode: 'mock' | 'windows'; jobs: SalePrintJob[]; canManage?: bo
 const labels = { customer: 'Ticket del cliente', barista: 'Etiquetas del barista' };
 const stateLabels: Record<SalePrintJob['state'], string> = {
   queued: 'En espera', preparing: 'Preparando impresión…', submitting: 'Enviando…',
-  submitted: 'Enviado', blocked: 'Impresión detenida', uncertain: 'Salida por comprobar', cancelled: 'Cancelado',
+  submitted: 'Enviado a Windows', blocked: 'Impresión detenida', uncertain: 'Salida por comprobar', cancelled: 'Cancelado',
 };
 export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkoutKey: string; latestOrderId?: string }) {
   const [jobs, setJobs] = useState<SalePrintJob[]>([]), [error, setError] = useState(''), [mode, setMode] = useState('');
@@ -101,10 +101,10 @@ export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkout
         <strong>#{job.ticket} · {labels[job.audience]}</strong><p>{stateLabels[job.state]}</p>
         {['blocked','uncertain'].includes(job.state) && <details><summary>Detalles de impresión</summary><p>{job.queue}</p><p>{job.message}</p></details>}
         {job.state === 'blocked' && <button disabled={busy} onClick={() => { void refresh.current(job.orderId, job.audience); }}>Reintentar {job.audience === 'customer' ? 'cliente' : 'barra'}</button>}
-        {['uncertain', 'submitting'].includes(job.state) && <p>Comprueba si salió el papel antes de volver a imprimir. Si no estás seguro, avisa al responsable.</p>}
+        {['uncertain', 'submitting'].includes(job.state) && <p>Revisa el papel y la cola de Windows antes de imprimir otra copia. Si hay dudas, avisa al responsable.</p>}
       </div>)}
-      {!shown.length && !error && <p>El ticket y las etiquetas se imprimen al guardar la venta.</p>}
-      {attention.length>0&&<p>Revisa estas impresiones antes de entregar la caja.</p>}
+      {!shown.length && !error && <p>{mode ? 'Sin impresiones pendientes.' : 'Comprobando impresión…'}</p>}
+      {attention.length>0&&<p>Revisa las copias pendientes antes de entregar la caja.</p>}
       {canManage&&<a href="/admin/impresion">Comprobar impresión</a>}
       <button disabled={busy} onClick={() => { void refresh.current(); }}>{busy ? 'Comprobando…' : 'Actualizar impresión'}</button>
     </div>

@@ -19,7 +19,7 @@ async function handle(request: Request) {
     return Response.json(result, { headers });
   } catch (error) {
     return Response.json({ error: error instanceof AccessError ? error.message
-      : 'No se pudo abrir la impresión local. Revisa la configuración y el registro en disco. La venta ya está guardada; no vuelvas a cobrar.' },
+      : 'La impresión no está disponible. Avisa al responsable. No vuelvas a cobrar para imprimir.' },
       { status: error instanceof AccessError ? error.status : 503, headers });
   } finally { journal?.close(); }
 }

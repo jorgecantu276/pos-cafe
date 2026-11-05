@@ -63,8 +63,7 @@ public static class CafeDesktopPrinter {
         }
         RectangleF area = document.DefaultPageSettings.PrintableArea;
         InitializeFonts(points);
-        // Keep the installed 57 x 32 mm form; rotate the logical 32 x 57 mm
-        // artwork inside that page, as physically accepted on October 31.
+        // Rotate the logical 32 x 57 mm artwork inside the installed 57 x 32 mm form.
         rotateLabel = verticalLabel;
         physicalPageWidth = area.Width * 0.72f;
         pageWidth = (rotateLabel ? area.Height : area.Width) * 0.72f;

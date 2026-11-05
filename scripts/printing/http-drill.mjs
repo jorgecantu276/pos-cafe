@@ -197,5 +197,5 @@ try {
     scope: 'Isolated production Next.js; own loopback Auth/PostgREST fixtures and simulated printers only. No live café or source-staging access.',
     simulatedSpoolJobs: (await spool()).length, buildId: (await readFile(path.join(app.app, '.next/BUILD_ID'), 'utf8')).trim(), directory };
   await writeFile(path.join(work, 'printing-acceptance/http-result.json'), JSON.stringify(result, null, 2));
-  console.log('PASS completed production HTTP acceptance; no physical print jobs');
+  console.log('PASS printing HTTP checks with simulated printers');
 } finally { await app?.stop(); if (backend) await new Promise(resolve => backend.close(resolve)); }

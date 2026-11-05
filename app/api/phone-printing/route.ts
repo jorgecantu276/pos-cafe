@@ -16,7 +16,7 @@ async function handle(request:Request){
     journal=new PrintJournal(path.join(config.directory,`${config.mode}-jobs.sqlite`),printerAdapter(config));
     return Response.json(await handlePhonePrintRequest(request,await serverSupabase(),journal,config),{headers});
   }catch(error){
-    return Response.json({error:error instanceof AccessError?error.message:'No se pudo abrir la impresión local del pedido. Comprueba su estado antes de imprimir otra copia.'},
+    return Response.json({error:error instanceof AccessError?error.message:'La impresión del pedido no está disponible. Revisa su estado antes de imprimir otra copia.'},
       {status:error instanceof AccessError?error.status:503,headers});
   }finally{journal?.close();}
 }

@@ -28,9 +28,9 @@ export async function handlePhonePrintRequest(request:Request,client:SupabaseCli
     ||(input.audience!==undefined&&!['customer','barista'].includes(input.audience))
     ||(input.action!==undefined&&!['retry','confirm_printed','replace_missing'].includes(input.action)))throw new AccessError('Solicitud de impresión inválida.',400);
   const recovery=input.action!==undefined;
-  if(recovery&&(profile.data.role!=='admin'||!input.audience))throw new AccessError('Esta revisión requiere al responsable y una copia específica.',403);
+  if(recovery&&(profile.data.role!=='admin'||!input.audience))throw new AccessError('Solo el responsable puede revisar una copia. Selecciona el ticket o la etiqueta.',403);
   if(recovery&&(typeof input.requestId!=='string'||!uuid.test(input.requestId)||typeof input.reason!=='string'
-    ||input.reason.trim().length<10||input.reason.length>300||(input.action!=='retry'&&input.confirmed!==true)))throw new AccessError('Confirma la revisión del papel y escribe el motivo.',400);
+    ||input.reason.trim().length<10||input.reason.length>300||(input.action!=='retry'&&input.confirmed!==true)))throw new AccessError('Confirma que revisaste el papel y la cola de Windows. Escribe un motivo de 10 a 300 caracteres.',400);
   if(!recovery&&['requestId','reason','confirmed'].some(key=>key in input))throw new AccessError('Solicitud de impresión inválida.',400);
   const phone=await readPhonePreparation(client,input.phoneOrderId,request.signal),owner=phone.created_by,id=`phone:${phone.id}`;
   if(request.method==='GET')return {mode:config.mode,canManage:profile.data.role==='admin',jobs:journal.get(owner,id)};

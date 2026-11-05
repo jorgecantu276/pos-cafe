@@ -24,8 +24,8 @@ export function renderReceiptReprint(document: SalePrintDocument, status: string
   return `<main style="padding:3mm;font-family:Arial,sans-serif;font-size:11px;line-height:1.4;overflow-wrap:anywhere">
     <h2 style="text-align:center">REIMPRESIÓN</h2>
     ${['cancelled', 'canceled'].includes(status) ? '<h2>VENTA CANCELADA</h2>' : ''}
-    ${source !== 'stored' ? '<p>Generado del registro guardado con los datos actuales del emisor.</p>' : ''}
-    ${source === 'legacy' ? '<p>COMPROBANTE HISTÓRICO: algunos datos de la venta original no fueron registrados.</p>' : ''}
+    ${source !== 'stored' ? '<p>Copia de la venta guardada con los datos fiscales actuales.</p>' : ''}
+    ${source === 'legacy' ? '<p>VENTA ANTIGUA: faltan datos del comprobante original.</p>' : ''}
     ${lines.join('')}
   </main>`;
 }

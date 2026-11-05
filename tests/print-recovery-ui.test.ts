@@ -33,7 +33,7 @@ test('manager recovery page retries outgoing copy, persists lost response identi
     assert.match(dom.window.document.body.textContent!,/Caja saliente/);
     await click('Reintentar esta copia');
     assert.match(dom.window.document.body.textContent!,/Respuesta perdida/);assert.ok(dom.window.localStorage.getItem(bodyKey));
-    await click('Revisar cambio pendiente');
+    await click('Comprobar revisión pendiente');
     assert.deepEqual(calls[0],calls[1]);assert.equal(submitted,1);assert.equal(dom.window.localStorage.getItem(bodyKey),null);
     state='uncertain';await click('Actualizar');await click('Comprobar impresión');
     assert.equal(button('Marcar como impresa').disabled,true);

@@ -96,6 +96,6 @@ for(const appearance of ['owner','prototype','workspace'] as const)test(`actual 
     const collected=payment as checkout.CheckoutPayload|undefined;assert.ok(collected);assert.equal(collected.phone_order_id,'phone-order');assert.equal(collected.pager_number,null);assert.equal(collected.expected_total,50);assert.equal(collected.tender_mxn,50);assert.equal(collected.phone_order_revision,0);assert.equal(collected.customer_id,'existing-member');assert.equal(collected.order_type,'Para Llevar');
     assert.equal(collected.order_note,appearance==='workspace'?'puerta':'');
     assert.equal(cart.useCartStore.getState().getTotal(),50);assert.equal(dom.window.localStorage.getItem(drafts.cartDraftKey('actor')),counterDraft,'Collecting a phone order must not retire the counter draft');
-    await click(button(appearance==='workspace'?'Nueva venta':'Finalizar y Nueva Venta'));assert.equal(cart.useCartStore.getState().items.length,1);assert.equal(cart.useCartStore.getState().phoneOrder,false);assert.deepEqual(alerts,[]);
+    await click(button('Nueva venta'));assert.equal(cart.useCartStore.getState().items.length,1);assert.equal(cart.useCartStore.getState().phoneOrder,false);assert.deepEqual(alerts,[]);
   }finally{await act(async()=>root.unmount());cart.useCartStore.getState().clearCart();dom.window.close();for(const[key,descriptor]of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}}
 });

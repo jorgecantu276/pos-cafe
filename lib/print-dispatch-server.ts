@@ -15,7 +15,7 @@ export function requireLocalPrintRequest(request: Request) {
   const local = ['127.0.0.1', 'localhost', '[::1]'];
   if (!local.includes(url.hostname) || !local.includes(authority.hostname)
     || (origin && origin !== authority.origin) || request.headers.get('x-pos-print') !== '1')
-    throw new AccessError('La impresión automática solo está disponible desde esta caja local.', 403);
+    throw new AccessError('Abre el POS en la PC de caja para imprimir automáticamente.', 403);
 }
 
 export async function handlePrintRequest(request: Request, client: SupabaseClient, journal: PrintJournal, config: PrintConfig) {
@@ -55,14 +55,14 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
     || (input.action !== undefined && !['retry','confirm_printed','replace_missing'].includes(input.action))
     || Object.keys(input).some(key => !['orderId', 'audience','action','requestId','reason','confirmed'].includes(key))) throw new AccessError('Solicitud de impresión inválida.', 400);
   const recovery = input.action !== undefined;
-  if (recovery && (!administrator || !input.audience)) throw new AccessError('Esta revisión requiere al responsable y una copia específica.',403);
+  if (recovery && (!administrator || !input.audience)) throw new AccessError('Solo el responsable puede revisar una copia. Selecciona el ticket o la etiqueta.',403);
   if (recovery && (typeof input.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.requestId)
     || typeof input.reason !== 'string' || input.reason.trim().length<10 || input.reason.length>300
-    || (input.action !== 'retry' && input.confirmed !== true))) throw new AccessError('Confirma la revisión de papel y cola, y escribe un motivo de 10 a 300 caracteres.',400);
+    || (input.action !== 'retry' && input.confirmed !== true))) throw new AccessError('Confirma que revisaste el papel y la cola de Windows. Escribe un motivo de 10 a 300 caracteres.',400);
   if (!recovery && ['requestId','reason','confirmed'].some(key => key in input)) throw new AccessError('Solicitud de impresión inválida.',400);
   // Browser supplies only identity, never prices, preparation text, queue names or paths.
   const sale = await withDeadline(() => client.from('orders').select('id,ticket_number,status,cashier_id,receipt_snapshot').eq('id', input.orderId).abortSignal(signal).single(), { signal });
-  if (sale.error) throw new AccessError('No se pudo consultar la venta confirmada. Reintenta impresión; no vuelvas a cobrar.', sale.error.code === 'PGRST116' ? 404 : 503);
+  if (sale.error) throw new AccessError('No se pudo consultar la venta. Actualiza la impresión; no vuelvas a cobrar.', sale.error.code === 'PGRST116' ? 404 : 503);
   if (!sale.data || (sale.data.cashier_id !== user.id && !administrator)) throw new AccessError('La venta no pertenece a esta caja.', 403);
   const owner = sale.data.cashier_id;
   if (owner !== user.id && (!recovery || !journal.get(owner,input.orderId).length))
@@ -100,7 +100,7 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
     const guardSignal = AbortSignal.any([request.signal, AbortSignal.timeout(12_000)]);
     const current = await withDeadline(() => client.from('orders').select('status,cashier_id').eq('id', order.id).abortSignal(guardSignal).single(), { signal: guardSignal });
     if (current.error || !current.data || current.data.cashier_id !== owner)
-      throw new Error('No se pudo confirmar la venta antes de imprimir. Recupera esta misma copia; no vuelvas a cobrar.');
+      throw new Error('No se pudo comprobar la venta. Reintenta esta copia; no vuelvas a cobrar.');
     return current.data.status === 'completed';
   }),preparation?dispatchPhonePreparation(client,journal,preparation,request.signal):Promise.resolve()]);
   return { mode: config.mode, canManage: administrator,...(phoneSale?{expectedCopies:1}:{}),jobs};

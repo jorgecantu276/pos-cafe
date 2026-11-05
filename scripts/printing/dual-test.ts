@@ -17,13 +17,13 @@ const root = path.dirname(fileURLToPath(import.meta.url)); process.chdir(root);
 const args = process.argv.slice(2);
 assert(args.every(arg => ['--preview','--print','--simulate'].includes(arg) || arg.startsWith('--existing-root=')), 'Argumento inválido');
 assert(args.filter(arg => ['--preview','--print','--simulate'].includes(arg)).length <= 1, 'Elige un solo modo');
-assert.equal(args.filter(arg => arg.startsWith('--existing-root=')).length,1,'Indica la carpeta ORIGINAL una sola vez');
+assert.equal(args.filter(arg => arg.startsWith('--existing-root=')).length,1,'Indica una sola carpeta del paquete original.');
 const rootArg = args.find(arg=>arg.startsWith('--existing-root='))!.slice('--existing-root='.length);
 assert(path.isAbsolute(rootArg) && !/^(?:\\\\|\/\/)/.test(rootArg), 'Usa la ruta local absoluta del paquete original');
 const original = realpathSync(rootArg), simulate = args.includes('--simulate'), physical = args.includes('--print');
 const mode = simulate ? 'mock' : 'windows';
 const directory = path.join(original,'runtime',mode), filename = path.join(directory,`${mode}-jobs.sqlite`);
-assert(existsSync(filename),'Falta el registro ORIGINAL. DETENTE; no crees otro registro.');
+assert(existsSync(filename),'Falta el registro original. Busca su carpeta antes de continuar; no crees otro.');
 assert.equal(realpathSync(directory).toLowerCase(),directory.toLowerCase(),'El registro no puede redirigir a otra carpeta');
 assert.equal(realpathSync(filename).toLowerCase(),filename.toLowerCase(),'El registro no puede redirigir a otro archivo');
 function snapshot(): {jobs:Record<string,unknown>[];sources:Record<string,unknown>[];reviews:Record<string,unknown>[]} {
@@ -32,7 +32,7 @@ function snapshot(): {jobs:Record<string,unknown>[];sources:Record<string,unknow
     sources:db.prepare('SELECT * FROM sale_sources ORDER BY order_id').all(),reviews:db.prepare('SELECT * FROM recovery_audit ORDER BY request_id').all()})); }
   finally {db.close();}
 }
-const before = snapshot();assert(before.jobs.length>0,'El registro está vacío. Localiza el ORIGINAL; no uses uno nuevo.');
+const before = snapshot();assert(before.jobs.length>0,'El registro está vacío. Busca el registro original antes de continuar.');
 const beforeHash = createHash('sha256').update(JSON.stringify(before)).digest('hex');
 const issuer = readReceiptIssuer({POS_RECEIPT_ISSUER_FILE:path.join(original,'receipt-issuer.json')});
 assert(issuer,'Faltan los datos locales del emisor; no inventes ni reemplaces el perfil.');
@@ -75,7 +75,7 @@ if (!physical && !simulate) {
     priorJobs:before.jobs.length,priorAuditRows:before.reviews.length,journalRecordsSha256:beforeHash,pages:pageCounts,preview:path.join(root,'preview')},null,2));
 } else {
   if (!existsSync(sampleFile)) {
-    assert(!before.jobs.some(job=>job.ticket===order.ticket_number),'Ya existe PRUEBA-D2 pero falta su muestra. DETENTE; no generes otra identidad.');
+    assert(!before.jobs.some(job=>job.ticket===order.ticket_number),'Ya existe PRUEBA-D2, pero falta su muestra. Recupérala antes de continuar; no crees otra.');
     writeFileSync(sampleFile,JSON.stringify(order,null,2),{flag:'wx'});
   }
   const config:PrintConfig={mode,directory,queues:{customer:machine.customer.queue,barista:machine.barista.queue},baristaStock:{widthMm:57.15,heightMm:31.75}};
@@ -103,6 +103,6 @@ if (!physical && !simulate) {
     pages:pageCounts,physicalPaperConfirmed:false,jobs};
   writeFileSync(path.join(directory,'result-dual-layout-v9.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify(result,null,2));
-  console.log('Submitted confirma entrega a Windows, NO salida en papel. Conserva esta muestra y el registro; no fuerces reposiciones.');
+  console.log('El estado submitted indica envío a Windows. Confirma la salida en papel y conserva la muestra y el registro.');
   if(jobs.some(job=>job.state!=='submitted'))process.exitCode=2;
 }

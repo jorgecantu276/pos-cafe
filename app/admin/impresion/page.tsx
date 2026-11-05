@@ -11,7 +11,7 @@ interface Reply {mode:'mock'|'windows';canManage:boolean;actorId:string;jobs:Job
 interface Recovery {orderId:string;audience:PrintAudience;action:PrintRecoveryAction;requestId:string;reason:string;confirmed?:boolean}
 const copy=(audience:PrintAudience)=>audience==='barista'?'Etiqueta del barista':'Ticket del cliente';
 const key=(actor:string)=>`pos_print_recovery:v1:${actor}`;
-const states:Record<Job['state'],string>={queued:'Pendiente',preparing:'Preparando',blocked:'Necesita atención',submitting:'Enviando',submitted:'Enviado',uncertain:'Por comprobar',cancelled:'Cancelado'};
+const states:Record<Job['state'],string>={queued:'Pendiente',preparing:'Preparando',blocked:'Necesita atención',submitting:'Enviando',submitted:'Enviado a Windows',uncertain:'Por comprobar',cancelled:'Cancelado'};
 
 export default function PrintRecoveryPage(){
   const [data,setData]=useState<Reply|null>(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false);
@@ -40,11 +40,11 @@ export default function PrintRecoveryPage(){
       const reply=await response.json();
       if(!response.ok){
         if([400,403,404,409].includes(response.status)){localStorage.removeItem(key(data.actorId));setPending(null);}
-        throw Error(reply.error||'No se confirmó la revisión. Comprueba su estado antes de imprimir otra copia.');
+        throw Error(reply.error||'Revisión sin confirmar. Consulta su estado antes de imprimir otra copia.');
       }
-      if(!Array.isArray(reply.jobs))throw Error('No se confirmó la revisión. Comprueba su estado antes de imprimir otra copia.');
+      if(!Array.isArray(reply.jobs))throw Error('Revisión sin confirmar. Consulta su estado antes de imprimir otra copia.');
       localStorage.removeItem(key(data.actorId));setPending(null);setSelected(null);setReason('');setChecked(false);
-      setMessage(request.action==='confirm_printed'?'Copia marcada como impresa.':request.action==='replace_missing'?'Reposición solicitada. Comprueba el estado.':'Revisión guardada. Comprueba esta copia.');
+      setMessage(request.action==='confirm_printed'?'Copia marcada como impresa.':request.action==='replace_missing'?'Reposición solicitada. Revisa su estado.':'Reintento solicitado. Revisa su estado.');
       await load();
     }catch(error){setError(error instanceof Error?error.message:'No se confirmó la revisión. No imprimas otra copia todavía.');}
     finally{setBusy(false);}
@@ -53,14 +53,14 @@ export default function PrintRecoveryPage(){
   return <div className="settings-page"><div className="settings-page-heading"><h1>Tickets e impresión</h1><button className="settings-button" disabled={busy} onClick={()=>void load().then(()=>setError('')).catch(()=>setError('No se pudo cargar el estado de impresión.'))}>Actualizar</button></div>
     {data?.mode==='mock'&&<SettingsNotice>Modo de prueba · No imprime en papel.</SettingsNotice>}
     {error&&<SettingsNotice error>{error}</SettingsNotice>}{message&&<SettingsNotice>{message}</SettingsNotice>}
-    {pending&&<SettingsGroup title="Revisión pendiente"><div className="settings-editor"><SettingsNotice>Comprueba esta revisión antes de imprimir otra copia.</SettingsNotice><div><button disabled={busy} onClick={()=>void run(pending,true)}>Revisar cambio pendiente</button></div></div></SettingsGroup>}
+    {pending&&<SettingsGroup title="Revisión pendiente"><div className="settings-editor"><SettingsNotice>Comprueba esta revisión antes de imprimir otra copia.</SettingsNotice><div><button disabled={busy} onClick={()=>void run(pending,true)}>Comprobar revisión pendiente</button></div></div></SettingsGroup>}
     {!data&&!error&&<p role="status">Cargando impresión…</p>}
     {data&&<SettingsGroup title="Tickets y etiquetas">
-      {!data.jobs.length&&<p className="settings-empty">Sin trabajos de impresión.</p>}
+      {!data.jobs.length&&<p className="settings-empty">Sin impresiones registradas.</p>}
       {data.jobs.map(job=><article key={`${job.orderId}:${job.audience}`} className="settings-job">
         <div className="settings-job-heading"><h3>#{job.ticket} · {copy(job.audience)}</h3><span className="settings-badge">{states[job.state]}</span></div>
         <p>{name(job.cashierId)}</p>
-        {(['queued','blocked'].includes(job.state)||job.canRetry)&&<button disabled={busy||!!pending} className="is-primary" onClick={()=>void run({orderId:job.orderId,audience:job.audience,action:'retry',requestId:crypto.randomUUID(),reason:'El responsable reanuda esta impresión pendiente.'})}>{job.state==='preparing'?'Reanudar impresión':'Reintentar esta copia'}</button>}
+        {(['queued','blocked'].includes(job.state)||job.canRetry)&&<button disabled={busy||!!pending} className="is-primary" onClick={()=>void run({orderId:job.orderId,audience:job.audience,action:'retry',requestId:crypto.randomUUID(),reason:'Reintento solicitado por el responsable.'})}>{job.state==='preparing'?'Reanudar impresión':'Reintentar esta copia'}</button>}
         {job.state==='preparing'&&<p>Espera a que termine. Si no avanza, actualiza en un minuto.</p>}
         {job.state==='submitting'&&<p>Espera y comprueba la impresora.</p>}
         {job.state==='uncertain'&&<><p>No imprimas otra copia hasta comprobar si ya salió.</p><button disabled={busy||!!pending} onClick={()=>{setSelected(job);setAction('confirm_printed');setReason('');setChecked(false);}}>Comprobar impresión</button></>}
@@ -74,7 +74,7 @@ export default function PrintRecoveryPage(){
         {selected.state!=='submitted'&&<option value="confirm_printed">Ya salió en papel</option>}<option value="replace_missing">No salió</option></select></label>
       {action==='replace_missing'&&<SettingsNotice error>No la repongas si sigue pendiente en Windows: podría salir dos veces.</SettingsNotice>}
       <label className="settings-confirm"><input type="checkbox" checked={checked} disabled={busy} onChange={event=>setChecked(event.target.checked)}/>{action==='confirm_printed'?'La copia ya salió en papel.':'Comprobé que no salió y que no queda pendiente en Windows.'}</label>
-      <label>¿Qué revisaste?<textarea aria-label="Motivo de revisión" placeholder="Describe la revisión" maxLength={300} value={reason} disabled={busy} onChange={event=>setReason(event.target.value)}/>{reason.trim().length>0&&reason.trim().length<10&&<small aria-live="polite">Añade un poco más de detalle.</small>}</label>
+      <label>¿Qué revisaste?<textarea aria-label="Motivo de revisión" placeholder="Describe la revisión" maxLength={300} value={reason} disabled={busy} onChange={event=>setReason(event.target.value)}/>{reason.trim().length>0&&reason.trim().length<10&&<small aria-live="polite">Escribe al menos 10 caracteres.</small>}</label>
       <div className="settings-actions"><button className="is-primary" disabled={busy||!!pending||!checked||reason.trim().length<10} onClick={()=>void run({orderId:selected.orderId,audience:selected.audience,action,requestId:crypto.randomUUID(),reason:reason.trim(),confirmed:true})}>{action==='confirm_printed'?'Marcar como impresa':'Reponer esta copia'}</button><button disabled={busy} onClick={()=>setSelected(null)}>Cancelar</button></div></div>
     </div></div></section>}
     {!!data?.history.length&&<SettingsGroup title="Historial de revisiones">{data.history.map(item=><article key={item.requestId} className="settings-job settings-history"><h3>#{item.ticket} · {copy(item.audience)}</h3><p>{item.action==='confirm_printed'?'Copia impresa':item.action==='replace_missing'?'Reposición':'Reintento'} · {name(item.actor)}</p><p>{new Date(item.createdAt).toLocaleString('es-MX',{timeZone:'America/Matamoros'})}</p><details className="settings-details"><summary>Ver nota</summary><div><p>{item.reason}</p><p>Cajero: {name(item.owner)}</p></div></details></article>)}</SettingsGroup>}

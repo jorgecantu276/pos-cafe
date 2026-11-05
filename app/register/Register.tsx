@@ -85,7 +85,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   const [catalogCheckError, setCatalogCheckError] = useState('');
   const [dbExtras, setDbExtras] = useState<ExtraRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [ticketSearchTerm, setTicketSearchTerm] = useState(''); // 🟢 ESTADO PARA BUSCAR TICKET
+  const [ticketSearchTerm, setTicketSearchTerm] = useState('');
   const [userName, setUserName] = useState('Barista');
   const [isAdmin,setIsAdmin]=useState(false);
   const [drawer, setDrawer] = useState<DrawerStatus | null>(null);
@@ -156,7 +156,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   const [customerSuggestions, setCustomerSuggestions] = useState<Customer[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // ESTADOS PARA IMPRESIÓN Y PERSONALIZACIÓN
+  // Impresión y personalización.
   const [showPostSaleModal, setShowPostSaleModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null);
@@ -813,7 +813,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     updateQuantity(id,quantity);
   };
 
-  // 🟢 NUEVA FUNCIÓN: REIMPRIMIR HISTÓRICO (Por ID o Último)
+  // Reimprime por folio o recupera el último ticket.
   const reprintHistoricalTicket = async (ticketNum?: string) => {
     const target = openPrintWindow();
     if (!target) return;
@@ -1368,7 +1368,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
 
           <div className="flex items-center gap-4">
 
-            {/* 🟢 NUEVO: BUSCADOR DE TICKETS PARA REIMPRESIÓN */}
+            {/* Reimpresión por folio. */}
             <div className="flex items-center gap-1 bg-white rounded-[20px] border border-slate-200 p-1.5 shadow-sm">
                <div className="relative w-36">
                  <Receipt className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -1673,7 +1673,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       {showPostSaleModal && appearance==='workspace' && <WorkspaceDialog title="Venta guardada" onClose={handleNextOrder} className="workspace-sale">
         <div className="workspace-dialog-content"><p className="workspace-caption">Folio #{savedSale?.ticket_number ?? lastOrderId}</p><p className="workspace-sale-total">${(savedSale?.total ?? getTotal()).toFixed(2)} MXN</p>
           {savedSale?.pager_number != null && <p className="font-bold">Entregar control #{savedSale.pager_number}</p>}
-          <p>El ticket y las etiquetas se envían a sus impresoras.</p>
+          <p>Consulta el estado en Impresión.</p>
           {printStatus}
         </div><footer><button className="workspace-primary" onClick={handleNextOrder}>Nueva venta</button></footer>
       </WorkspaceDialog>}
@@ -1689,13 +1689,13 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
 
              <h2 className="text-[32px] font-semibold tracking-tight text-[#1d1d1f] mb-2">Venta guardada</h2>
              <p className="text-[#86868b] text-[17px] mb-10 font-medium leading-relaxed">
-               {savedSale?.phone_order_id?'El comprobante de pago se envía a la impresora.':'El ticket y las etiquetas se envían a sus impresoras.'}
+               Consulta el estado en Impresión.
              </p>
 
              {printStatus}
 
              <button onClick={handleNextOrder} className="w-full bg-[#1d1d1f] hover:bg-[#000000] text-white h-[64px] rounded-2xl font-semibold text-[17px] shadow-xl shadow-black/10 active:scale-[0.98] transition-all">
-               Finalizar y Nueva Venta
+               Nueva venta
              </button>
 
              <div className="mt-8">

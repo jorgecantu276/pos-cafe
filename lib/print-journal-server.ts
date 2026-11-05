@@ -47,7 +47,7 @@ export class PrintJournal {
   private view(row: Row): SalePrintJob {
     return { orderId: row.order_id, ticket: row.ticket, audience: row.audience, queue: row.queue,
       state: row.state === 'submitting' && row.lease < this.clock() ? 'uncertain' : row.state,
-      message: row.state === 'submitting' && row.lease < this.clock() ? 'Resultado incierto. Revisa la cola de Windows y el papel; no se reenviará automáticamente.' : row.message,
+      message: row.state === 'submitting' && row.lease < this.clock() ? 'Envío sin confirmar. Revisa el papel y la cola de Windows antes de reponer esta copia.' : row.message,
       attempts: row.attempts, updatedAt: row.updated };
   }
   list(owner: string): SalePrintJob[] {
@@ -93,13 +93,13 @@ export class PrintJournal {
       const uncertain = row.state === 'uncertain' || (row.state === 'submitting' && row.lease < this.clock());
       if (input.action === 'retry') {
         if (!['queued','blocked'].includes(row.state) && !(row.state === 'preparing' && row.lease < this.clock()))
-          throw new Error('Esta copia no admite reintento seguro. Actualiza su estado.');
+          throw new Error('Comprueba el estado de esta copia antes de reintentar.');
       } else {
         if (!uncertain && !(input.action === 'replace_missing' && row.state === 'submitted'))
-          throw new Error('Espera a que termine el envío activo y actualiza antes de resolverlo.');
+          throw new Error('Actualiza el estado de esta copia antes de resolverla.');
         this.db.prepare(`UPDATE jobs SET state=?,message=?,claim=NULL,lease=0,updated=? WHERE owner=? AND order_id=? AND audience=?`)
           .run(input.action === 'confirm_printed' ? 'submitted' : 'blocked', input.action === 'confirm_printed'
-            ? 'El responsable confirmó la salida en papel. No se reenvió.' : 'El responsable autorizó una reposición tras revisar papel y cola de Windows.',
+            ? 'El responsable confirmó la salida en papel.' : 'Reposición autorizada tras revisar el papel y la cola de Windows.',
           this.now(),input.owner,input.orderId,input.audience);
       }
       this.db.prepare('INSERT INTO recovery_audit VALUES(?,?,?,?,?,?,?,?,?)')
@@ -173,9 +173,9 @@ export class PrintJournal {
       submitting = true; // Durable commit BEFORE the first potentially printing call.
       await prepared.submit();
       this.db.prepare(`UPDATE jobs SET state='submitted',message=?,updated=?
-        WHERE order_id=? AND audience=? AND claim=?`).run(orderId.startsWith('phone:')?'Enviado a Windows. Si falta la comanda, revisa esa cola antes de reponerla.':'Enviado a Windows. Si falta papel o Bluetooth, revisa esa cola; no vuelvas a cobrar.',this.now(), orderId, audience, claim);
+        WHERE order_id=? AND audience=? AND claim=?`).run(orderId.startsWith('phone:')?'Enviado a Windows. Si falta la comanda, revisa el papel y la cola antes de reponerla.':'Enviado a Windows. Si no salió, revisa el papel y la cola. No vuelvas a cobrar.',this.now(), orderId, audience, claim);
     } catch (error) {
-      const message = submitting ? 'Resultado incierto. Revisa la cola de Windows y el papel; no se reenviará automáticamente.'
+      const message = submitting ? 'Envío sin confirmar. Revisa el papel y la cola de Windows antes de reponer esta copia.'
         : (error instanceof Error ? error.message : 'No se pudo preparar la impresora.');
       this.db.prepare(`UPDATE jobs SET state=?,message=?,updated=? WHERE order_id=? AND audience=? AND claim=? AND state IN ('preparing','submitting')`)
         .run(submitting ? 'uncertain' : 'blocked', message, this.now(), orderId, audience, claim);

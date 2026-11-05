@@ -95,7 +95,7 @@ test('active spool handoff cannot be overridden, and cancelled sales cannot rece
   try{
     f.journal.ensure(f.uid('outgoing'),f.order,queues);void f.journal.dispatch(f.uid('outgoing'),f.order.id,'barista');
     await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,1);f.actor('manager');
-    await assert.rejects(f.request(review(f.order.id,'barista','replace_missing')),/Espera/);
+    await assert.rejects(f.request(review(f.order.id,'barista','replace_missing')),/Actualiza el estado/);
     assert.equal(f.journal.recoveryHistory().length,0);f.advance(121_000);f.status('cancelled');
     await assert.rejects(f.request(review(f.order.id,'barista','replace_missing')),/no está completada/);assert.equal(calls,1);
     await f.request(review(f.order.id,'barista','confirm_printed'));assert.equal(calls,1);assert.equal(f.journal.recoveryHistory().length,1);
