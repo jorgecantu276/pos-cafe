@@ -337,7 +337,7 @@ test('editing an old draft uses current milk options while preserving the origin
     setDynamicSteps:(value:typeof steps)=>steps=value,setCustomizationStep:()=>{},})(original);
   assert.deepEqual(steps.map(step=>step.id),['Tipo de Leche','notes']);
   assert.equal(selected.price,65);assert.equal(selected.basePrice,50);assert.equal(JSON.stringify(useCartStore.getState().items[0]),snapshot);
-  handler('handleConfirmAdd',{selectedProduct:selected,products,items:[original],editingItemId:original.id,editingQuantity:2,
+  handler('handleConfirmAdd',{selectedProduct:selected,products,items:[original],editingItemId:original.id,editingQuantity:2,dynamicSteps:steps,
     customizeProduct,activeExtras:extras,productNote:'sin hielo',productAvailable:()=>true,replaceItem:useCartStore.getState().replaceItem,
     setEditingItemId:()=>{},setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},alert:()=>assert.fail()})();
   const saved=useCartStore.getState().items[0];assert.equal(saved.quantity,2);assert.equal(saved.product.price,65);assert.equal(saved.product.note,'sin hielo');assert.deepEqual(saved.product.displayExtras,extras);

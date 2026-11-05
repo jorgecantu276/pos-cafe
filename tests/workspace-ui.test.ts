@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { act, createElement, useState, type ReactNode, type ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
-import WorkspaceRegister,{ WorkspaceOpening, WorkspaceCustomization, WorkspaceCheckout } from '../app/register/WorkspaceRegister';
+import WorkspaceRegister,{ MenuVariantDialog, WorkspaceOpening, WorkspaceCustomization, WorkspaceCheckout } from '../app/register/WorkspaceRegister';
+import { favoriteMenuCards, matchesMenuCard, menuCards } from '../lib/menu-cards';
 
 async function render(work: (screen: Document, click: (label: string) => Promise<void>) => Promise<void>, component: ReactNode) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
@@ -34,6 +35,28 @@ test('catalog scrolling remains keyboard-accessible while an uncertain payment d
     assert.ok([...region.querySelectorAll('button')].every(button=>button.disabled));region.focus();assert.equal(screen.activeElement,region);
     assert.match(screen.body.textContent!,/No vuelvas a cobrar/);
   },createElement(WorkspaceRegister,props));
+});
+
+test('drink families match searches and favorites without losing the selected product or price', async () => {
+  const product = (id: string, name: string, price: number, is_active = true) => ({ id, name, price, category: 'Bebidas', is_active });
+  const cards = menuCards([
+    product('c', 'Matcha cariño', 105), product('x', 'Matcha ceremonial', 140), product('f', 'Matcha fresa', 115, false),
+    product('i', 'Iced coffee', 95), product('flan', 'Iced coffe flan', 130), product('n', 'Iced coffee nevado', 140),
+    product('o', 'Frappe Oreo', 85), product('t', 'Frappe original', 80),
+    product('h', 'Te chai caliente', 95), product('j', 'Te chai frio', 95),
+  ]);
+  assert.deepEqual(cards.map(card => card.name), ['Chai Latte · 16 oz', 'Frappuccino · 16 oz', 'Iced Coffee', 'Matcha', 'Nevado · 20 oz']);
+  const matcha = cards.find(card => card.name === 'Matcha')!;
+  assert.equal(matcha.price, 105);
+  assert.equal(matchesMenuCard(matcha, 'carino'), true);
+  assert.equal(matchesMenuCard(matcha, 'fresa'), false);
+  assert.equal(matchesMenuCard(cards.find(card => card.name === 'Iced Coffee')!, 'flan'), true);
+  assert.deepEqual(favoriteMenuCards(cards, ['c', 'x', 'f']), [matcha]);
+  let selected = '';
+  await render(async (_screen, click) => {
+    await click('Ceremonial$140.00');
+    assert.equal(selected, 'x');
+  }, createElement(MenuVariantDialog, { card: matcha, onChoose: id => { selected = id; }, onClose: () => {} }));
 });
 
 for(const isAdmin of [false,true]) test(`workspace ${isAdmin?'admin':'cashier'} opening preserves role navigation, fractional dollars and denomination counts`, async () => {

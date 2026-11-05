@@ -1,9 +1,10 @@
 'use client';
 
 import PagerPicker from './PagerPicker';
-import { productAvailable, productStockLabel, validPagerNumber } from '@/lib/pos-types';
+import { productStockLabel, validPagerNumber } from '@/lib/pos-types';
+import { matchesMenuCard, menuCardAvailable, menuCardPrice, menuCards, type MenuCard } from '@/lib/menu-cards';
 
-import {useState,type ReactNode} from 'react';
+import {useMemo,useState,type ReactNode} from 'react';
 import ProductPhoto from '@/components/ProductPhoto';
 import type {CartItem,Product,CartExtra} from '../../store/useCartStore';
 import type {CatalogProduct,Customer,ExtraRow,WizardStep} from '../../lib/pos-types';
@@ -19,7 +20,7 @@ function Sheet({title,children,onClose}:{title:string;children:ReactNode;onClose
 }
 interface RegisterProps{
   products:CatalogProduct[];items:CartItem[];total:number;search:string;onSearch:(s:string)=>void;
-  userName:string;isAdmin:boolean;disabled:boolean;onProduct:(p:Product)=>void;onEdit:(i:CartItem)=>void;
+  userName:string;isAdmin:boolean;disabled:boolean;onProduct:(p:MenuCard)=>void;onEdit:(i:CartItem)=>void;
   onQuantity:(id:string,q:number)=>void;onRemove:(id:string)=>void;onClear:()=>void;onCheckout:()=>void;onCloseShift:()=>void;onHandoff?:()=>void;
   customer:Customer|null;customerSearch:string;onCustomerSearch:(s:string)=>void;suggestions:Customer[];onCustomer:(c:Customer)=>void;
   customerSearchError?:string;customerSearching?:boolean;onRetryCustomerSearch?:()=>void;
@@ -34,8 +35,8 @@ export default function PrototypeRegister(p:RegisterProps){
   const [category,setCategory]=useState('Todos'),[page,setPage]=useState(0),[selection,setSelection]=useState('');
   const [sheet,setSheet]=useState(''),[ticket,setTicket]=useState('');
   const categories=['Todos',...Array.from(new Set(p.products.filter(v=>v.is_active).map(v=>v.category||'Varios')))];
-  const normalized=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es');
-  const filtered=p.products.filter(v=>v.is_active&&(category==='Todos'||category===v.category)&&normalized(v.name).includes(normalized(p.search)));
+  const cards=useMemo(()=>menuCards(p.products),[p.products]);
+  const filtered=cards.filter(v=>(category==='Todos'||category===(v.category||'Varios'))&&matchesMenuCard(v,p.search));
   const pages=Math.max(1,Math.ceil(filtered.length/6)),currentPage=Math.min(page,pages-1);
   const visible=filtered.slice(currentPage*6,currentPage*6+6),selected=p.items.find(i=>i.id===selection)??p.items.at(-1);
   const search=(s:string)=>{setPage(0);p.onSearch(s);};
@@ -48,9 +49,9 @@ export default function PrototypeRegister(p:RegisterProps){
       <section className="prototype-menu"><div className="prototype-heading"><h1>Menú</h1><button onClick={()=>setSheet('search')}>{p.search?`Buscar: ${p.search}`:'Buscar'}</button></div>
         <div className="prototype-categories" aria-label="Categorías">{categories.map(c=><button key={c} aria-pressed={category===c} onClick={()=>{setCategory(c);setPage(0);}}>{c}</button>)}</div>
         <div className="prototype-products">{visible.map(product=>{
-          return <button className="prototype-product" key={product.id} onClick={()=>p.onProduct(product)} disabled={p.disabled || !productAvailable(product)}>
+          return <button className="prototype-product" key={product.id} onClick={()=>p.onProduct(product)} disabled={p.disabled || !menuCardAvailable(product)}>
           <div className="prototype-photo"><ProductPhoto product={product} width={320} height={180}/></div>
-          <div><h3>{product.name}</h3><span>{money(Number(product.price))}</span>{productStockLabel(product) && <small>{productStockLabel(product)}</small>}</div></button>;})}
+          <div><h3>{product.name}</h3><span>{menuCardPrice(product)}</span>{productStockLabel(product) && <small>{productStockLabel(product)}</small>}</div></button>;})}
           {!visible.length&&<p>No hay productos para esta búsqueda.</p>}</div>
         <footer className="prototype-pager"><button disabled={!currentPage} onClick={()=>setPage(currentPage-1)}>Anterior</button><span>Página {currentPage+1} de {pages} · {filtered.length} productos</span><button disabled={currentPage>=pages-1} onClick={()=>setPage(currentPage+1)}>Siguiente</button></footer>
       </section>

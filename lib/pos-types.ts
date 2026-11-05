@@ -87,6 +87,7 @@ export interface WizardStep {
   title: string;
   options: string[];
   exclusive: boolean;
+  required?: boolean;
 }
 export type CatalogProduct = Product & { is_active: boolean };
 

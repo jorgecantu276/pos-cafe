@@ -6,7 +6,7 @@ import DrawerGate from './DrawerGate';
 import { loadDrawerStatus, recoverDrawerRequest, beginDrawerHandoff, enrollCustomer, hasDrawerRequest, type DrawerStatus } from '@/lib/drawer';
 import PrototypeRegister, {PrototypeCheckout, PrototypeCustomization} from './PrototypeRegister';
 import './prototype.css';
-import WorkspaceRegister, { WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
+import WorkspaceRegister, { MenuVariantDialog, WorkspaceCheckout, WorkspaceCustomization, WorkspaceOpening, WorkspaceDialog } from './WorkspaceRegister';
 import RecentTickets from './RecentTickets';
 import ClipPaymentStatus from './ClipPaymentStatus';
 import { loadRegisterShortcuts } from '@/lib/register-shortcuts';
@@ -15,7 +15,8 @@ import './workspace.css';
 
 import { catalogProduct, productAvailable, productStockLabel, validPagerNumber, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { matchesMenuCard, menuCardAvailable, menuCardPrice, menuCards, type MenuCard } from '@/lib/menu-cards';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { customizeProduct, useCartStore, type CartExtra, type CartItem, type Product } from '@/store/useCartStore';
 import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
@@ -152,6 +153,9 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   // ESTADOS PARA IMPRESIÓN Y PERSONALIZACIÓN
   const [showPostSaleModal, setShowPostSaleModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null);
+  const ownerCards = useMemo(() => appearance === 'owner' || selectedFamilyId ? menuCards(products) : [], [appearance, products, selectedFamilyId]);
+  const selectedFamily = ownerCards.find(card => card.id === selectedFamilyId);
   const [activeExtras, setActiveExtras] = useState<CartExtra[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingQuantity, setEditingQuantity] = useState(1);
@@ -180,7 +184,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       setExpenses([]); setShowCierre(false); setExpenseError(null); setSavingExpense(false); setIsClosingShift(false);
       shiftSaved.current = false; closedShiftReport.current = null;
       useCartStore.getState().clearCart(); setActiveCustomer(null); setCheckoutReview(null);
-      setIsProcessingCheckout(false); setShowCheckoutModal(false); setShowPostSaleModal(false); setSelectedProduct(null); setSavedSale(null);
+      setIsProcessingCheckout(false); setShowCheckoutModal(false); setShowPostSaleModal(false); setSelectedProduct(null); setSelectedFamilyId(null); setSavedSale(null);
       setPhonePending(null);setPhoneError('');setPhoneBusy(false);phoneInFlight.current=false;setShowPhoneContact(false);setShowPhoneOrders(false);setSelectedPhoneOrder(null);setSavedPhone(null);setPhonePrintId('');setPhonePrintNotice('');
       setProducts([]); setFavoriteProductIds([]); setFavoritesError(''); setFavoritesLoading(true); setDbExtras([]); setDraftError(null); setCustomerError(null);
       router.replace('/login'); router.refresh();
@@ -530,7 +534,8 @@ const handleSaveAndClose = async () => {
           id: phaseName,
           title: `Seleccionar ${phaseName}`,
           options: phaseOptions,
-          exclusive: ['Tamaño', 'Tipo de Leche','Leche alternativa'].includes(phaseName)
+          exclusive: ['Tamaño', 'Tipo de Leche', 'Leche alternativa', 'Creamer', 'Helado gourmet', 'Temperatura'].includes(phaseName),
+          required: ['Helado gourmet', 'Temperatura'].includes(phaseName)
        };
     }).filter((step) => step.options.length > 0);
     return steps.length ? [...steps,{id:'notes',title:'Notas',options:[],exclusive:false}] : steps;
@@ -555,6 +560,12 @@ const handleSaveAndClose = async () => {
     }
   }, [draftError, loading, loadError, addItem, buildWizardSteps]);
 
+  const handleMenuCardClick = useCallback((card: MenuCard) => {
+    if (!cartDraft.current || draftError || loading || loadError || !menuCardAvailable(card)) return;
+    if (card.variants && card.variants.length > 1) setSelectedFamilyId(card.id);
+    else handleProductClick(card.variants?.[0].product ?? card);
+  }, [draftError, loading, loadError, handleProductClick]);
+
   const handleEditItem = (item: CartItem) => {
     const current = products.find(product => product.id === item.product.id);
     const editable = current ? { ...item.product, customizable:current.customizable, wizard_steps:current.wizard_steps } : item.product;
@@ -572,6 +583,8 @@ const handleSaveAndClose = async () => {
 
   const handleConfirmAdd = () => {
     if (!selectedProduct) return;
+    const missing = dynamicSteps.find(step => step.required && !activeExtras.some(extra => extra.phase === step.id && step.options.includes(extra.name)));
+    if (missing) { alert(`Elige una opción de ${missing.id.toLowerCase()}.`); return; }
     const latest = products.find(p => p.id === selectedProduct.id);
     const requested = items.filter(i => i.product.id === selectedProduct.id && i.id !== editingItemId).reduce((sum,i) => sum+i.quantity,0) + (editingItemId ? editingQuantity : 1);
     if (latest && (!productAvailable(latest) || (latest.inventory?.mode === 'counted' && latest.inventory.quantity !== null && requested > latest.inventory.quantity))) { alert('Revisa las existencias disponibles.'); return; }
@@ -810,15 +823,8 @@ const handleSaveAndClose = async () => {
     fetchData();
   };
 
-  const removeAccents = (str: string) => {
-    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  };
-
-  const filteredProducts = products.filter(p =>
-    p.is_active === true && removeAccents(p.name).includes(removeAccents(searchTerm))
-  );
-
-  const groupedProducts = filteredProducts.reduce<Record<string, CatalogProduct[]>>((acc, p) => {
+  const filteredProducts = appearance === 'owner' ? ownerCards.filter(p => matchesMenuCard(p, searchTerm)) : [];
+  const groupedProducts = filteredProducts.reduce<Record<string, MenuCard[]>>((acc, p) => {
     const cat = p.category || "Sin Categoría";
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(p);
@@ -830,7 +836,7 @@ const handleSaveAndClose = async () => {
   const checkoutTotal=selectedPhoneOrder?.snapshot.total??getTotal();
   const isPaymentInsufficient = (paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && totalReceivedCombinedMXN < checkoutTotal;
 
-  const catalogNotice = (catalogStale || catalogCheckError) && <div role="status" className="relative z-10 flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950"><span>{catalogStale ? 'El menú cambió. Actualiza y revisa el pedido antes de cobrar.' : catalogCheckError} {(selectedProduct || showCheckoutModal) && 'Cierra la ventana actual para actualizar.'}{checkoutReview && 'Primero resuelve la venta pendiente.'}</span><button type="button" className="rounded-xl border bg-white px-4 py-2 font-semibold disabled:opacity-50" disabled={loading || !!selectedProduct || showCheckoutModal || !!checkoutReview || isProcessingCheckout || isClosingShift || savingExpense || openingShift} onClick={refreshCatalog}>Actualizar menú</button></div>;
+  const catalogNotice = (catalogStale || catalogCheckError) && <div role="status" className="relative z-10 flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950"><span>{catalogStale ? 'El menú cambió. Actualiza y revisa el pedido antes de cobrar.' : catalogCheckError} {(selectedFamily || selectedProduct || showCheckoutModal) && 'Cierra la ventana actual para actualizar.'}{checkoutReview && 'Primero resuelve la venta pendiente.'}</span><button type="button" className="rounded-xl border bg-white px-4 py-2 font-semibold disabled:opacity-50" disabled={loading || !!selectedFamily || !!selectedProduct || showCheckoutModal || !!checkoutReview || isProcessingCheckout || isClosingShift || savingExpense || openingShift} onClick={refreshCatalog}>Actualizar menú</button></div>;
   const printStatus = <PrintDispatch key={printCheckoutKey} checkoutKey={printCheckoutKey} latestOrderId={savedSale?.id??phonePrintId} />;
   const RegisterView = appearance === 'workspace' ? WorkspaceRegister : PrototypeRegister;
   const CheckoutView = appearance === 'workspace' ? WorkspaceCheckout : PrototypeCheckout;
@@ -1087,7 +1093,7 @@ const handleSaveAndClose = async () => {
         recentTicketsContent={<RecentTickets key={drawerActor} onReprint={ticket=>void reprintHistoricalTicket(ticket)} disabled={isProcessingCheckout || isClosingShift}/>}
         userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout||phoneBusy||!!phonePending||!!phoneError}
         {...(appearance === 'workspace' ? { catalogLoading: loading } : {})}
-        onProduct={handleProductClick} onEdit={handleEditItem} onQuantity={changeQuantity} onRemove={removeItem} onClear={handleClearOrder} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
+        onProduct={handleMenuCardClick} onEdit={handleEditItem} onQuantity={changeQuantity} onRemove={removeItem} onClear={handleClearOrder} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
         onHandoff={()=>void handleOpenCierre('handoff')}
         customerSearchError={customerSearchError} customerSearching={customerSearching} onRetryCustomerSearch={()=>void handleCustomerSearchInput(customerSearch)} customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
         onNewCustomer={handleOpenCustomerModal} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
@@ -1257,13 +1263,13 @@ const handleSaveAndClose = async () => {
               <h2 className="text-[11px] font-black uppercase text-slate-400 mb-5 px-2 tracking-[0.2em]">{cat}</h2>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                 {groupedProducts[cat].map((p) => (
-                  <div key={p.id} onClick={() => handleProductClick(p)} className="bg-white rounded-[2.5rem] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:shadow-xl transition-all cursor-pointer group border border-transparent hover:border-blue-50">
+                  <button type="button" key={p.id} disabled={!menuCardAvailable(p)} onClick={() => handleMenuCardClick(p)} className="bg-white text-left rounded-[2.5rem] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:shadow-xl transition-all cursor-pointer group border border-transparent hover:border-blue-50 disabled:opacity-50">
                     <div className="h-32 bg-slate-50 rounded-[20px] mb-4 overflow-hidden relative">
                       <ProductPhoto product={p} width={512} height={512} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                     </div>
                     <h3 className="font-bold text-sm text-slate-800">{p.name}</h3>{productStockLabel(p) && <small>{productStockLabel(p)}</small>}
-                    <p className="text-[#0071e3] font-black text-sm mt-1">${Number(p.price).toFixed(2)}</p>
-                  </div>
+                    <p className="text-[#0071e3] font-black text-sm mt-1">{menuCardPrice(p)}</p>
+                  </button>
                 ))}
               </div>
             </section>
@@ -1390,6 +1396,10 @@ const handleSaveAndClose = async () => {
         pagerNumber={selectedPhoneOrder?null:pagerNumber} onPagerNumber={selectedPhoneOrder?undefined:setPagerNumber} clipEnabled={clipEnabled} phoneOrderLabel={selectedPhoneOrder?`Pedido por teléfono #${selectedPhoneOrder.folio} · ${selectedPhoneOrder.contact_name}`:undefined}
         orderType={selectedPhoneOrder?.snapshot.order_type??orderType} note={selectedPhoneOrder?.snapshot.order_note??orderNote} busy={isProcessingCheckout} insufficient={isPaymentInsufficient} onMethod={method=>{if(method===paymentMethod)return;setPaymentMethod(method);setAmountReceivedMXN('');setAmountReceivedUSD('');}}
         onMXN={setAmountReceivedMXN} onUSD={setAmountReceivedUSD} onOrderType={selectedPhoneOrder?()=>{}:setOrderType} onNote={selectedPhoneOrder?()=>{}:setOrderNote} onConfirm={()=>void processCheckout()} onClose={()=>{setShowCheckoutModal(false);setSelectedPhoneOrder(null);}}/>}
+      {selectedFamily && <MenuVariantDialog card={selectedFamily} onClose={() => setSelectedFamilyId(null)} onChoose={id => {
+        const variant = selectedFamily.variants?.find(({ product }) => product.id === id);
+        if (variant) { setSelectedFamilyId(null); handleProductClick(variant.product); }
+      }} />}
       {selectedProduct&&dynamicSteps.length>0&&appearance!=='owner'&&<CustomizationView product={selectedProduct} steps={dynamicSteps} index={customizationStep} extras={activeExtras} dbExtras={dbExtras}
         note={productNote} onNote={setProductNote} onStep={setCustomizationStep}
         quantity={editingItemId?editingQuantity:undefined}
