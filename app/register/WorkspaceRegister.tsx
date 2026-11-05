@@ -5,7 +5,7 @@ import ProductPhoto from '@/components/ProductPhoto';
 import PagerPicker from './PagerPicker';
 import { Keyboard, Minus, Plus, Search, X, Pencil, Trash2, Printer, UserRound, ChevronRight, Coffee, Settings2, ArrowRight } from 'lucide-react';
 import { productAvailable, productStockLabel, validPagerNumber } from '@/lib/pos-types';
-import { favoriteMenuCards, matchesMenuCard, menuCardAvailable, menuCardPrice, menuCards, type MenuCard } from '@/lib/menu-cards';
+import { favoriteMenuCards, matchesMenuCard, menuCardAvailable, menuCardPrice, menuCards, normalizeMenuText, type MenuCard } from '@/lib/menu-cards';
 
 type RegisterProps = ComponentProps<typeof import('./PrototypeRegister').default> & {
   orderNote: string; onOrderNote: (value: string) => void;
@@ -167,6 +167,29 @@ export default function WorkspaceRegister(p: RegisterProps) {
   </div>;
 }
 
+type PreparationOption = { id: string; label: string; detail?: string; selected: boolean; disabled?: boolean };
+
+function PreparationChoices({ title, searchLabel, options, onChoose }: {
+  title: string; searchLabel: string; options: PreparationOption[]; onChoose: (id: string) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const term = normalizeMenuText(search);
+  const visible = options.filter(option => normalizeMenuText(option.label).includes(term));
+  return <fieldset className={`workspace-modifier-group${options.length >= 7 ? ' workspace-options-many' : ''}`}>
+    <legend>{title}</legend>
+    {options.length >= 9 && <label className="workspace-options-search">
+      <Search size={18} aria-hidden="true" />
+      <input type="search" aria-label={searchLabel} placeholder={searchLabel} value={search} onChange={event => setSearch(event.target.value)} />
+    </label>}
+    <div>{visible.map(option => <button type="button" key={option.id} aria-pressed={option.selected} disabled={option.disabled}
+      onClick={() => onChoose(option.id)}>
+      <span className="workspace-option-label">{option.label}</span>
+      {option.detail && <span className="workspace-option-detail">{option.detail}</span>}
+    </button>)}</div>
+    {!visible.length && <p role="status" className="workspace-options-empty">No hay opciones con ese nombre.</p>}
+  </fieldset>;
+}
+
 export function WorkspaceCustomization(p: CustomizationProps) {
   const [notes, setNotes] = useState(false);
   const [showVariants, setShowVariants] = useState(false);
@@ -177,20 +200,27 @@ export function WorkspaceCustomization(p: CustomizationProps) {
     {p.quantity !== undefined && <div className="workspace-edit-quantity"><span>Cantidad</span><button type="button" aria-label="Reducir cantidad" disabled={p.quantity <= 1} onClick={() => p.onQuantity?.(p.quantity! - 1)}><Minus size={22} /></button><strong>{p.quantity}</strong><button type="button" aria-label="Aumentar cantidad" onClick={() => p.onQuantity?.(p.quantity! + 1)}><Plus size={22} /></button></div>}
     <button type="button" className="workspace-note-toggle" aria-expanded={notes} onClick={() => setNotes(!notes)}><Pencil size={17} />{p.note || 'Nota de preparación'}</button>
     {notes && <><textarea aria-label="Notas de preparación" rows={2} value={p.note} maxLength={1000} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
-    {p.family && <fieldset className="workspace-modifier-group"><legend>{p.family.variantTitle}</legend><div>
-      {variant && !showVariants
-        ? <button type="button" aria-label={`Cambiar variante: ${variant.label}`} onClick={() => setShowVariants(true)}>{variant.label}<span>Cambiar</span></button>
-        : p.family.variants?.map(({ product, label }) =>
-          <button type="button" key={product.id} disabled={!productAvailable(product)} aria-pressed={product.id === p.product?.id}
-            onClick={() => { p.onVariant?.(product.id); setShowVariants(false); }}>
-            {label}<span>{productAvailable(product) ? money(Number(product.price)) : 'Agotado'}</span>
-          </button>)}
-    </div></fieldset>}
-    {choices.map(({ step, index }) => <fieldset className="workspace-modifier-group" key={step.id}><legend>{step.title.replace(/^Seleccionar /, '')}{step.required && ' (elige uno)'}</legend><div>{step.options.map(name => {
-      const extra = p.dbExtras.find(extra => extra.name === name && extra.phase === step.id);
-      const selected = p.extras.some(extra => extra.name === name && (!extra.phase || extra.phase === step.id));
-      return <button type="button" key={name} aria-pressed={selected} onClick={() => p.onOption(name, index)}>{name}{Number(extra?.price) > 0 && <span>+{money(Number(extra?.price))}</span>}</button>;
-    })}</div></fieldset>)}
+    {p.family && (variant && !showVariants
+      ? <fieldset className="workspace-modifier-group"><legend>{p.family.variantTitle}</legend><div>
+        <button type="button" className="workspace-option-current" aria-label={`Cambiar variante: ${variant.label}`} onClick={() => setShowVariants(true)}>
+          {variant.label}<span>Cambiar</span>
+        </button>
+      </div></fieldset>
+      : <PreparationChoices key={p.family.id} title={p.family.variantTitle ?? 'Presentación'}
+        searchLabel={p.family.variantTitle === 'Elige el sabor' ? 'Buscar sabor' : 'Buscar presentación'}
+        options={(p.family.variants ?? []).map(({ product, label }) => ({
+          id: product.id, label, selected: product.id === p.product?.id, disabled: !productAvailable(product),
+          detail: productAvailable(product) ? money(Number(product.price)) : 'Agotado',
+        }))}
+        onChoose={id => { p.onVariant?.(id); setShowVariants(false); }} />)}
+    {choices.map(({ step, index }) => <PreparationChoices key={step.id}
+      title={step.title.replace(/^Seleccionar /, '') + (step.required ? ' (elige uno)' : '')}
+      searchLabel={step.id === 'Helado gourmet' ? 'Buscar helado' : `Buscar en ${step.id.toLowerCase()}`}
+      options={step.options.map(name => {
+        const extra = p.dbExtras.find(extra => extra.name === name && extra.phase === step.id);
+        return { id: name, label: name, selected: p.extras.some(extra => extra.name === name && (!extra.phase || extra.phase === step.id)),
+          detail: Number(extra?.price) > 0 ? `+${money(Number(extra?.price))}` : undefined };
+      })} onChoose={name => p.onOption(name, index)} />)}
   </div><footer>{p.onRemove && <button type="button" onClick={p.onRemove}>Quitar</button>}{p.product && <span className="workspace-custom-price">{money((p.quantity ?? 1) * (Number(p.product.basePrice ?? p.product.price) + p.extras.reduce((sum, extra) => sum + extra.price, 0)))}</span>}<button type="button" className="workspace-primary" disabled={!p.product || missingChoice} onClick={p.onConfirm}>{p.quantity !== undefined ? 'Guardar cambios' : 'Agregar a la orden'}</button></footer></WorkspaceDialog>;
 }
 

@@ -3,7 +3,7 @@ import { productAvailable, type CatalogProduct } from './pos-types';
 export type MenuVariant = { product: CatalogProduct; label: string };
 export type MenuCard = CatalogProduct & { variants?: MenuVariant[]; variantTitle?: string; fromPrice?: boolean };
 
-const normalize = (name: string) => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+export const normalizeMenuText = (name: string) => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 const matchaLabels: Record<string, string> = {
   'matcha carino': 'Cariño · 16 oz',
@@ -16,8 +16,8 @@ const matchaLabels: Record<string, string> = {
 };
 
 function family(product: CatalogProduct) {
-  if (normalize(product.category ?? '') !== 'bebidas') return;
-  const name = normalize(product.name);
+  if (normalizeMenuText(product.category ?? '') !== 'bebidas') return;
+  const name = normalizeMenuText(product.name);
   const iced = /^iced coffee?\s*(.*)$/.exec(name);
   if (iced && !/^nevado\b/.test(iced[1])) {
     const flavor = product.name.replace(/^iced coffee?\s*/i, '').trim();
@@ -63,9 +63,9 @@ export function menuCardAvailable(card: MenuCard) {
 }
 
 export function matchesMenuCard(card: MenuCard, search: string) {
-  const term = normalize(search);
-  return normalize(card.name).includes(term) || (card.variants ?? []).some(v =>
-    normalize(v.product.name).includes(term) || normalize(v.label).includes(term));
+  const term = normalizeMenuText(search);
+  return normalizeMenuText(card.name).includes(term) || (card.variants ?? []).some(v =>
+    normalizeMenuText(v.product.name).includes(term) || normalizeMenuText(v.label).includes(term));
 }
 
 export function menuCardPrice(card: MenuCard) {

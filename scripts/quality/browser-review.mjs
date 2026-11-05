@@ -139,6 +139,11 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     await icedCoffee.click();
     const flavors=cashier.getByRole('dialog',{name:'Iced Coffee',exact:true});
     await audit(cashier,'iced-coffee-flavors');
+    const flavorSearch=flavors.getByRole('searchbox',{name:'Buscar sabor',exact:true});
+    await flavorSearch.fill('sin coincidencias');
+    await flavors.getByText('No hay opciones con ese nombre.',{exact:true}).waitFor();
+    await flavorSearch.fill('CARAMELO');
+    assert.equal(await flavors.getByRole('button',{name:/^Vainilla/i}).count(),0);
     await flavors.getByRole('button',{name:/^Caramelo\s*\$/}).click();
     const customization=flavors;
     await customization.getByRole('group',{name:'Tipo de Leche',exact:true}).waitFor();

@@ -147,12 +147,24 @@
 .workspace-customer-results span{font-size:14px;color:#626d7e}
 .workspace-note-toggle{width:100%;justify-content:flex-start!important;margin-top:14px;background:#f5f7fa!important;border-color:#edf0f5!important;color:#5c6c81!important;font-size:14px!important;font-weight:500!important}
 .workspace-customization .workspace-note-toggle{margin:0 0 12px}
-.workspace-modifier-group{margin:0 0 20px;border:0;padding:0}
+.workspace-modifier-group{margin:0 0 20px;border:0;padding:0;min-inline-size:0}
 .workspace-modifier-group legend{font-size:15px;font-weight:650;margin-bottom:10px;color:#536078}
 .workspace-modifier-group>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .workspace-modifier-group button{min-height:64px;justify-content:space-between;text-align:left;line-height:1.25;font-size:15px}
 .workspace-modifier-group button span{font-size:13px;color:#626d7e;white-space:nowrap}
 .workspace-modifier-group button[aria-pressed=true]{background:#edf5ff;border-color:#007aff;color:#0064d3;box-shadow:inset 0 0 0 1px #007aff}
+.workspace-modifier-group .workspace-option-label{font:inherit;color:inherit;white-space:normal;overflow-wrap:anywhere}
+.workspace-modifier-group .workspace-option-detail{flex-shrink:0;font-variant-numeric:tabular-nums}
+.workspace-modifier-group .workspace-option-current{grid-column:1 / -1;min-height:50px;background:#f6f9ff}
+.workspace-options-many{border:1px solid #e5ebf4;border-radius:16px;padding:4px 12px 12px;background:#f7f9fd}
+.workspace-options-many legend{padding:0 7px;margin-bottom:3px;color:#25334a}
+.workspace-options-many button{min-height:52px;padding:8px 11px;gap:6px}
+.workspace-options-many .workspace-option-detail{padding:3px 6px;border-radius:7px;background:#edf2fa;font-size:12px}
+.workspace-options-search{position:relative;margin:0 0 10px}
+.workspace-options-search svg{position:absolute;top:50%;left:13px;transform:translateY(-50%);pointer-events:none}
+.workspace-dialog .workspace-options-search input[type=search]{min-height:46px;padding:8px 12px 8px 39px;background:#fff;font-size:15px}
+.workspace-options-empty{margin:10px 3px 2px;color:#536078;font-size:14px}
+@media(max-width:440px){fieldset.workspace-options-many>div{grid-template-columns:1fr}}
 .workspace-custom-price{margin-right:auto;font-size:27px;font-weight:700;letter-spacing:-.6px}
 .workspace-edit-quantity{display:flex;align-items:center;gap:12px;padding-bottom:16px;margin-bottom:20px;border-bottom:1px solid #edf0f5}
 .workspace-edit-quantity>span{margin-right:auto;color:#626d7e;font-size:15px}
