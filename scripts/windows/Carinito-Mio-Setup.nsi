@@ -15,12 +15,16 @@ SetCompressor /SOLID lzma
 
 Section "Cariñito Mío POS"
   SetShellVarContext current
-  IfFileExists "$INSTDIR\release.json" 0 unpack
-    nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "if (Get-Process node -ErrorAction SilentlyContinue | Where-Object { $$_.Path -eq $\'$INSTDIR\node.exe$\' }) { exit 1 }"'
-    Pop $0
-    Pop $1
-    StrCmp $0 "0" unpack
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Cierra Cariñito Mío POS antes de instalar." /SD IDOK
+  IfFileExists "$INSTDIR\node.exe" 0 unpack
+    ; Check exclusive write access without creating, truncating or writing the file.
+    System::Call 'kernel32::CreateFileW(w "$INSTDIR\node.exe", i 0x40000000, i 0, p 0, i 3, i 0x80, p 0) p .r0'
+    StrCmp $0 "-1" blocked
+    System::Call 'kernel32::CloseHandle(p r0)'
+    Goto unpack
+
+  blocked:
+    MessageBox MB_OK|MB_ICONEXCLAMATION "Windows no permite actualizar Caja. Cierra la ventana de Cariñito Mío POS y vuelve a ejecutar el instalador." /SD IDOK
+    SetErrorLevel 1
     Abort
 
   unpack:
