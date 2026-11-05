@@ -134,7 +134,12 @@ export async function browserQualityReview({url,actors,db,appDirectory}) {
     await cashier.getByRole('button',{name:'Editar Agua natural',exact:true}).waitFor();
     assert.equal(await cashier.getByRole('dialog').count(),0,'Packaged water enters the order directly');
     cashier.once('dialog',dialog=>dialog.accept());await cashier.getByRole('button',{name:'Vaciar orden',exact:true}).click();
-    await cashier.locator('.workspace-product').filter({hasText:'Iced coffee caramelo'}).first().click();
+    const icedCoffee=cashier.getByRole('region',{name:'Productos del menú'}).getByRole('button',{name:/^Iced Coffee,/i});
+    assert.equal(await icedCoffee.count(),1);
+    await icedCoffee.click();
+    const flavors=cashier.getByRole('dialog',{name:'Iced Coffee',exact:true});
+    await audit(cashier,'iced-coffee-flavors');
+    await flavors.getByRole('button',{name:/^Caramelo\s*\$/}).click();
     const customization=cashier.getByRole('dialog',{name:'Iced coffee caramelo',exact:true});
     await customization.getByRole('group',{name:'Tipo de Leche',exact:true}).waitFor();
     assert.equal(await customization.getByRole('group',{name:'Tipo de Leche',exact:true}).getByRole('button').count(),7);

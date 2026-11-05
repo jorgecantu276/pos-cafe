@@ -76,7 +76,8 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
   const findPhone=async(page,phone,state='Por cobrar')=>{const queue=await openQueue(page);await queue.getByRole('button',{name:state,exact:true}).click();await queue.getByRole('textbox',{name:'Nombre, teléfono o folio',exact:true}).fill(String(phone.folio));
     await queue.getByRole('button',{name:'Buscar',exact:true}).click();await queue.getByRole('button',{name:`Abrir pedido ${phone.folio}`,exact:true}).click();return queue;};
   async function startPhone(page,name,quantity=1){
-    await page.locator('.workspace-product').filter({hasText:'Iced coffee caramelo'}).first().click();
+    await page.getByRole('region',{name:'Productos del menú'}).getByRole('button',{name:/^Iced Coffee,/i}).click();
+    await page.getByRole('dialog',{name:'Iced Coffee',exact:true}).getByRole('button',{name:/^Caramelo\s*\$/}).click();
     const dialog=page.getByRole('dialog',{name:'Iced coffee caramelo',exact:true});await dialog.getByRole('button',{name:/^almendra/i}).click();
     await dialog.getByRole('button',{name:'Agregar a la orden',exact:true}).click();
     if(quantity>1){await page.getByRole('button',{name:'Editar Iced coffee caramelo',exact:true}).click();
