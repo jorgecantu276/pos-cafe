@@ -31,7 +31,7 @@ import { confirmClosingPrints } from '@/lib/closing-print-check';
 import { printHistoricalReceipt } from '@/lib/receipt-reprint';
 import './printing.css';
 import { rememberSalePrint,rememberPhonePrint } from '@/lib/sale-printing';
-import { saveShiftBeforeExit, type ShiftReport } from '@/lib/shift';
+import type { ShiftReport } from '@/lib/shift';
 import { closeShift, expenseRequestKey, loadShiftSummary, recoverPendingExpenses, recoverShiftClose, restoreShiftExpenses, saveShiftExpenses, type ShiftSummary } from '@/lib/shift-state';
 import { CheckoutRejected, ClipPaymentPending, checkoutPayload, executeCheckout, readCheckoutReview, withCheckoutLock, type CheckoutReview, type SavedOrder } from '@/lib/checkout';
 import { bindCartDraft, cartDraftKey, type CartDraftBinding } from '@/lib/cart-draft';
@@ -111,9 +111,12 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   const openingInFlight = useRef(false);
   const shiftMemoryKey = useRef('');
   const [savedSale, setSavedSale] = useState<SavedOrder | null>(null);
-  const closedShiftReport = useRef<ShiftReport | null>(null);
   const [showApertura, setShowApertura] = useState(false);
   const [showCierre, setShowCierre] = useState(false);
+  const [savedExit, setSavedExit] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const logoutInFlight = useRef(false);
   const [cashSales, setCashSales] = useState(0);
   const [isClosingShift, setIsClosingShift] = useState(false);
   const closingShift = useRef(false);
@@ -182,7 +185,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       checkoutInFlight.current = false;
       shiftSummary.current = null;
       setExpenses([]); setShowCierre(false); setExpenseError(null); setSavingExpense(false); setIsClosingShift(false);
-      shiftSaved.current = false; closedShiftReport.current = null;
+      shiftSaved.current = false; setSavedExit(false); setLogoutError(false);
       useCartStore.getState().clearCart(); setActiveCustomer(null); setCheckoutReview(null);
       setIsProcessingCheckout(false); setShowCheckoutModal(false); setShowPostSaleModal(false); setSelectedProduct(null); setSelectedFamilyId(null); setSavedSale(null);
       setPhonePending(null);setPhoneError('');setPhoneBusy(false);phoneInFlight.current=false;setShowPhoneContact(false);setShowPhoneOrders(false);setSelectedPhoneOrder(null);setSavedPhone(null);setPhonePrintId('');setPhonePrintNotice('');
@@ -224,6 +227,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   }, [sessionActor]);
   const applyPOS = useCallback((data: Awaited<ReturnType<typeof loadPOS>> | null) => {
     if (!data) { router.replace('/login'); return; }
+    if (shiftSaved.current && draftOwner.current === data.user.id) return;
     setUserName(data.profile.full_name);
     setIsAdmin(data.profile.role==='admin');
     setDrawer(data.drawer);
@@ -232,7 +236,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     checkoutReviewKey.current = `mi_cafe_checkout_review:${data.user.id}`;
     setPrintCheckoutKey(`mi_cafe_checkout_review:${data.user.id}`);
     shiftMemoryKey.current = `mi_cafe_shift:${data.user.id}`;
-    shiftSaved.current = false; closedShiftReport.current = null;
+    shiftSaved.current = false;
     shiftSummary.current = data.summary; setExpenseError(null);
     draftStorageKey.current = cartDraftKey(data.user.id);
     try { setCheckoutReview(readCheckoutReview(localStorage.getItem(checkoutReviewKey.current))); }
@@ -390,8 +394,13 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   };
 
   const handleLogout = async () => {
+    if (logoutInFlight.current) return;
+    logoutInFlight.current = true;
+    const afterClose = shiftSaved.current;
+    setLogoutError(false);
+    setSigningOut(true);
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
       if (error) throw error;
       cartDraft.current?.disconnect(); cartDraft.current = null;
       clearCart();
@@ -399,7 +408,11 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       router.refresh();
     } catch (error) {
       console.error("Error al cerrar sesión:", error);
-      alert('No se pudo cerrar la sesión. El corte guardado no se volverá a registrar.');
+      if (afterClose) setLogoutError(true);
+      else alert('No se pudo cerrar la sesión. Revisa la conexión y vuelve a intentar.');
+    } finally {
+      logoutInFlight.current = false;
+      setSigningOut(false);
     }
   };
 
@@ -411,7 +424,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   const printZReport = (target: Window, report: ShiftReport) => printSavedShift(target, {...report,user_name: (report as {user_name?:string}).user_name ?? userName,opened_at:(report as {opened_at?:string}).opened_at ?? shiftStartTime ?? undefined});
 
 const handleSaveAndClose = async () => {
-    if (closingShift.current || expenseInFlight.current || expenseError || !shiftSummary.current) return;
+    if (shiftSaved.current || closingShift.current || expenseInFlight.current || expenseError || !shiftSummary.current) return;
     if (!Number.isFinite(countedCash) || countedCash<0 || countedCash>10000000 || Object.values(breakdown).some(q=>!Number.isInteger(q)||q<0)
       || !Number.isFinite(parseAmount(dollarsInBox)) || parseAmount(dollarsInBox)<0 || Math.round(parseAmount(dollarsInBox)*100)/100!==parseAmount(dollarsInBox)) {
       alert('Revisa el conteo: piezas enteras y dólares con máximo dos decimales, sin cantidades negativas.');return;
@@ -427,19 +440,17 @@ const handleSaveAndClose = async () => {
     const printWindow = openPrintWindow();
     try {
       if(!await confirmClosingPrints()){printWindow?.close();return;}
-      await saveShiftBeforeExit(async () => {
-        if (shiftSaved.current) return { error: null };
-        const report = closeAction === 'handoff' ? await beginDrawerHandoff(supabase, localStorage, owner, summary, countedCash, handoffTarget) : await closeShift(supabase, localStorage, owner, summary, countedCash);
-        if (draftOwner.current !== owner) throw new Error('El corte se guardó para la sesión anterior.');
-        shiftSaved.current = true; closedShiftReport.current = report;
-        // The confirmed closing is saved first; a backup failure never blocks handoff.
-        void fetch('/api/backups', { method: 'POST', headers: { 'X-Pos-Backup': 'checkpoint' }, keepalive: true }).catch(() => {});
-        return {error:null};
-      }, async () => {
-        try { if (printWindow && closedShiftReport.current) printZReport(printWindow, closedShiftReport.current); }
-        catch { printWindow?.close(); alert('El corte se guardó, pero no se pudo abrir la impresión.'); }
-        await handleLogout();
-      });
+      const report = closeAction === 'handoff' ? await beginDrawerHandoff(supabase, localStorage, owner, summary, countedCash, handoffTarget) : await closeShift(supabase, localStorage, owner, summary, countedCash);
+      if (draftOwner.current !== owner) { printWindow?.close(); return; }
+      shiftSaved.current = true;
+      setRegisterId('');
+      setShowCierre(false);
+      setSavedExit(true);
+      // Neither a backup nor a failed logout may resubmit this confirmed close.
+      void fetch('/api/backups', { method: 'POST', headers: { 'X-Pos-Backup': 'checkpoint' }, keepalive: true }).catch(() => {});
+      try { if (printWindow) printZReport(printWindow, report); }
+      catch { printWindow?.close(); alert('El corte se guardó, pero no se pudo abrir la impresión.'); }
+      await handleLogout();
     } catch (error) {
       printWindow?.close();
       alert('No se confirmó el corte. Revisa el historial antes de volver a cerrar. ' + (error instanceof Error ? errorMessage(error) : ''));
@@ -941,6 +952,13 @@ const handleSaveAndClose = async () => {
       )}
 
       {/* MODAL: CIERRE DE TURNO CON GASTOS Y ARQUEO */}
+      {savedExit && <WorkspaceDialog title="Corte guardado">
+        <div className="workspace-dialog-content">
+          <p>La caja ya está cerrada.</p>
+          {logoutError && <p role="alert">No se pudo cerrar la sesión. Revisa la conexión y vuelve a intentar.</p>}
+        </div>
+        <footer><button type="button" className="workspace-primary" disabled={signingOut} onClick={() => void handleLogout()}>{signingOut ? 'Cerrando sesión…' : logoutError ? 'Reintentar salir' : 'Cerrar sesión'}</button></footer>
+      </WorkspaceDialog>}
       {showCierre && (
         <WorkspaceDialog title="Cierre de caja" busy={isClosingShift} onClose={() => setShowCierre(false)} className="pos-closing-dialog">
           <div className="pos-closing-main">

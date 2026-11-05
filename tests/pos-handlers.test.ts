@@ -62,6 +62,7 @@ test('either close operation stops before reading or saving when the employee ha
 test('an untouched zero count cannot be saved as a closing shortage',async()=>{
   const alerts:string[]=[];
   await handler('handleSaveAndClose',{closingShift:{current:false},expenseInFlight:{current:false},expenseError:null,shiftSummary:{current:{}},
+    shiftSaved:{current:false},
     countedCash:0,breakdown:{100:0},parseAmount:Number,dollarsInBox:'',items:[],countConfirmed:false,
     alert:(message:string)=>alerts.push(message),openPrintWindow:()=>assert.fail('No close or printing before count confirmation')})();
   assert.match(alerts[0],/Confirma que terminaste/);
@@ -359,10 +360,39 @@ test('direct logout preserves expense and uncertain closing records for the same
   let signedOut=false;
   await handler('handleLogout',{
     supabase:{auth:{signOut:async()=>{signedOut=true;return {error:null};}}},
+    shiftSaved:{current:false},logoutInFlight:{current:false},setLogoutError:()=>{},setSigningOut:()=>{},
     localStorage:{removeItem:(key:string)=>memory.delete(key)},shiftMemoryKey:{current:'mi_cafe_shift:a'},
     cartDraft:{current:null},clearCart:()=>{},router:{replace:()=>{},refresh:()=>{}},alert:(message:string)=>assert.fail(message),
   })();
   assert.equal(signedOut,true);assert.equal(memory.size,3);
+});
+
+test('a confirmed close retires the count even if sign-out fails; retry signs out without saving or printing twice',async()=>{
+  const shiftSaved={current:false};
+  let saves=0,prints=0,logouts=0,redirects=0,dialogs=0,saved=false,showCount=true,exitError=false;
+  const logout=handler('handleLogout',{
+    shiftSaved,logoutInFlight:{current:false},setSigningOut:()=>{},setLogoutError:(v:boolean)=>{exitError=v;},
+    supabase:{auth:{signOut:async(options:unknown)=>{
+      assert.deepEqual(options,{scope:'local'});
+      return {error:++logouts===1?new Error('offline'):null};
+    }}},
+    console:{error:()=>{}},cartDraft:{current:null},clearCart:()=>{},
+    router:{replace:(url:string)=>{assert.equal(url,'/login');redirects++;},refresh:()=>{}},alert:assert.fail,
+  });
+  const close=handler('handleSaveAndClose',{
+    shiftSaved,closingShift:{current:false},expenseInFlight:{current:false},expenseError:null,shiftSummary:{current:{}},
+    countedCash:1520,breakdown:{500:3,20:1},parseAmount:Number,dollarsInBox:'',items:[],closeAction:'close',difference:0,
+    supabase:{},localStorage:{},setIsClosingShift:()=>{},alert:assert.fail,setRegisterId:()=>{},
+    closeShift:async()=>{saves++;return {final_balance:1520};},
+    openPrintWindow:()=>{dialogs++;return {close:()=>{}};},printZReport:()=>{prints++;},
+    setShowCierre:(v:boolean)=>{showCount=v;},setSavedExit:(v:boolean)=>{saved=v;},fetch:async()=>({ok:true}),handleLogout:logout,
+  });
+  await close();
+  assert.equal(saved,true);assert.equal(showCount,false);assert.equal(exitError,true);assert.equal(redirects,0);
+  await close();
+  await logout();
+  assert.equal(exitError,false);assert.equal(redirects,1);
+  assert.deepEqual({saves,prints,dialogs,logouts},{saves:1,prints:1,dialogs:1,logouts:2});
 });
 
 test('actual closing handler loads one authoritative summary and preserves the dialog on failed reads',async()=>{

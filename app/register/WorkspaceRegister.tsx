@@ -20,7 +20,7 @@ type CustomizationProps = Omit<ComponentProps<typeof import('./PrototypeRegister
 const money = (value: number) => `$${value.toFixed(2)}`;
 
 export function WorkspaceDialog({ title, children, onClose, busy = false, className = '' }: {
-  title: string; children: ReactNode; onClose: () => void; busy?: boolean; className?: string;
+  title: string; children: ReactNode; onClose?: () => void; busy?: boolean; className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -30,8 +30,8 @@ export function WorkspaceDialog({ title, children, onClose, busy = false, classN
     else node.setAttribute('open', ''); // DOM test environment.
     return () => { if (typeof node.close === 'function') node.close(); };
   }, []);
-  return <dialog ref={ref} aria-label={title} className={`workspace-dialog ${className}`} onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
-    <header><h2>{title}</h2><button type="button" className="workspace-icon" aria-label={`Cerrar ${title}`} disabled={busy} onClick={onClose}><X size={22} /></button></header>
+  return <dialog ref={ref} aria-label={title} className={`workspace-dialog ${className}`} onCancel={event => { event.preventDefault(); if (!busy) onClose?.(); }}>
+    <header><h2>{title}</h2>{onClose && <button type="button" className="workspace-icon" aria-label={`Cerrar ${title}`} disabled={busy} onClick={onClose}><X size={22} /></button>}</header>
     {children}
   </dialog>;
 }
