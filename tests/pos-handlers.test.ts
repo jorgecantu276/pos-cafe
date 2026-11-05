@@ -367,7 +367,7 @@ test('direct logout preserves expense and uncertain closing records for the same
   assert.equal(signedOut,true);assert.equal(memory.size,3);
 });
 
-test('a confirmed close retires the count even if sign-out fails; retry signs out without saving or printing twice',async()=>{
+test('a confirmed close leaves sign-out optional; retrying sign-out never saves or prints twice',async()=>{
   const shiftSaved={current:false};
   let saves=0,prints=0,logouts=0,redirects=0,dialogs=0,saved=false,showCount=true,exitError=false;
   const logout=handler('handleLogout',{
@@ -379,17 +379,24 @@ test('a confirmed close retires the count even if sign-out fails; retry signs ou
     console:{error:()=>{}},cartDraft:{current:null},clearCart:()=>{},
     router:{replace:(url:string)=>{assert.equal(url,'/login');redirects++;},refresh:()=>{}},alert:assert.fail,
   });
+  const finishClose=handler('finishClose',{
+    shiftSaved,shiftSummary:{current:{}},cartDraft:{current:null},clearCart:()=>{},setRegisterId:()=>{},
+    setShowCierre:(v:boolean)=>{showCount=v;},setCloseCheck:()=>{},
+    setSavedExit:(action:string)=>{assert.equal(action,'close');saved=true;},fetch:async()=>({ok:true}),
+  });
   const close=handler('handleSaveAndClose',{
     shiftSaved,closingShift:{current:false},expenseInFlight:{current:false},expenseError:null,shiftSummary:{current:{}},
     countedCash:1520,breakdown:{500:3,20:1},parseAmount:Number,dollarsInBox:'',items:[],closeAction:'close',difference:0,
     supabase:{},localStorage:{},setIsClosingShift:()=>{},alert:assert.fail,setRegisterId:()=>{},
     closeShift:async()=>{saves++;return {final_balance:1520};},
     openPrintWindow:()=>{dialogs++;return {close:()=>{}};},printZReport:()=>{prints++;},
-    setShowCierre:(v:boolean)=>{showCount=v;},setSavedExit:(v:boolean)=>{saved=v;},fetch:async()=>({ok:true}),handleLogout:logout,
+    finishClose,handleLogout:logout,
   });
   await close();
-  assert.equal(saved,true);assert.equal(showCount,false);assert.equal(exitError,true);assert.equal(redirects,0);
+  assert.equal(saved,true);assert.equal(showCount,false);assert.equal(logouts,0);assert.equal(redirects,0);
   await close();
+  await logout();
+  assert.equal(exitError,true);assert.equal(redirects,0);
   await logout();
   assert.equal(exitError,false);assert.equal(redirects,1);
   assert.deepEqual({saves,prints,dialogs,logouts},{saves:1,prints:1,dialogs:1,logouts:2});

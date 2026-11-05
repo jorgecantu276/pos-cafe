@@ -34,6 +34,8 @@ import * as phoneOrders from '../lib/phone-orders';
 
 for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['prototype','cashier',false],['workspace','cashier',false],['workspace','admin',false],['workspace','admin',true]] as const) test(`the actual ${appearance} ${role} POS ${clipEnabled?'with CLIP ':''}preserves recovery and automatically dispatches both synthetic copies`, async () => {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://127.0.0.1' });
+  dom.window.open = () => ({ close() {} } as Window);
+  dom.window.confirm = () => true;
   Object.defineProperty(dom.window.navigator,'locks',{value:{request:async (_key:string,_options:unknown,action:(lock:object)=>Promise<unknown>)=>action({})}});
   const saved = new Map<string, PropertyDescriptor | undefined>();
   const alerts: string[] = [];
@@ -41,8 +43,9 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
   const dispatches: string[] = [];
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document,
     navigator: dom.window.navigator, localStorage: dom.window.localStorage,
-    alert: (message: string) => alerts.push(message), IS_REACT_ACT_ENVIRONMENT: true,
+    alert: (message: string) => alerts.push(message), confirm: () => true, IS_REACT_ACT_ENVIRONMENT: true,
     fetch: async (url:string, options:RequestInit) => {
+      if(url==='/api/backups') return Response.json({ok:true});
       if(url.startsWith('/api/payments/clip?')) return Response.json({error:'No encontrado'},{status:404});
       if(url==='/api/payments/clip') {
         assert.equal(clipEnabled,true);assert.equal(options.method,'POST');const body=JSON.parse(options.body as string);
@@ -74,6 +77,10 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
   let submitted: checkout.CheckoutPayload | undefined;
   let authenticatedUser='fixture-user';
   let favoriteReads=0;
+  let closed = false;
+  let newShiftOpens = 0;
+  let printedCuts = 0;
+  const closeRequests: unknown[] = [];
   let authChanged!: (_event:string, session:{user:{id:string}}|null)=>void;
   const client = {
     auth: { getUser: async () => { await delayedAuth; return { data: { user: { id: authenticatedUser } }, error: null }; },
@@ -88,11 +95,30 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
     rpc: (name: string, args: { p_payload: checkout.CheckoutPayload }) => {
       if(name==='pos_inventory_register'){const result=Promise.resolve({error:null,data:{enabled:false,items:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='get_register_shortcuts'){favoriteReads++;const result=Promise.resolve(favoriteReads===1?{error:{message:'Synthetic favorites connection failure'},data:null}:{error:null,data:{product_ids:[fixtureProduct.id],revision:1}});return Object.assign(result,{abortSignal:()=>result});}
-      if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:authenticatedUser,cashier_name:'Prueba'},handoff:null,cashiers:role==='admin'?[{id:'next-cashier',name:'Ana'},{id:'other-cashier',name:'Luis'}]:[]}});return Object.assign(result,{abortSignal:()=>result});}
+      if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:closed?null:{id:'local-shift',cashier_id:authenticatedUser,cashier_name:'Prueba'},handoff:null,cashiers:role==='admin'?[{id:'next-cashier',name:'Ana'},{id:'other-cashier',name:'Luis'}]:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_shift_summary') {
-        const result=Promise.resolve({error:null,data:{register_id:'local-shift',status:'open',opened_at:'2026-10-27T12:00:00Z',
+        const register = (args as unknown as {p_register:string}).p_register;
+        const result=Promise.resolve({error:null,data:{register_id:register,status:closed?'closed':'open',opened_at:'2026-10-27T12:00:00Z',
           starting_cash:100,exchange_rate:20,total_sales:0,cash_sales:0,expected_cash:100,expenses:[],expenses_revision:0,payments:{}}});
         return Object.assign(result,{abortSignal:()=>result});
+      }
+      if(name==='pos_close_shift') {
+        closeRequests.push(args);
+        closed=true;
+        fixtures.cash_registers=null;
+        const result=Promise.resolve(closeRequests.length===1 ? {data:null,error:{code:'08007',message:'Se perdió la respuesta'}}
+          : {error:null,data:{id:'saved-close',starting_cash:100,total_sales:0,total_expenses:0,
+            expected_cash:100,counted_cash:0,difference:-100,expenses_detail:[]}});
+        return Object.assign(result,{abortSignal:()=>result});
+      }
+      if(name==='pos_open_shift') {
+        newShiftOpens++;
+        const {p_cash} = args as unknown as {p_cash:number};
+        assert.equal(p_cash,newShiftOpens===1 ? 0 : 20);
+        closed=false;
+        const register={id:'next-shift',status:'open',opened_at:'2026-10-27T13:00:00Z',initial_balance:p_cash,exchange_rate:20};
+        fixtures.cash_registers=register;
+        return Promise.resolve({error:null,data:register});
       }
       assert.equal(name, 'pos_checkout'); submitted = args.p_payload;
       return { error: null, data: { id: 'fixture-order', ticket_number: 1234, status: 'completed', total: fixtureProduct.price,
@@ -114,6 +140,7 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
   imports['@/lib/register-shortcuts'] = shortcuts; imports['@/lib/catalog-management'] = catalogManagement;
   imports['./ClipPaymentStatus'] = { default: ClipPaymentStatus, __esModule: true };
   imports['./RecentTickets'] = { default: RecentTickets, __esModule: true };
+  imports['@/lib/shift-printing'] = { printSavedShift: () => { printedCuts++; } };
   new Function('require', 'exports', compiled)((name: string) => name === '@/components/ProductPhoto' ? { default: ProductPhoto, __esModule: true } : imports[name] ?? nodeRequire(name), exports);
   const button = (text: string) => {
     const element = [...dom.window.document.querySelectorAll('button')].find(b => (b.getAttribute('aria-label')??b.textContent?.trim()) === text);
@@ -277,6 +304,33 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
       } else assert.match(closing.textContent!,/No hay otro cajero disponible/);
       await click(button('Volver a caja'));
       assert.equal(screen.querySelector('dialog[aria-label="Cierre de caja"]'),null);
+      assert.equal(alerts.length,0);
+      await click(button('Terminar turno'));
+      await click(screen.querySelector<HTMLInputElement>('dialog[aria-label="Cierre de caja"] input[type="checkbox"]')!);
+      await click(button('Confirmar cierre'));
+      assert.ok(screen.querySelector('dialog[aria-label="Cierre por comprobar"]'));
+      assert.equal(closeRequests.length,1,screen.querySelector('dialog[aria-label="Cierre por comprobar"]')?.textContent ?? '');
+      assert.equal(newShiftOpens,0);
+      await click(button('Comprobar cierre'));
+      assert.deepEqual(closeRequests[0],closeRequests[1],'La comprobación recupera el mismo corte.');
+      assert.equal(printedCuts,0,'Comprobar no imprime automáticamente un corte.');
+      assert.ok(screen.querySelector('dialog[aria-label="Caja cerrada"]'));
+      await click(button('Abrir nuevo turno'));
+      const nextOpening=screen.querySelector('dialog[aria-label="Abrir caja"]');
+      assert.ok(nextOpening);
+      assert.match(nextOpening.textContent!,/Fondo inicial MXN\$0\.00/);
+      await click(button('Abrir caja'));
+      assert.equal(newShiftOpens,1);
+      assert.equal(screen.querySelector('dialog[aria-label="Abrir caja"]'),null);
+      await click(button('Terminar turno'));
+      await click(screen.querySelector<HTMLInputElement>('dialog[aria-label="Cierre de caja"] input[type="checkbox"]')!);
+      await click(button('Confirmar cierre'));
+      assert.ok(screen.querySelector('dialog[aria-label="Caja cerrada"]'));
+      assert.equal(printedCuts,1);
+      await click(button('Abrir nuevo turno'));
+      await click(button('Agregar una pieza de 20 pesos'));
+      await click(button('Abrir caja'));
+      assert.equal(newShiftOpens,2);
       assert.equal(alerts.length,0);
     }
     // Only the simulated dispatch endpoint was called; no physical printer or live service.

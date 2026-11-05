@@ -99,6 +99,7 @@
 .workspace-dialog label{font-size:14px;display:block;font-weight:500;color:#516079}
 .workspace-dialog label>input{margin-top:7px}
 .workspace-dialog>footer{display:flex;gap:12px;justify-content:flex-end;align-items:center;padding:14px 24px;border-top:1px solid #edf0f5;position:sticky;bottom:0;background:#fff;z-index:2}
+.pos-shift-closed>footer{flex-wrap:wrap}
 .workspace-dialog .workspace-primary{min-height:58px;background:var(--ui-accent,#0066cc);border-color:var(--ui-accent,#0066cc);border-radius:15px;color:#fff;min-width:200px;font-size:17px;box-shadow:0 3px 9px #007aff10}
 .workspace-dialog .workspace-primary:active:not(:disabled){background:#0066da}
 .workspace-caption{color:#626d7e;font-size:14px;line-height:1.5;margin-bottom:12px}

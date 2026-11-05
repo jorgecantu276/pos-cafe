@@ -32,7 +32,7 @@ import { printHistoricalReceipt } from '@/lib/receipt-reprint';
 import './printing.css';
 import { rememberSalePrint,rememberPhonePrint } from '@/lib/sale-printing';
 import type { ShiftReport } from '@/lib/shift';
-import { closeShift, expenseRequestKey, loadShiftSummary, recoverPendingExpenses, recoverShiftClose, restoreShiftExpenses, saveShiftExpenses, type ShiftSummary } from '@/lib/shift-state';
+import { closeRequestKey, closeShift, expenseRequestKey, loadShiftSummary, recoverPendingExpenses, recoverShiftClose, restoreShiftExpenses, saveShiftExpenses, type ShiftSummary } from '@/lib/shift-state';
 import { CheckoutRejected, ClipPaymentPending, checkoutPayload, executeCheckout, readCheckoutReview, withCheckoutLock, type CheckoutReview, type SavedOrder } from '@/lib/checkout';
 import { bindCartDraft, cartDraftKey, type CartDraftBinding } from '@/lib/cart-draft';
 import { withDeadline } from '@/lib/request-deadline';
@@ -113,7 +113,10 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   const [savedSale, setSavedSale] = useState<SavedOrder | null>(null);
   const [showApertura, setShowApertura] = useState(false);
   const [showCierre, setShowCierre] = useState(false);
-  const [savedExit, setSavedExit] = useState(false);
+  const [savedExit, setSavedExit] = useState<'close' | 'handoff' | null>(null);
+  const [closeCheck, setCloseCheck] = useState<{ register: string; action: 'close' | 'handoff'; error: string } | null>(null);
+  const [preparingNextShift, setPreparingNextShift] = useState(false);
+  const nextShiftLoad = useRef(false);
   const [logoutError, setLogoutError] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const logoutInFlight = useRef(false);
@@ -185,7 +188,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       checkoutInFlight.current = false;
       shiftSummary.current = null;
       setExpenses([]); setShowCierre(false); setExpenseError(null); setSavingExpense(false); setIsClosingShift(false);
-      shiftSaved.current = false; setSavedExit(false); setLogoutError(false);
+      shiftSaved.current = false; setSavedExit(null); setCloseCheck(null); setLogoutError(false);
       useCartStore.getState().clearCart(); setActiveCustomer(null); setCheckoutReview(null);
       setIsProcessingCheckout(false); setShowCheckoutModal(false); setShowPostSaleModal(false); setSelectedProduct(null); setSelectedFamilyId(null); setSavedSale(null);
       setPhonePending(null);setPhoneError('');setPhoneBusy(false);phoneInFlight.current=false;setShowPhoneContact(false);setShowPhoneOrders(false);setSelectedPhoneOrder(null);setSavedPhone(null);setPhonePrintId('');setPhonePrintNotice('');
@@ -227,7 +230,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   }, [sessionActor]);
   const applyPOS = useCallback((data: Awaited<ReturnType<typeof loadPOS>> | null) => {
     if (!data) { router.replace('/login'); return; }
-    if (shiftSaved.current && draftOwner.current === data.user.id) return;
+    if (shiftSaved.current && draftOwner.current === data.user.id && !nextShiftLoad.current) return;
     setUserName(data.profile.full_name);
     setIsAdmin(data.profile.role==='admin');
     setDrawer(data.drawer);
@@ -237,6 +240,16 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     setPrintCheckoutKey(`mi_cafe_checkout_review:${data.user.id}`);
     shiftMemoryKey.current = `mi_cafe_shift:${data.user.id}`;
     shiftSaved.current = false;
+    if (nextShiftLoad.current) {
+      setBreakdown(DENOMINATIONS.reduce<Record<number, number>>((counts, denomination) => {
+        counts[denomination] = 0;
+        return counts;
+      }, {}));
+      setDollarsInBox('');
+      setCountConfirmed(false);
+      setSavedExit(null);
+      setLogoutError(false);
+    }
     shiftSummary.current = data.summary; setExpenseError(null);
     draftStorageKey.current = cartDraftKey(data.user.id);
     try { setCheckoutReview(readCheckoutReview(localStorage.getItem(checkoutReviewKey.current))); }
@@ -423,7 +436,67 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
 
   const printZReport = (target: Window, report: ShiftReport) => printSavedShift(target, {...report,user_name: (report as {user_name?:string}).user_name ?? userName,opened_at:(report as {opened_at?:string}).opened_at ?? shiftStartTime ?? undefined});
 
-const handleSaveAndClose = async () => {
+  const finishClose = (action: 'close' | 'handoff') => {
+    shiftSaved.current = true;
+    shiftSummary.current = null;
+    cartDraft.current?.disconnect();
+    cartDraft.current = null;
+    clearCart();
+    setRegisterId('');
+    setShowCierre(false);
+    setCloseCheck(null);
+    setSavedExit(action);
+    void fetch('/api/backups', { method: 'POST', headers: { 'X-Pos-Backup': 'checkpoint' }, keepalive: true }).catch(() => {});
+  };
+
+  const handlePrepareNextShift = async () => {
+    if (nextShiftLoad.current || logoutInFlight.current) return;
+    nextShiftLoad.current = true;
+    setPreparingNextShift(true);
+    try { await fetchData(); }
+    finally { nextShiftLoad.current = false; setPreparingNextShift(false); }
+  };
+
+  const hasPendingClose = (owner: string, action: 'close' | 'handoff') =>
+    action === 'handoff' ? hasDrawerRequest(localStorage, owner, 'handoff') : !!localStorage.getItem(closeRequestKey(owner));
+
+  const handleVerifyClose = async () => {
+    if (!closeCheck || closingShift.current) return;
+    const { register, action } = closeCheck;
+    const owner = draftOwner.current;
+    closingShift.current = true;
+    setIsClosingShift(true);
+    try {
+      let summary = await loadShiftSummary(supabase, register);
+      if (draftOwner.current !== owner) return;
+      let handoffConfirmed = false;
+      if (hasPendingClose(owner, action)) {
+        // Use the original request when the first response was lost.
+        if (action === 'handoff') handoffConfirmed = !!await recoverDrawerRequest(supabase, localStorage, owner, 'handoff');
+        else await recoverShiftClose(supabase, localStorage, owner);
+        summary = await loadShiftSummary(supabase, register);
+      }
+      if (draftOwner.current !== owner) return;
+      if (summary.status === 'closed') {
+        finishClose(handoffConfirmed ? 'handoff' : 'close');
+        if (handoffConfirmed) await handleLogout();
+      } else {
+        shiftSummary.current = summary;
+        setExpenses(summary.expenses);
+        setCashSales(summary.cash_sales);
+        setCountConfirmed(false);
+        setCloseCheck(null);
+        setShowCierre(true);
+      }
+    } catch (error) {
+      if (draftOwner.current === owner) setCloseCheck({ register, action, error: errorMessage(error) });
+    } finally {
+      closingShift.current = false;
+      if (draftOwner.current === owner) setIsClosingShift(false);
+    }
+  };
+
+  const handleSaveAndClose = async () => {
     if (shiftSaved.current || closingShift.current || expenseInFlight.current || expenseError || !shiftSummary.current) return;
     if (!Number.isFinite(countedCash) || countedCash<0 || countedCash>10000000 || Object.values(breakdown).some(q=>!Number.isInteger(q)||q<0)
       || !Number.isFinite(parseAmount(dollarsInBox)) || parseAmount(dollarsInBox)<0 || Math.round(parseAmount(dollarsInBox)*100)/100!==parseAmount(dollarsInBox)) {
@@ -442,18 +515,15 @@ const handleSaveAndClose = async () => {
       if(!await confirmClosingPrints()){printWindow?.close();return;}
       const report = closeAction === 'handoff' ? await beginDrawerHandoff(supabase, localStorage, owner, summary, countedCash, handoffTarget) : await closeShift(supabase, localStorage, owner, summary, countedCash);
       if (draftOwner.current !== owner) { printWindow?.close(); return; }
-      shiftSaved.current = true;
-      setRegisterId('');
-      setShowCierre(false);
-      setSavedExit(true);
-      // Neither a backup nor a failed logout may resubmit this confirmed close.
-      void fetch('/api/backups', { method: 'POST', headers: { 'X-Pos-Backup': 'checkpoint' }, keepalive: true }).catch(() => {});
+      finishClose(closeAction);
       try { if (printWindow) printZReport(printWindow, report); }
       catch { printWindow?.close(); alert('El corte se guardó, pero no se pudo abrir la impresión.'); }
-      await handleLogout();
+      if (closeAction === 'handoff') await handleLogout();
     } catch (error) {
       printWindow?.close();
-      alert('No se confirmó el corte. Revisa el historial antes de volver a cerrar. ' + (error instanceof Error ? errorMessage(error) : ''));
+      if (draftOwner.current !== owner || shiftSaved.current) return;
+      setShowCierre(false);
+      setCloseCheck({ register: summary.register_id, action: closeAction, error: errorMessage(error) });
     } finally {
       closingShift.current = false;
       if (draftOwner.current === owner) setIsClosingShift(false);
@@ -995,12 +1065,26 @@ const handleSaveAndClose = async () => {
       )}
 
       {/* MODAL: CIERRE DE TURNO CON GASTOS Y ARQUEO */}
-      {savedExit && <WorkspaceDialog title="Corte guardado">
+      {closeCheck && <WorkspaceDialog title="Cierre por comprobar">
         <div className="workspace-dialog-content">
-          <p>La caja ya está cerrada.</p>
+          <p>Comprueba el estado del corte antes de abrir otro turno.</p>
+          {closeCheck.error && <p role="alert">{closeCheck.error}</p>}
+        </div>
+        <footer><button type="button" className="workspace-primary" disabled={isClosingShift} onClick={() => void handleVerifyClose()}>
+          {isClosingShift ? 'Comprobando…' : 'Comprobar cierre'}
+        </button></footer>
+      </WorkspaceDialog>}
+      {savedExit && <WorkspaceDialog title={savedExit === 'handoff' ? 'Entrega guardada' : 'Caja cerrada'} className="pos-shift-closed">
+        <div className="workspace-dialog-content">
+          <p>{savedExit === 'handoff' ? 'El siguiente cajero debe entrar y confirmar el efectivo recibido.' : 'El corte se guardó. Puedes abrir otro turno con tu cuenta.'}</p>
+          {preparingNextShift ? <p role="status">Consultando el estado de la caja…</p> : loadError && <p role="alert">{loadError}</p>}
           {logoutError && <p role="alert">No se pudo cerrar la sesión. Revisa la conexión y vuelve a intentar.</p>}
         </div>
-        <footer><button type="button" className="workspace-primary" disabled={signingOut} onClick={() => void handleLogout()}>{signingOut ? 'Cerrando sesión…' : logoutError ? 'Reintentar salir' : 'Cerrar sesión'}</button></footer>
+        <footer>
+          <button type="button" disabled={signingOut || preparingNextShift} onClick={() => void handleLogout()}>{signingOut ? 'Cerrando sesión…' : logoutError ? 'Reintentar salir' : 'Cerrar sesión'}</button>
+          {savedExit === 'close' && <button type="button" className="workspace-primary" disabled={signingOut || preparingNextShift}
+            onClick={() => void handlePrepareNextShift()}>Abrir nuevo turno</button>}
+        </footer>
       </WorkspaceDialog>}
       {showCierre && (
         <WorkspaceDialog title="Cierre de caja" busy={isClosingShift} onClose={() => setShowCierre(false)} className="pos-closing-dialog">
