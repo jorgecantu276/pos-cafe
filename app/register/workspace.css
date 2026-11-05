@@ -146,6 +146,7 @@
 .workspace-customer-results>button{justify-content:space-between;text-align:left}
 .workspace-customer-results span{font-size:14px;color:#626d7e}
 .workspace-note-toggle{width:100%;justify-content:flex-start!important;margin-top:14px;background:#f5f7fa!important;border-color:#edf0f5!important;color:#5c6c81!important;font-size:14px!important;font-weight:500!important}
+.workspace-customization .workspace-note-toggle{margin:0 0 12px}
 .workspace-modifier-group{margin:0 0 20px;border:0;padding:0}
 .workspace-modifier-group legend{font-size:15px;font-weight:650;margin-bottom:10px;color:#536078}
 .workspace-modifier-group>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}

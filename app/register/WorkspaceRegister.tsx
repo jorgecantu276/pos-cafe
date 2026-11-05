@@ -175,6 +175,8 @@ export function WorkspaceCustomization(p: CustomizationProps) {
   const missingChoice = choices.some(({ step }) => step.required && !p.extras.some(extra => extra.phase === step.id && step.options.includes(extra.name)));
   return <WorkspaceDialog title={p.family?.name ?? p.product?.name ?? 'Producto'} onClose={p.onClose} className="workspace-customization"><div className="workspace-dialog-content">
     {p.quantity !== undefined && <div className="workspace-edit-quantity"><span>Cantidad</span><button type="button" aria-label="Reducir cantidad" disabled={p.quantity <= 1} onClick={() => p.onQuantity?.(p.quantity! - 1)}><Minus size={22} /></button><strong>{p.quantity}</strong><button type="button" aria-label="Aumentar cantidad" onClick={() => p.onQuantity?.(p.quantity! + 1)}><Plus size={22} /></button></div>}
+    <button type="button" className="workspace-note-toggle" aria-expanded={notes} onClick={() => setNotes(!notes)}><Pencil size={17} />{p.note || 'Nota de preparación'}</button>
+    {notes && <><textarea aria-label="Notas de preparación" rows={2} value={p.note} maxLength={1000} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
     {p.family && <fieldset className="workspace-modifier-group"><legend>{p.family.variantTitle}</legend><div>
       {variant && !showVariants
         ? <button type="button" aria-label={`Cambiar variante: ${variant.label}`} onClick={() => setShowVariants(true)}>{variant.label}<span>Cambiar</span></button>
@@ -189,8 +191,6 @@ export function WorkspaceCustomization(p: CustomizationProps) {
       const selected = p.extras.some(extra => extra.name === name && (!extra.phase || extra.phase === step.id));
       return <button type="button" key={name} aria-pressed={selected} onClick={() => p.onOption(name, index)}>{name}{Number(extra?.price) > 0 && <span>+{money(Number(extra?.price))}</span>}</button>;
     })}</div></fieldset>)}
-    <button type="button" className="workspace-note-toggle" aria-expanded={notes} onClick={() => setNotes(!notes)}><Pencil size={17} />{p.note || 'Nota de preparación'}</button>
-    {notes && <><textarea aria-label="Notas de preparación" rows={2} value={p.note} maxLength={1000} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
   </div><footer>{p.onRemove && <button type="button" onClick={p.onRemove}>Quitar</button>}{p.product && <span className="workspace-custom-price">{money((p.quantity ?? 1) * (Number(p.product.basePrice ?? p.product.price) + p.extras.reduce((sum, extra) => sum + extra.price, 0)))}</span>}<button type="button" className="workspace-primary" disabled={!p.product || missingChoice} onClick={p.onConfirm}>{p.quantity !== undefined ? 'Guardar cambios' : 'Agregar a la orden'}</button></footer></WorkspaceDialog>;
 }
 
