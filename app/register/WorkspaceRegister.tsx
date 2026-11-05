@@ -5,7 +5,7 @@ import ProductPhoto from '@/components/ProductPhoto';
 import PagerPicker from './PagerPicker';
 import { Keyboard, Minus, Plus, Search, X, Pencil, Trash2, Printer, UserRound, ChevronRight, Coffee, Settings2, ArrowRight } from 'lucide-react';
 import { productAvailable, productStockLabel, validPagerNumber } from '@/lib/pos-types';
-import { favoriteMenuCards, matchesMenuCard, menuCardAvailable, menuCardPrice, menuCards, normalizeMenuText, type MenuCard } from '@/lib/menu-cards';
+import { favoriteMenuCards, matchesMenuCard, menuCardAvailable, menuCardPrice, menuCards, normalizeMenuText, type DrinkSize, type MenuCard } from '@/lib/menu-cards';
 
 type RegisterProps = ComponentProps<typeof import('./PrototypeRegister').default> & {
   orderNote: string; onOrderNote: (value: string) => void;
@@ -16,14 +16,14 @@ type CheckoutProps = ComponentProps<typeof import('./PrototypeRegister').Prototy
 type CustomizationProps = Omit<ComponentProps<typeof import('./PrototypeRegister').PrototypeCustomization>, 'onOption' | 'product'> & {
   product: ComponentProps<typeof import('./PrototypeRegister').PrototypeCustomization>['product'] | null;
   family?: MenuCard;
-  onVariant?: (id: string) => void;
+  onVariant?: (id: string | null) => void;
   onOption: (name: string, stepIndex: number) => void;
   quantity?: number; onQuantity?: (value: number) => void; onRemove?: () => void;
 };
 const money = (value: number) => `$${value.toFixed(2)}`;
 
-export function WorkspaceDialog({ title, children, onClose, busy = false, className = '' }: {
-  title: string; children: ReactNode; onClose?: () => void; busy?: boolean; className?: string;
+export function WorkspaceDialog({ title, children, onClose, busy = false, className = '', headerAccessory }: {
+  title: string; children: ReactNode; onClose?: () => void; busy?: boolean; className?: string; headerAccessory?: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -34,7 +34,7 @@ export function WorkspaceDialog({ title, children, onClose, busy = false, classN
     return () => { if (typeof node.close === 'function') node.close(); };
   }, []);
   return <dialog ref={ref} aria-label={title} className={`workspace-dialog ${className}`} onCancel={event => { event.preventDefault(); if (!busy) onClose?.(); }}>
-    <header><h2>{title}</h2>{onClose && <button type="button" className="workspace-icon" aria-label={`Cerrar ${title}`} disabled={busy} onClick={onClose}><X size={22} /></button>}</header>
+    <header>{headerAccessory ? <div className="workspace-dialog-heading"><h2>{title}</h2>{headerAccessory}</div> : <h2>{title}</h2>}{onClose && <button type="button" className="workspace-icon" aria-label={`Cerrar ${title}`} disabled={busy} onClick={onClose}><X size={22} /></button>}</header>
     {children}
   </dialog>;
 }
@@ -194,9 +194,24 @@ export function WorkspaceCustomization(p: CustomizationProps) {
   const [notes, setNotes] = useState(false);
   const [showVariants, setShowVariants] = useState(false);
   const variant = p.family?.variants?.find(({ product }) => product.id === p.product?.id);
+  const variants = p.family?.variants ?? [];
+  const sized = variants.length > 1 && variants.every(option => option.size);
+  const sizes = (['16 oz', '20 oz'] as const).filter(size => variants.some(option => option.size === size));
+  const [requestedSize, setSize] = useState<DrinkSize>(variant?.size ?? sizes.find(value => variants.some(option => option.size === value && productAvailable(option.product))) ?? '16 oz');
+  const size = variant?.size ?? requestedSize;
+  const shownVariants = sized ? variants.filter(option => option.size === size) : variants;
+  const chooseSize = (next: DrinkSize) => {
+    if (next === size) return;
+    setSize(next);
+    const equivalent = variant && variants.find(option => option.size === next && option.label === variant.label && productAvailable(option.product));
+    p.onVariant?.(equivalent ? equivalent.product.id : null);
+    setShowVariants(!equivalent);
+  };
   const choices = p.steps.map((step, index) => ({ step, index })).filter(({ step }) => step.id !== 'notes');
   const missingChoice = choices.some(({ step }) => step.required && !p.extras.some(extra => extra.phase === step.id && step.options.includes(extra.name)));
-  return <WorkspaceDialog title={p.family?.name ?? p.product?.name ?? 'Producto'} onClose={p.onClose} className="workspace-customization"><div className="workspace-dialog-content">
+  return <WorkspaceDialog title={p.family?.name ?? p.product?.name ?? 'Producto'} onClose={p.onClose} className="workspace-customization"
+    headerAccessory={sized && <div className="workspace-size-picker" role="group" aria-label="Tamaño">{sizes.map(value => <button type="button" key={value} aria-pressed={size === value}
+      disabled={!variants.some(option => option.size === value && productAvailable(option.product))} onClick={() => chooseSize(value)}>{value}</button>)}</div>}><div className="workspace-dialog-content">
     {p.quantity !== undefined && <div className="workspace-edit-quantity"><span>Cantidad</span><button type="button" aria-label="Reducir cantidad" disabled={p.quantity <= 1} onClick={() => p.onQuantity?.(p.quantity! - 1)}><Minus size={22} /></button><strong>{p.quantity}</strong><button type="button" aria-label="Aumentar cantidad" onClick={() => p.onQuantity?.(p.quantity! + 1)}><Plus size={22} /></button></div>}
     <button type="button" className="workspace-note-toggle" aria-expanded={notes} onClick={() => setNotes(!notes)}><Pencil size={17} />{p.note || 'Nota de preparación'}</button>
     {notes && <><textarea aria-label="Notas de preparación" rows={2} value={p.note} maxLength={1000} onChange={event => p.onNote(event.target.value)} /><WorkspaceKeyboard value={p.note} onChange={value => p.onNote(value.slice(0, 1000))} /></>}
@@ -208,7 +223,7 @@ export function WorkspaceCustomization(p: CustomizationProps) {
       </div></fieldset>
       : <PreparationChoices key={p.family.id} title={p.family.variantTitle ?? 'Presentación'}
         searchLabel={p.family.variantTitle === 'Elige el sabor' ? 'Buscar sabor' : 'Buscar presentación'}
-        options={(p.family.variants ?? []).map(({ product, label }) => ({
+        options={shownVariants.map(({ product, label }) => ({
           id: product.id, label, selected: product.id === p.product?.id, disabled: !productAvailable(product),
           detail: productAvailable(product) ? money(Number(product.price)) : 'Agotado',
         }))}

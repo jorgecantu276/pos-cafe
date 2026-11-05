@@ -6,6 +6,19 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { phoneOrderDocuments,saleDocuments } from '../lib/sale-printing';
 
+test('six desserts fit one POS80 preparation page instead of six Bluetooth labels', {skip:process.platform!=='win32'},()=>{
+  const document=saleDocuments({id:'dessert-layout',ticket_number:4321,status:'completed',total:350,
+    items:['Brownie tradicional','Galleta de pistache','Crookie nutella','Muffin de plátano','Cheesecake Oreo','Pastel de zanahoria'].map((name,index)=>({id:String(index),quantity:index===0?2:1,product:{id:String(index),name,price:50,category:'Postres',note:index===2?'Calentar por separado':''}})),
+    customer_name:'Ana de prueba',order_type:'Para Llevar',order_note:'Entregar juntos',created_at:'2026-11-05T18:00:00Z',pager_number:12,
+    payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:16,change_mxn:0}).desserts!;
+  const result=spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
+    ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
+    {input:JSON.stringify({...document,fontPoints:11,widthMm:71.88,heightMm:210.06})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
+  assert.equal(result.status,0,result.stderr||result.stdout);
+  const pages:{lines:string[]}[]=JSON.parse(result.stdout);assert.equal(pages.length,1);
+  const text=pages[0].lines.join(' ');assert.match(text,/COMANDA DE POSTRES/);assert.match(text,/2 × Brownie tradicional/);assert.match(text,/Calentar por separado/);assert.doesNotMatch(text,/\$|TOTAL|Cambio/);
+});
+
 test('phone preparation keeps its unpaid identity on every rendered continuation without a payment receipt', {skip:process.platform!=='win32'},()=>{
   const documents=phoneOrderDocuments({id:'phone-layout',folio:43,contact_name:'Ana de prueba',contact_phone:'8682345678',
     snapshot:{items:[{id:'cup',quantity:1,product:{id:'iced',name:'Iced coffee caramelo',price:110,category:'Bebidas',note:'Sin azúcar. '.repeat(80)}}],

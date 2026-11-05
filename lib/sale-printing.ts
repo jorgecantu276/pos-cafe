@@ -1,7 +1,8 @@
 import type { SavedOrder } from './checkout';
 import receiptBranding from '../config/receipt-branding.json';
 
-export type PrintAudience = 'customer' | 'barista';
+export type PrintAudience = 'customer' | 'barista' | 'desserts';
+export type PrintQueues = Record<'customer' | 'barista', string> & Partial<Record<'desserts', string>>;
 export type PrintState = 'queued' | 'preparing' | 'blocked' | 'submitting' | 'submitted' | 'uncertain' | 'cancelled';
 export type PrintLineStyle = 'brand' | 'heading' | 'mono' | 'total' | 'meta' | 'name' | 'drink' | 'modifier' | 'note' | 'footer'
   | 'logo' | 'qr' | 'separator' | 'receipt-heading' | 'receipt-total' | 'phone' | 'quote' | 'social' | 'issuer';
@@ -28,11 +29,12 @@ export interface SalePrintJob {
   orderId: string; ticket: string; audience: PrintAudience; queue: string;
   state: PrintState; message: string; attempts: number; updatedAt: string;
 }
+export type SalePrintDocuments = Record<'customer' | 'barista', SalePrintDocument> & Partial<Record<'desserts', SalePrintDocument>>;
 
-// Both documents come from the immutable, server-confirmed sale. No catalog lookups.
+// Print documents come from the immutable, server-confirmed sale. No catalog lookups.
 const text = (value: unknown) => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
 const money = (value: number) => `$${value.toFixed(2)} MXN`;
-export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): Record<PrintAudience, SalePrintDocument> {
+export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): SalePrintDocuments {
   if (order.status !== 'completed' || !order.id || !order.items?.length
     || !Number.isFinite(order.total) || order.total <= 0 || !Number.isFinite(Date.parse(order.created_at))
     || order.items.some(i => !Number.isInteger(i.quantity) || i.quantity < 1 || i.quantity > 1000
@@ -97,7 +99,32 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
   add('Para el postre y una sonrisa,', 'quote'); add('siempre hay espacio.', 'quote');
   add('@_carinitomio', 'social');
   return { customer: { title: `CM #${ticket} CLIENTE`, sections: [receipt], styles: [receiptStyles], receiptBranding, issuerComplete, testOnly: options.testOnly === true },
-    barista: preparationDocument(order,ticket) };
+    ...preparationDocuments(order,ticket) };
+}
+
+const dessert = (item: SavedOrder['items'][number]) => text(item.product.category).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'postres';
+function preparationDocuments(order: Pick<SavedOrder,'items'|'customer_name'|'order_note'|'order_type'|'created_at'|'pager_number'>,ticket:string,phone=false): Pick<SalePrintDocuments,'barista'|'desserts'> {
+  const desserts = order.items.filter(dessert);
+  return { barista:preparationDocument({...order,items:order.items.filter(item=>!dessert(item))},ticket,phone),
+    ...(desserts.length?{desserts:dessertDocument({...order,items:desserts},ticket,phone)}:{}) };
+}
+
+function dessertDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_note'|'order_type'|'created_at'|'pager_number'>,ticket:string,phone:boolean):SalePrintDocument {
+  const lines:string[]=[],styles:PrintLineStyle[]=[];
+  const add=(line:string,style:PrintLineStyle='meta')=>{lines.push(line);styles.push(style);};
+  add('COMANDA DE POSTRES','heading');
+  add(phone?`PEDIDO POR TELÉFONO ${ticket} · SIN PAGAR`:`Folio: ${ticket}`,'heading');
+  add(`Cliente: ${text(order.customer_name)||'Mostrador'}`);
+  if(order.pager_number!=null)add(`CONTROL: ${order.pager_number}`,'heading');
+  add(new Date(order.created_at).toLocaleString('es-MX',{timeZone:'America/Matamoros',dateStyle:'short',timeStyle:'short'}));
+  add(text(order.order_type),'heading');add('','separator');
+  for(const item of order.items){
+    add(`${item.quantity} × ${text(item.product.name)}`,'heading');
+    for(const extra of item.product.displayExtras??[])add(`  - ${text(extra.name)}`,'modifier');
+    if(item.product.note)add(`  Nota: ${text(item.product.note)}`,'note');
+  }
+  if(order.order_note){add('','separator');add(`ORDEN: ${text(order.order_note)}`,'note');}
+  return {title:`CM #${ticket} POSTRES`,sections:[lines],styles:[styles],...(phone?{kind:'phone' as const}:{})};
 }
 
 function preparationDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_note'|'order_type'|'created_at'|'pager_number'>,ticket:string,phone=false):SalePrintDocument {
@@ -127,7 +154,7 @@ export interface PhonePreparation {
   id:string;folio:number|string;contact_name:string;contact_phone:string;
   snapshot:Pick<SavedOrder,'items'|'total'|'customer_name'|'order_type'|'order_note'|'created_at'>;
 }
-export function phoneOrderDocuments(order:PhonePreparation):Record<PrintAudience,SalePrintDocument> {
+export function phoneOrderDocuments(order:PhonePreparation):SalePrintDocuments {
   const snapshot=order.snapshot,ticket=`T${text(order.folio).padStart(4,'0')}`;
   if(!order.id||!order.contact_name.trim()||!order.contact_phone.trim()||!snapshot?.items?.length||!Number.isFinite(snapshot.total)||snapshot.total<=0
     ||!Number.isFinite(Date.parse(snapshot.created_at))||snapshot.items.some(i=>!Number.isInteger(i.quantity)||i.quantity<1||i.quantity>1000||!i.product?.name||!Number.isFinite(i.product.price)))
@@ -147,7 +174,7 @@ export function phoneOrderDocuments(order:PhonePreparation):Record<PrintAudience
   add('','separator');add(`POR COBRAR: ${money(snapshot.total)}`,'receipt-total');
   add('Este documento no acredita el pago.','meta');
   return {customer:{kind:'phone',title:`CM ${ticket} POR COBRAR`,sections:[lines],styles:[styles],receiptBranding},
-    barista:preparationDocument({...snapshot,customer_name:order.contact_name,pager_number:null},ticket,true)};
+    ...preparationDocuments({...snapshot,customer_name:order.contact_name,pager_number:null},ticket,true)};
 }
 
 export interface PrintStorage { length: number; key(index: number): string | null; getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }

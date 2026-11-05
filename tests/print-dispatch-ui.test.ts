@@ -88,6 +88,29 @@ function updatePrinting(document: Document) {
   assert.ok(button); return button;
 }
 
+test('mixed sale retires its three-copy outbox and retries only the grouped dessert preparation',async()=>{
+  const orderId=randomUUID(),bodies:unknown[]=[],jobs:SalePrintJob[]=[];
+  await withPrintStatus(async (_url,options)=>{
+    if(options?.method==='POST'){
+      const body=JSON.parse(options.body as string);bodies.push(body);
+      if(!jobs.length)for(const audience of ['customer','barista','desserts'] as const)jobs.push({orderId,ticket:'42',audience,
+        queue:audience==='barista'?'Y813BT Sticker':'POS80 Printer',state:audience==='desserts'?'blocked':'submitted',message:'',attempts:1,updatedAt:new Date().toISOString()});
+      if(body.audience==='desserts')jobs.find(job=>job.audience==='desserts')!.state='submitted';
+      return Response.json({mode:'mock',jobs,expectedCopies:3});
+    }
+    return Response.json({mode:'mock',jobs});
+  },async(document,storage)=>{
+    rememberSalePrint(storage,'compact-print:cashier',{id:orderId,ticket_number:42});
+    await act(async()=>updatePrinting(document).click());
+    assert.deepEqual(pendingSalePrints(storage,'compact-print:cashier'),[]);
+    assert.match(document.body.textContent!,/Comanda de postres/);
+    const retry=[...document.querySelectorAll('button')].find(button=>button.textContent==='Reintentar postres');assert.ok(retry);
+    await act(async()=>retry.click());
+    assert.deepEqual(bodies,[{orderId},{orderId,audience:'desserts'}]);
+    assert.ok(jobs.every(job=>job.state==='submitted'));
+  });
+});
+
 test('phone preparation and its later single-copy paid receipt retire separate outbox identities',async()=>{
   const phoneId=randomUUID(),saleId=randomUUID(),jobs:SalePrintJob[]=[],posts:string[]=[];
   await withPrintStatus(async (url,options)=>{

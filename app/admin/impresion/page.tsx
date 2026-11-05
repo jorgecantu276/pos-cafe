@@ -9,7 +9,7 @@ import {SettingsGroup,SettingsNotice} from '../Settings';
 type Job=SalePrintJob&{cashierId:string;canRetry?:boolean};
 interface Reply {mode:'mock'|'windows';canManage:boolean;actorId:string;jobs:Job[];history:PrintRecoveryAudit[];cashiers:{id:string;full_name:string}[]}
 interface Recovery {orderId:string;audience:PrintAudience;action:PrintRecoveryAction;requestId:string;reason:string;confirmed?:boolean}
-const copy=(audience:PrintAudience)=>audience==='barista'?'Etiqueta del barista':'Ticket del cliente';
+const copy=(audience:PrintAudience)=>audience==='barista'?'Etiqueta del barista':audience==='desserts'?'Comanda de postres':'Ticket del cliente';
 const key=(actor:string)=>`pos_print_recovery:v1:${actor}`;
 const states:Record<Job['state'],string>={queued:'Pendiente',preparing:'Preparando',blocked:'Necesita atención',submitting:'Enviando',submitted:'Enviado a Windows',uncertain:'Por comprobar',cancelled:'Cancelado'};
 
@@ -55,7 +55,7 @@ export default function PrintRecoveryPage(){
     {error&&<SettingsNotice error>{error}</SettingsNotice>}{message&&<SettingsNotice>{message}</SettingsNotice>}
     {pending&&<SettingsGroup title="Revisión pendiente"><div className="settings-editor"><SettingsNotice>Comprueba esta revisión antes de imprimir otra copia.</SettingsNotice><div><button disabled={busy} onClick={()=>void run(pending,true)}>Comprobar revisión pendiente</button></div></div></SettingsGroup>}
     {!data&&!error&&<p role="status">Cargando impresión…</p>}
-    {data&&<SettingsGroup title="Tickets y etiquetas">
+    {data&&<SettingsGroup title="Impresiones">
       {!data.jobs.length&&<p className="settings-empty">Sin impresiones registradas.</p>}
       {data.jobs.map(job=><article key={`${job.orderId}:${job.audience}`} className="settings-job">
         <div className="settings-job-heading"><h3>#{job.ticket} · {copy(job.audience)}</h3><span className="settings-badge">{states[job.state]}</span></div>

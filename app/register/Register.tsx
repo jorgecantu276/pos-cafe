@@ -655,7 +655,13 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     else handleProductClick(card.variants?.[0].product ?? card);
   }, [draftError, loading, loadError, handleProductClick]);
 
-  const handleVariant = (id: string) => {
+  const handleVariant = (id: string | null) => {
+    if (id === null) {
+      setSelectedProduct(null);
+      setDynamicSteps([]);
+      setCustomizationStep(0);
+      return;
+    }
     const product = selectedFamily?.variants?.find(variant => variant.product.id === id)?.product;
     if (!product || !productAvailable(product) || selectedProduct?.id === id) return;
     const steps = buildWizardSteps(product);

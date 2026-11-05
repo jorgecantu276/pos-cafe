@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { ChevronDown, Printer } from 'lucide-react';
 import { forgetSalePrint, pendingSalePrints, printRequestTarget, type PrintAudience, type SalePrintJob } from '@/lib/sale-printing';
 
-interface Reply { mode: 'mock' | 'windows'; jobs: SalePrintJob[]; canManage?: boolean; expectedCopies?:1|2 }
-const labels = { customer: 'Ticket del cliente', barista: 'Etiquetas del barista' };
+interface Reply { mode: 'mock' | 'windows'; jobs: SalePrintJob[]; canManage?: boolean; expectedCopies?:1|2|3 }
+const labels = { customer: 'Ticket del cliente', barista: 'Etiquetas del barista', desserts:'Comanda de postres' };
 const stateLabels: Record<SalePrintJob['state'], string> = {
   queued: 'En espera', preparing: 'Preparando impresión…', submitting: 'Enviando…',
   submitted: 'Enviado a Windows', blocked: 'Impresión detenida', uncertain: 'Salida por comprobar', cancelled: 'Cancelado',
@@ -100,7 +100,7 @@ export default function PrintDispatch({ checkoutKey, latestOrderId }: { checkout
       {shown.map(job => <div className="print-dispatch-job" key={`${job.orderId}:${job.audience}`}>
         <strong>#{job.ticket} · {labels[job.audience]}</strong><p>{stateLabels[job.state]}</p>
         {['blocked','uncertain'].includes(job.state) && <details><summary>Detalles de impresión</summary><p>{job.queue}</p><p>{job.message}</p></details>}
-        {job.state === 'blocked' && <button disabled={busy} onClick={() => { void refresh.current(job.orderId, job.audience); }}>Reintentar {job.audience === 'customer' ? 'cliente' : 'barra'}</button>}
+        {job.state === 'blocked' && <button disabled={busy} onClick={() => { void refresh.current(job.orderId, job.audience); }}>Reintentar {job.audience === 'customer' ? 'cliente' : job.audience==='desserts'?'postres':'barra'}</button>}
         {['uncertain', 'submitting'].includes(job.state) && <p>Revisa el papel y la cola de Windows antes de imprimir otra copia. Si hay dudas, avisa al responsable.</p>}
       </div>)}
       {!shown.length && !error && <p>{mode ? 'Sin impresiones pendientes.' : 'Comprobando impresión…'}</p>}

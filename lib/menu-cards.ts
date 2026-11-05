@@ -1,32 +1,38 @@
 import { productAvailable, type CatalogProduct } from './pos-types';
 
-export type MenuVariant = { product: CatalogProduct; label: string };
+export type DrinkSize = '16 oz' | '20 oz';
+export type MenuVariant = { product: CatalogProduct; label: string; size?: DrinkSize };
 export type MenuCard = CatalogProduct & { variants?: MenuVariant[]; variantTitle?: string; fromPrice?: boolean };
 
 export const normalizeMenuText = (name: string) => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 const matchaLabels: Record<string, string> = {
-  'matcha carino': 'Cariño · 16 oz',
-  'matcha latte carino 20 oz': 'Cariño · 20 oz',
+  'matcha carino': 'Cariño',
+  'matcha latte carino': 'Cariño',
   'matcha fresa': 'Fresa',
   'matcha mango': 'Mango',
-  'matcha latte cold foam fresa 20 oz': 'Cold foam de fresa · 20 oz',
-  'matcha latte cold foam mango 20 oz': 'Cold foam de mango · 20 oz',
+  'matcha latte cold foam fresa': 'Cold foam de fresa',
+  'matcha latte cold foam mango': 'Cold foam de mango',
   'matcha ceremonial': 'Ceremonial',
 };
 
 function family(product: CatalogProduct) {
   if (normalizeMenuText(product.category ?? '') !== 'bebidas') return;
-  const name = normalizeMenuText(product.name);
+  const originalName = normalizeMenuText(product.name);
+  const sizeMatch = /\b(16|20)\s*oz\s*$/i.exec(product.name);
+  const size: DrinkSize | undefined = sizeMatch ? `${sizeMatch[1]} oz` as DrinkSize
+    : originalName === 'matcha carino' ? '16 oz' : undefined;
+  const displayName = product.name.replace(/\s*[·-]?\s*\b(?:16|20)\s*oz\s*$/i, '').trim();
+  const name = normalizeMenuText(displayName);
   const iced = /^iced coffee?\s*(.*)$/.exec(name);
   if (iced && !/^nevado\b/.test(iced[1])) {
-    const flavor = product.name.replace(/^iced coffee?\s*/i, '').trim();
+    const flavor = displayName.replace(/^iced coffee?\s*/i, '').trim();
     const label = name === 'iced coffee nuez' ? 'Butter Pecan (nuez)' : flavor ? flavor[0].toUpperCase() + flavor.slice(1) : 'Original';
-    return { key: 'iced-coffee', title: 'Iced Coffee', prompt: 'Elige el sabor', label };
+    return { key: 'iced-coffee', title: 'Iced Coffee', prompt: 'Elige el sabor', label, size };
   }
   const nevado = /^(?:iced coffee? )?nevado\b\s*(.*)$/.exec(name);
   if (nevado) return { key: 'nevado', title: 'Nevado', prompt: 'Elige la preparación', label: nevado[1] ? product.name : 'Original · 20 oz' };
-  if (/^matcha\b/.test(name)) return { key: 'matcha', title: 'Matcha', prompt: 'Elige la preparación', label: matchaLabels[name] ?? product.name };
+  if (/^matcha\b/.test(name)) return { key: 'matcha', title: 'Matcha', prompt: 'Elige la preparación', label: matchaLabels[name] ?? displayName, size };
   if (/^(frappe|frappuccino)\b/.test(name)) return { key: 'frappuccino', title: 'Frappuccino · 16 oz', prompt: 'Elige el sabor', label: name.endsWith('oreo') ? 'Oreo' : name.endsWith('original') ? 'Tradicional' : product.name };
   if (/^te chai (caliente|frio)$/.test(name)) return { key: 'chai-latte', title: 'Chai Latte · 16 oz', prompt: 'Elige la temperatura', label: name.endsWith('frio') ? 'Frío' : 'Caliente' };
 }
@@ -39,7 +45,7 @@ export function menuCards(products: readonly CatalogProduct[]): MenuCard[] {
     const group = family(product);
     if (!group) { singles.push(product); continue; }
     const current = families.get(group.key) ?? { ...group, variants: [] };
-    current.variants.push({ product, label: group.label });
+    current.variants.push({ product, label: group.label, ...('size' in group && group.size ? { size: group.size } : {}) });
     families.set(group.key, current);
   }
   for (const [key, { title, prompt, variants }] of families) {

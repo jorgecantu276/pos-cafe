@@ -51,11 +51,11 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
   let input;
   try { input = JSON.parse(raw); } catch { throw new AccessError('Solicitud de impresión inválida.', 400); }
   if (!input || typeof input.orderId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.orderId)
-    || (input.audience !== undefined && !['customer', 'barista'].includes(input.audience))
+    || (input.audience !== undefined && !['customer', 'barista', 'desserts'].includes(input.audience))
     || (input.action !== undefined && !['retry','confirm_printed','replace_missing'].includes(input.action))
     || Object.keys(input).some(key => !['orderId', 'audience','action','requestId','reason','confirmed'].includes(key))) throw new AccessError('Solicitud de impresión inválida.', 400);
   const recovery = input.action !== undefined;
-  if (recovery && (!administrator || !input.audience)) throw new AccessError('Solo el responsable puede revisar una copia. Selecciona el ticket o la etiqueta.',403);
+  if (recovery && (!administrator || !input.audience)) throw new AccessError('Solo el responsable puede revisar una copia. Selecciona la impresión.',403);
   if (recovery && (typeof input.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.requestId)
     || typeof input.reason !== 'string' || input.reason.trim().length<10 || input.reason.length>300
     || (input.action !== 'retry' && input.confirmed !== true))) throw new AccessError('Confirma que revisaste el papel y la cola de Windows. Escribe un motivo de 10 a 300 caracteres.',400);
@@ -85,7 +85,7 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
   // A saving cashier may have lost the response before recording a local print
   // intent. Payment must also establish that original preparation in this journal.
   const phoneSale=typeof sale.data.receipt_snapshot?.phone_order_id==='string';
-  if(phoneSale&&input.audience==='barista')throw new AccessError('La preparación del pedido está en su comanda por teléfono.',409);
+  if(phoneSale&&input.audience!==undefined&&input.audience!=='customer')throw new AccessError('La preparación del pedido está en su comanda por teléfono.',409);
   journal.ensure(owner, order, config.queues, { issuer },phoneSale?'customer':undefined);
   const preparation=phoneSale&&!recovery?await readPhonePreparation(client,order.phone_order_id!,request.signal):null;
   if(preparation){
@@ -103,5 +103,5 @@ export async function handlePrintRequest(request: Request, client: SupabaseClien
       throw new Error('No se pudo comprobar la venta. Reintenta esta copia; no vuelvas a cobrar.');
     return current.data.status === 'completed';
   }),preparation?dispatchPhonePreparation(client,journal,preparation,request.signal):Promise.resolve()]);
-  return { mode: config.mode, canManage: administrator,...(phoneSale?{expectedCopies:1}:{}),jobs};
+  return { mode: config.mode, canManage: administrator,expectedCopies:jobs.length,jobs};
 }

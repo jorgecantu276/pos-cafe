@@ -25,15 +25,15 @@ export async function handlePhonePrintRequest(request:Request,client:SupabaseCli
   }
   if(!input||typeof input.phoneOrderId!=='string'||!uuid.test(input.phoneOrderId)
     ||Object.keys(input).some(key=>!['phoneOrderId','audience','action','requestId','reason','confirmed'].includes(key))
-    ||(input.audience!==undefined&&!['customer','barista'].includes(input.audience))
+    ||(input.audience!==undefined&&!['customer','barista','desserts'].includes(input.audience))
     ||(input.action!==undefined&&!['retry','confirm_printed','replace_missing'].includes(input.action)))throw new AccessError('Solicitud de impresión inválida.',400);
   const recovery=input.action!==undefined;
-  if(recovery&&(profile.data.role!=='admin'||!input.audience))throw new AccessError('Solo el responsable puede revisar una copia. Selecciona el ticket o la etiqueta.',403);
+  if(recovery&&(profile.data.role!=='admin'||!input.audience))throw new AccessError('Solo el responsable puede revisar una copia. Selecciona la impresión.',403);
   if(recovery&&(typeof input.requestId!=='string'||!uuid.test(input.requestId)||typeof input.reason!=='string'
     ||input.reason.trim().length<10||input.reason.length>300||(input.action!=='retry'&&input.confirmed!==true)))throw new AccessError('Confirma que revisaste el papel y la cola de Windows. Escribe un motivo de 10 a 300 caracteres.',400);
   if(!recovery&&['requestId','reason','confirmed'].some(key=>key in input))throw new AccessError('Solicitud de impresión inválida.',400);
   const phone=await readPhonePreparation(client,input.phoneOrderId,request.signal),owner=phone.created_by,id=`phone:${phone.id}`;
-  if(request.method==='GET')return {mode:config.mode,canManage:profile.data.role==='admin',jobs:journal.get(owner,id)};
+  if(request.method==='GET'){const jobs=journal.get(owner,id);return {mode:config.mode,canManage:profile.data.role==='admin',expectedCopies:jobs.length,jobs};}
   if(recovery&&!journal.get(owner,id).some(job=>job.audience===input.audience))throw new AccessError('No existe esta copia en el registro local.',409);
   if(recovery&&input.action==='confirm_printed'){
     try{journal.authorizeRecovery({requestId:input.requestId,actor:user.id,owner,orderId:id,audience:input.audience,action:input.action,reason:input.reason.trim()});}
@@ -45,5 +45,6 @@ export async function handlePhonePrintRequest(request:Request,client:SupabaseCli
     try{journal.authorizeRecovery({requestId:input.requestId,actor:user.id,owner,orderId:id,audience:input.audience,action:input.action,reason:input.reason.trim()});}
     catch(error){throw new AccessError(error instanceof Error?error.message:'No se pudo resolver esta copia.',409);}
   }
-  return {mode:config.mode,canManage:profile.data.role==='admin',jobs:await dispatchPhonePreparation(client,journal,phone,request.signal,input.audience)};
+  const jobs=await dispatchPhonePreparation(client,journal,phone,request.signal,input.audience);
+  return {mode:config.mode,canManage:profile.data.role==='admin',expectedCopies:jobs.length,jobs};
 }

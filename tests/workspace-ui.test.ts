@@ -56,9 +56,67 @@ test('drink families match searches and favorites without losing the selected pr
   await render(async (_screen, click) => {
     await click('Ceremonial$140.00');
     assert.equal(selected, 'x');
-  }, createElement(WorkspaceCustomization, { product: null, family: matcha, onVariant: id => { selected = id; },
+  }, createElement(WorkspaceCustomization, { product: null, family: matcha, onVariant: id => { selected = id ?? ''; },
     steps: [], index: 0, extras: [], dbExtras: [], note: '', onNote: () => {}, onStep: () => {}, onOption: () => {},
     onConfirm: () => assert.fail('No se puede agregar una familia sin elegir variante'), onClose: () => {} }));
+});
+
+test('size picker keeps actual sized product identities, notes and quantity while switching the same flavor', async () => {
+  const products = [
+    { id:'iced16',name:'Iced coffee caramelo 16 oz',price:95,category:'Bebidas',is_active:true },
+    { id:'iced20',name:'Iced coffee caramelo 20 oz',price:125,category:'Bebidas',is_active:true },
+    { id:'vanilla20',name:'Iced coffee vainilla 20 oz',price:125,category:'Bebidas',is_active:true },
+  ];
+  const family=menuCards(products)[0];
+  assert.deepEqual(family.variants?.map(variant=>variant.label),['Caramelo','Caramelo','Vainilla']);
+  let selected='iced16', confirmed='';
+  function Editor(){
+    const [id,setId]=useState<string|null>('iced16');
+    return createElement(WorkspaceCustomization,{family,product:products.find(product=>product.id===id)??null,
+      onVariant:value=>{selected=value??'';setId(value);},steps:[],index:0,extras:[],dbExtras:[],quantity:2,
+      note:'Sin hielo',onNote:()=>{},onStep:()=>{},onOption:()=>{},onConfirm:()=>{confirmed=id??'';},onClose:()=>{}});
+  }
+  await render(async(screen,click)=>{
+    const picker=screen.querySelector('[role=group][aria-label="Tamaño"]')!;
+    assert.ok(picker.closest('header'),'Size belongs beside the drink heading');
+    await click('20 oz');assert.equal(selected,'iced20');
+    assert.match(screen.querySelector('.workspace-custom-price')!.textContent!,/250\.00/);
+    assert.match(screen.querySelector('.workspace-note-toggle')!.textContent!,/Sin hielo/);
+    await click('16 oz');assert.equal(selected,'iced16');
+    assert.match(screen.querySelector('.workspace-custom-price')!.textContent!,/190\.00/);
+    await click('Guardar cambios');assert.equal(confirmed,'iced16');
+  },createElement(Editor));
+});
+
+test('switching size never substitutes a different preparation and requires an available choice',async()=>{
+  const products=[
+    {id:'fruit16',name:'Matcha fresa 16 oz',price:115,category:'Bebidas',is_active:true},
+    {id:'foam20',name:'Matcha latte cold foam fresa 20 oz',price:140,category:'Bebidas',is_active:true},
+  ];
+  const family=menuCards(products)[0];let selected:string|null='fruit16';
+  function Editor(){const [id,setId]=useState<string|null>('fruit16');return createElement(WorkspaceCustomization,{
+    family,product:products.find(product=>product.id===id)??null,onVariant:value=>{selected=value;setId(value);},
+    steps:[],index:0,extras:[],dbExtras:[],note:'Sin azúcar',onNote:()=>{},onStep:()=>{},onOption:()=>{},onConfirm:()=>{},onClose:()=>{}});}
+  await render(async(screen,click)=>{
+    await click('20 oz');assert.equal(selected,null);
+    const add=[...screen.querySelectorAll('button')].find(button=>button.textContent==='Agregar a la orden')!;
+    assert.equal(add.disabled,true);
+    assert.equal(screen.querySelectorAll('.workspace-modifier-group button').length,1);
+    await click('Cold foam de fresa$140.00');assert.equal(selected,'foam20');assert.equal(add.disabled,false);
+    assert.match(screen.querySelector('.workspace-note-toggle')!.textContent!,/Sin azúcar/);
+  },createElement(Editor));
+});
+
+test('unsized catalog entries do not receive an invented size or hide their preparations',async()=>{
+  const family=menuCards([
+    {id:'a',name:'Iced coffee caramelo',price:95,category:'Bebidas',is_active:true},
+    {id:'b',name:'Iced coffee vainilla',price:95,category:'Bebidas',is_active:true},
+  ])[0];
+  await render(async(screen)=>{
+    assert.equal(screen.querySelector('[aria-label="Tamaño"]'),null);
+    assert.equal(screen.querySelectorAll('.workspace-modifier-group button').length,2);
+  },createElement(WorkspaceCustomization,{family,product:null,steps:[],index:0,extras:[],dbExtras:[],note:'',
+    onNote:()=>{},onStep:()=>{},onOption:()=>{},onConfirm:()=>{},onClose:()=>{}}));
 });
 
 for(const isAdmin of [false,true]) test(`workspace ${isAdmin?'admin':'cashier'} opening preserves role navigation, fractional dollars and denomination counts`, async () => {

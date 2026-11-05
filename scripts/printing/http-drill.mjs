@@ -189,6 +189,26 @@ try {
     }
     pass('All six real local SQL receipts retain exact financial/preparation fields through the production print API and read-only receipt endpoint; duplicate requests add no copies');
   }
+  const dessertItems=['Brownie tradicional','Galleta de pistache','Crookie nutella','Muffin de plátano','Cheesecake Oreo','Pastel de zanahoria']
+    .map((name,index)=>({id:'dessert-'+index,quantity:1,product:{id:'synthetic-dessert-'+index,name,category:'Postres',price:50,note:index===2?'Calentar por separado':''}}));
+  const mixed=newSale(4005),mixedSale=orders.get(mixed);
+  mixedSale.receipt_snapshot.items.push(...dessertItems);mixedSale.receipt_snapshot.total=520;
+  mixedSale.receipt_snapshot.tender_mxn=550;mixedSale.receipt_snapshot.change_mxn=30;
+  const beforeMixed=(await spool()).length,mixedReply=await post({orderId:mixed});
+  assert.equal(mixedReply.expectedCopies,3);assert.deepEqual(mixedReply.jobs.map(job=>job.audience).sort(),['barista','customer','desserts']);
+  const mixedOutput=(await spool()).filter(job=>job.orderId===mixed);
+  assert.equal(mixedOutput.find(job=>job.audience==='barista').document.sections.length,2);
+  const dessertOutput=mixedOutput.find(job=>job.audience==='desserts');
+  assert.equal(dessertOutput.queue,'POS80 Printer');assert.equal(dessertOutput.document.sections.length,1);
+  for(const item of dessertItems)assert.match(dessertOutput.document.sections[0].join(' '),new RegExp(item.product.name));
+  assert.match(dessertOutput.document.sections[0].join(' '),/Calentar por separado/);
+  await app.restart();await post({orderId:mixed});assert.equal((await spool()).length,beforeMixed+3);
+  const dessertsOnly=newSale(4006),dessertSale=orders.get(dessertsOnly);
+  dessertSale.receipt_snapshot.items=dessertItems;dessertSale.receipt_snapshot.total=300;dessertSale.receipt_snapshot.tender_mxn=350;dessertSale.receipt_snapshot.change_mxn=50;
+  const dessertReply=await post({orderId:dessertsOnly});
+  assert.equal(dessertReply.expectedCopies,2);assert.deepEqual(dessertReply.jobs.map(job=>job.audience).sort(),['customer','desserts']);
+  assert.ok((await spool()).filter(job=>job.orderId===dessertsOnly).every(job=>job.queue==='POS80 Printer'));
+  pass('Mixed orders send drink labels plus one POS80 dessert comanda; dessert-only orders send no Bluetooth labels and restart repeats no copies');
   const privateResponse = await http(); assert.match(privateResponse.headers.get('cache-control'), /private.*no-store/);
   assert.equal(methods.some(method => method.includes('/rpc/') || /^(PATCH|DELETE) /.test(method) || (method.startsWith('POST ') && !method.includes('/auth/v1/token'))), false);
   pass('Print retries perform no checkout/stock/payment writes; responses are private and uncached');

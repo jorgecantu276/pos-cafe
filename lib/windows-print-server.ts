@@ -4,11 +4,11 @@ import { appendFileSync, closeSync, fsyncSync, openSync, readFileSync } from 'no
 import path from 'node:path';
 import machine from '../config/cafe-printers.json';
 import type { PrintAdapter, PreparedPrint } from './print-journal-server';
-import type { PrintAudience, SalePrintDocument, SalePrintJob } from './sale-printing';
+import type { PrintQueues, SalePrintDocument, SalePrintJob } from './sale-printing';
 
 export interface PrintConfig {
   mode: 'mock' | 'windows'; directory: string;
-  queues: Record<PrintAudience, string>;
+  queues: PrintQueues;
   baristaStock: { widthMm: number; heightMm: number } | null;
   mockFaults?: string;
 }
@@ -74,7 +74,7 @@ async function windowsPrepare(job: SalePrintJob, document: SalePrintDocument, co
   child.on('exit', () => { clearTimeout(timer); if (!finished) fail(); });
   child.stdin.write(JSON.stringify({ queue: job.queue, title: `${document.title} ${job.orderId} ${job.audience}`,
     sections: document.sections, styles: document.styles, labelLayout:document.labelLayout, referenceLabels:document.referenceLabels, receiptBranding: document.receiptBranding, verticalLabel: job.audience === 'barista', layoutTitle: document.title, fontPoints: job.audience === 'barista' ? 9 : 11,
-    identity: { driver: machine[job.audience].driver, port: machine[job.audience].port },
+    identity: { driver: machine[job.audience==='barista'?'barista':'customer'].driver, port: machine[job.audience==='barista'?'barista':'customer'].port },
     stock: job.audience === 'barista' ? config.baristaStock : { widthMm: machine.customer.paperWidthMm, heightMm: machine.customer.paperHeightMm } }) + '\n');
   try { await ready; }
   catch (error) { clearTimeout(timer); child.kill(); lines.close(); throw error; }

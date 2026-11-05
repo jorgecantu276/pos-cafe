@@ -1,11 +1,32 @@
-# Two-copy printing for Cariñito Mío
+# Printing for Cariñito Mío
 
 The October 30 request replaces manual post-sale print choices. One completed
 sale records a browser outbox entry before checkout recovery is retired. The
-dispatcher then creates both jobs in one durable local transaction and attempts
-the USB and Bluetooth handoffs concurrently. Printer speeds and connectivity
+dispatcher creates the required jobs in one durable local transaction and attempts
+the printer handoffs concurrently. Printer speeds and connectivity
 determine when paper actually emerges; simultaneous physical completion cannot
 be promised.
+
+## Dessert preparation
+
+New orders group all products in category **Postres** into one preparation
+document on the customer receipt queue (POS80). It lists quantities, modifiers,
+item notes, order notes, customer, folio and delivery control without prices.
+Drinks retain one Bluetooth label per cup; their cup count excludes desserts.
+A dessert-only order has the customer ticket and dessert comanda. A mixed order
+also has the drink-label job. Other categories keep their existing label behavior.
+
+The dessert job has its own `desserts` journal audience and recovery controls.
+Phone preparation keeps the unpaid warning; pickup payment sends only the paid
+customer receipt. Existing journal sources retain their exact original copy set
+and saved documents, including older per-dessert labels. Replaying an old order
+never adds a new dessert comanda.
+
+Six sample desserts fit one 72 × 210 mm page in the local renderer. Long lists
+or notes can continue onto more pages under the same comanda identity; text is
+never dropped. Physical output of this new comanda remains to be checked on the
+café PC. A rollback build must understand `desserts` to recover pending new jobs;
+keep the current journal and do not substitute a pre-dessert build for recovery.
 
 ## Recovery across cashier changes
 
