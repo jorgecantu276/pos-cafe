@@ -30,6 +30,8 @@ Section "Cariñito Mío POS"
   unpack:
     SetOutPath "$INSTDIR"
     File /r "${PackageDir}\*"
+    ; Only report a shortcut failure if this operation sets the error flag.
+    ClearErrors
     CreateShortCut "$DESKTOP\Cariñito Mío POS.lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "$INSTDIR\Open-Caja.ps1" -ConfigPath "C:\POS-Cafe\private\pos-cafe-config.json"' "$INSTDIR\Carinito-Mio.ico" 0 SW_SHOWMINIMIZED
     IfErrors 0 done
     MessageBox MB_OK|MB_ICONSTOP "No se pudo crear el acceso en el escritorio." /SD IDOK
