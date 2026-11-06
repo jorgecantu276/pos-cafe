@@ -10,22 +10,32 @@ be promised.
 ## Dessert preparation
 
 New orders group all products in category **Postres** into one preparation
-document on the customer receipt queue (POS80). It lists quantities, modifiers,
-item notes, order notes, customer, folio and delivery control without prices.
-Drinks retain one Bluetooth label per cup; their cup count excludes desserts.
-A dessert-only order has the customer ticket and dessert comanda. A mixed order
-also has the drink-label job. Other categories keep their existing label behavior.
+document on the same Y813BT sticker queue as drinks. It uses the existing
+57 × 32 mm form, rotation, fonts and `reference-v2` label layout. It lists
+quantities, modifiers and notes without prices, with a **POSTRES** heading,
+customer, folio and delivery control. Drinks retain one label per cup; their
+cup count excludes desserts. A dessert-only order has the customer ticket and
+one grouped dessert job. A mixed order also has the drink-label job. Other
+categories keep their existing label behavior.
 
 The dessert job has its own `desserts` journal audience and recovery controls.
 Phone preparation keeps the unpaid warning; pickup payment sends only the paid
 customer receipt. Existing journal sources retain their exact original copy set
 and saved documents, including older per-dessert labels. Replaying an old order
-never adds a new dessert comanda.
+never adds a new dessert comanda. Previously saved receipt-shaped dessert
+documents keep their POS80 queue and receipt rendering. Only new dessert
+documents explicitly marked `reference-v2` use the sticker printer profile.
 
-Six sample desserts fit one 72 × 210 mm page in the local renderer. Long lists
-or notes can continue onto more pages under the same comanda identity; text is
-never dropped. Physical output of this new comanda remains to be checked on the
-café PC. A rollback build must understand `desserts` to recover pending new jobs;
+The grouped list may continue onto multiple physical stickers when it does
+not fit. Every continuation repeats the **POSTRES** heading and folio/control;
+new dessert product-name rows stay together when they fit on a fresh sticker.
+Item notes and modifiers keep their product context on continuation stickers;
+oversized names or notes still flow without dropping text. The `preparation-item`
+style enables this behavior only on new grouped dessert documents. Older label
+snapshots keep their original rendering. It remains one logical preparation
+job, not a new sticker job for each dessert. Physical output of this new layout
+remains to be checked on the café PC. A rollback build must understand
+`desserts` to recover pending new jobs;
 keep the current journal and do not substitute a pre-dessert build for recovery.
 
 ## Recovery across cashier changes

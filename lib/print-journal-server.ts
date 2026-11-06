@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { SavedOrder } from './checkout';
-import { saleDocuments, type ReceiptOptions, type PrintAudience, type PrintQueues, type SalePrintDocuments, type SalePrintDocument, type SalePrintJob, type PrintState } from './sale-printing';
+import { saleDocuments, printDocumentProfile, type ReceiptOptions, type PrintAudience, type PrintQueues, type SalePrintDocuments, type SalePrintDocument, type SalePrintJob, type PrintState } from './sale-printing';
 
 // Node 24 LTS is the print dispatch runtime. Keep the journal outside release folders.
 interface Row { order_id: string; owner: string; ticket: string; audience: PrintAudience; queue: string; document: string; state: PrintState; message: string; attempts: number; claim: string | null; lease: number; updated: string }
@@ -142,8 +142,12 @@ export class PrintJournal {
           }
           continue;
         }
+        const document=documents[audience]!;
+        const queue=audience==='desserts'
+          ? printDocumentProfile(audience,document)==='barista'?queues.barista:queues.desserts??queues.customer
+          : queues[audience];
         this.db.prepare(`INSERT INTO jobs(order_id,owner,ticket,audience,queue,document,state,message,updated)
-          VALUES(?,?,?,?,?,?,'queued','Pendiente de envío',?)`).run(order.id, owner, String(order.ticket_number), audience, queues[audience]??queues.customer, JSON.stringify(documents[audience]), this.now());
+          VALUES(?,?,?,?,?,?,'queued','Pendiente de envío',?)`).run(order.id, owner, String(order.ticket_number), audience, queue, JSON.stringify(document), this.now());
       }
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }

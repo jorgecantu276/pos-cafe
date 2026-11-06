@@ -5,7 +5,7 @@ using System.Drawing;
 using System.Drawing.Printing;
 
 public static class CafeDesktopPrinter {
-    private sealed class Run { public string Text; public string Style; public float Y; public string[] Cells; public float? X; public float RuleWidth; }
+    private sealed class Run { public string Text; public string Style; public float Y; public string[] Cells; public float? X; public float RuleWidth; public int PreparationGroup; public bool PreparationName; public string PreparationContext; }
     private static PrintDocument document;
     private static List<List<Run>> pages;
     private static Font regular, bold;
@@ -195,11 +195,17 @@ public static class CafeDesktopPrinter {
         float footerTop = height - margin - footerHeight, bottom = footerTop - 3;
         List<string> drink = new List<string>(Wrap(g, section[1], FontFor("ref-drink"), usable));
         List<Run> body = new List<Run>();
+        int preparationGroup = 0, nextPreparationGroup = 0;
+        string preparationContext = null;
         for (int i = 2; i < section.Length - 1; i++) {
             bool note = styles != null && i < styles.Length && styles[i] == "note";
+            bool preparationName = styles != null && i < styles.Length && styles[i] == "preparation-item";
+            if (preparationName) { preparationGroup = ++nextPreparationGroup; preparationContext = section[i]; }
+            if (note && section[i].StartsWith("ORDEN:", StringComparison.Ordinal)) { preparationGroup = 0; preparationContext = null; }
             string style = note ? "ref-note" : "ref-body";
             string value = note ? section[i] : "- " + section[i];
-            foreach (string line in Wrap(g, value, FontFor(style), usable)) body.Add(new Run { Text = line, Style = style });
+            foreach (string line in Wrap(g, value, FontFor(style), usable)) body.Add(new Run { Text = line, Style = style,
+                PreparationGroup = preparationGroup, PreparationName = preparationName, PreparationContext = preparationContext });
         }
         int next = 0, part = 0;
         do {
@@ -219,8 +225,30 @@ public static class CafeDesktopPrinter {
             if (y + required > bottom) throw new InvalidOperationException("Customer/drink identity leaves no room for label instructions");
             foreach (string line in drink) { page.Add(new Run {Text=line,Style="ref-drink",X=margin,Y=y}); y += LineHeight("ref-drink"); }
             y += 3;
+            float freshCapacity = bottom - y;
+            if (next < body.Count && body[next].PreparationGroup > 0 && !body[next].PreparationName) {
+                List<string> context = new List<string>(Wrap(g, "- " + body[next].PreparationContext, FontFor("ref-body"), usable));
+                if (context.Count * LineHeight("ref-body") + LineHeight(body[next].Style) > freshCapacity)
+                    context = new List<string>(Wrap(g, "POSTRE " + body[next].PreparationGroup + " CONT.", FontFor("ref-body"), usable));
+                foreach (string line in context) {
+                    if (y + LineHeight("ref-body") + LineHeight(body[next].Style) > bottom) break;
+                    page.Add(new Run {Text=line,Style="ref-body",X=margin,Y=y}); y += LineHeight("ref-body");
+                }
+            }
             int first = next;
             while (next < body.Count && y + LineHeight(body[next].Style) <= bottom) {
+                if (body[next].PreparationName && (next == 0 || !body[next - 1].PreparationName
+                    || body[next - 1].PreparationGroup != body[next].PreparationGroup)) {
+                    float nameHeight = 0, groupHeight = 0;
+                    for (int row = next; row < body.Count && body[row].PreparationGroup == body[next].PreparationGroup; row++) {
+                        groupHeight += LineHeight(body[row].Style);
+                        if (body[row].PreparationName) nameHeight += LineHeight(body[row].Style);
+                    }
+                    float keepHeight = groupHeight <= freshCapacity ? groupHeight : nameHeight;
+                    // New grouped-dessert rows stay together when they fit a fresh
+                    // label. Oversized names/notes still advance without dropping text.
+                    if (keepHeight <= freshCapacity && y + keepHeight > bottom) break;
+                }
                 Run line = body[next++]; page.Add(new Run {Text=line.Text,Style=line.Style,X=margin,Y=y}); y += LineHeight(line.Style);
             }
             if (first == next && next < body.Count) throw new InvalidOperationException("No instruction fits label");

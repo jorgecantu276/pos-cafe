@@ -5,7 +5,7 @@ export type PrintAudience = 'customer' | 'barista' | 'desserts';
 export type PrintQueues = Record<'customer' | 'barista', string> & Partial<Record<'desserts', string>>;
 export type PrintState = 'queued' | 'preparing' | 'blocked' | 'submitting' | 'submitted' | 'uncertain' | 'cancelled';
 export type PrintLineStyle = 'brand' | 'heading' | 'mono' | 'total' | 'meta' | 'name' | 'drink' | 'modifier' | 'note' | 'footer'
-  | 'logo' | 'qr' | 'separator' | 'receipt-heading' | 'receipt-total' | 'phone' | 'quote' | 'social' | 'issuer';
+  | 'logo' | 'qr' | 'separator' | 'receipt-heading' | 'receipt-total' | 'phone' | 'quote' | 'social' | 'issuer' | 'preparation-item';
 export interface ReceiptIssuer {
   legalName: string; rfc: string; taxRegime: string; establishmentAddress: string; postalCode: string; city: string;
 }
@@ -30,6 +30,10 @@ export interface SalePrintJob {
   state: PrintState; message: string; attempts: number; updatedAt: string;
 }
 export type SalePrintDocuments = Record<'customer' | 'barista', SalePrintDocument> & Partial<Record<'desserts', SalePrintDocument>>;
+
+export function printDocumentProfile(audience: PrintAudience, document: SalePrintDocument): 'customer' | 'barista' {
+  return audience === 'barista' || (audience === 'desserts' && document.labelLayout === 'reference-v2') ? 'barista' : 'customer';
+}
 
 // Print documents come from the immutable, server-confirmed sale. No catalog lookups.
 const text = (value: unknown) => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
@@ -110,21 +114,22 @@ function preparationDocuments(order: Pick<SavedOrder,'items'|'customer_name'|'or
 }
 
 function dessertDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_note'|'order_type'|'created_at'|'pager_number'>,ticket:string,phone:boolean):SalePrintDocument {
-  const lines:string[]=[],styles:PrintLineStyle[]=[];
-  const add=(line:string,style:PrintLineStyle='meta')=>{lines.push(line);styles.push(style);};
-  add('COMANDA DE POSTRES','heading');
-  add(phone?`PEDIDO POR TELÉFONO ${ticket} · SIN PAGAR`:`Folio: ${ticket}`,'heading');
-  add(`Cliente: ${text(order.customer_name)||'Mostrador'}`);
-  if(order.pager_number!=null)add(`CONTROL: ${order.pager_number}`,'heading');
-  add(new Date(order.created_at).toLocaleString('es-MX',{timeZone:'America/Matamoros',dateStyle:'short',timeStyle:'short'}));
-  add(text(order.order_type),'heading');add('','separator');
+  const lines:string[]=[text(order.customer_name)||'Mostrador','POSTRES'],styles:PrintLineStyle[]=['name','drink'];
+  const add=(line:string,style:PrintLineStyle='modifier')=>{lines.push(line);styles.push(style);};
   for(const item of order.items){
-    add(`${item.quantity} × ${text(item.product.name)}`,'heading');
-    for(const extra of item.product.displayExtras??[])add(`  - ${text(extra.name)}`,'modifier');
+    add(`${item.quantity} × ${text(item.product.name)}`,'preparation-item');
+    for(const extra of item.product.displayExtras??[])add(`  ${text(extra.name)}`);
     if(item.product.note)add(`  Nota: ${text(item.product.note)}`,'note');
   }
-  if(order.order_note){add('','separator');add(`ORDEN: ${text(order.order_note)}`,'note');}
-  return {title:`CM #${ticket} POSTRES`,sections:[lines],styles:[styles],...(phone?{kind:'phone' as const}:{})};
+  if(order.order_note)add(`ORDEN: ${text(order.order_note)}`,'note');
+  const folio=phone?`TEL. ${ticket} · SIN PAGAR`:order.pager_number!=null?`CONTROL ${order.pager_number} · #${ticket}`:`#${ticket}`;
+  const service=text(order.order_type),date=new Date(order.created_at);
+  add(`${folio} · POSTRES · ${service}`,'footer');
+  return {title:`CM #${ticket} POSTRES`,sections:[lines],styles:[styles],labelLayout:'reference-v2',
+    referenceLabels:[{folio:phone?ticket:folio,cup:phone?'SIN PAGAR':'ORDEN',service,
+      date:date.toLocaleDateString('es-MX',{timeZone:'America/Matamoros',day:'2-digit',month:'2-digit',year:'2-digit'}),
+      time:date.toLocaleTimeString('en-US',{timeZone:'America/Matamoros',hour:'2-digit',minute:'2-digit',hour12:true})}],
+    ...(phone?{kind:'phone' as const}:{})};
 }
 
 function preparationDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_note'|'order_type'|'created_at'|'pager_number'>,ticket:string,phone=false):SalePrintDocument {

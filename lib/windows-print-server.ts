@@ -4,7 +4,7 @@ import { appendFileSync, closeSync, fsyncSync, openSync, readFileSync } from 'no
 import path from 'node:path';
 import machine from '../config/cafe-printers.json';
 import type { PrintAdapter, PreparedPrint } from './print-journal-server';
-import type { PrintQueues, SalePrintDocument, SalePrintJob } from './sale-printing';
+import { printDocumentProfile, type PrintQueues, type SalePrintDocument, type SalePrintJob } from './sale-printing';
 
 export interface PrintConfig {
   mode: 'mock' | 'windows'; directory: string;
@@ -42,9 +42,17 @@ export function printerAdapter(config: PrintConfig): PrintAdapter {
     }
     if (process.platform !== 'win32') throw new Error('La impresión física requiere Windows en la PC de caja.');
     if (job.audience === 'customer' && document.kind!=='phone' && document.issuerComplete !== true && !document.testOnly) throw new Error('Faltan los datos fiscales del emisor. Pide al responsable que los configure.');
-    if (job.audience === 'barista' && !config.baristaStock) throw new Error('Falta confirmar el tamaño de las etiquetas y el controlador Bluetooth.');
+    if (printDocumentProfile(job.audience,document) === 'barista' && !config.baristaStock) throw new Error('Falta confirmar el tamaño de las etiquetas y el controlador Bluetooth.');
     return windowsPrepare(job, document, config);
   } };
+}
+
+export function windowsPrintInput(job: SalePrintJob, document: SalePrintDocument, config: PrintConfig) {
+  const profile=printDocumentProfile(job.audience,document);
+  return { queue: job.queue, title: `${document.title} ${job.orderId} ${job.audience}`,
+    sections: document.sections, styles: document.styles, labelLayout:document.labelLayout, referenceLabels:document.referenceLabels, receiptBranding: document.receiptBranding, verticalLabel: profile === 'barista', layoutTitle: document.title, fontPoints: profile === 'barista' ? 9 : 11,
+    identity: { driver: machine[profile].driver, port: machine[profile].port },
+    stock: profile === 'barista' ? config.baristaStock : { widthMm: machine.customer.paperWidthMm, heightMm: machine.customer.paperHeightMm } };
 }
 
 async function windowsPrepare(job: SalePrintJob, document: SalePrintDocument, config: PrintConfig): Promise<PreparedPrint> {
@@ -72,10 +80,7 @@ async function windowsPrepare(job: SalePrintJob, document: SalePrintDocument, co
     } catch { fail(); }
   });
   child.on('exit', () => { clearTimeout(timer); if (!finished) fail(); });
-  child.stdin.write(JSON.stringify({ queue: job.queue, title: `${document.title} ${job.orderId} ${job.audience}`,
-    sections: document.sections, styles: document.styles, labelLayout:document.labelLayout, referenceLabels:document.referenceLabels, receiptBranding: document.receiptBranding, verticalLabel: job.audience === 'barista', layoutTitle: document.title, fontPoints: job.audience === 'barista' ? 9 : 11,
-    identity: { driver: machine[job.audience==='barista'?'barista':'customer'].driver, port: machine[job.audience==='barista'?'barista':'customer'].port },
-    stock: job.audience === 'barista' ? config.baristaStock : { widthMm: machine.customer.paperWidthMm, heightMm: machine.customer.paperHeightMm } }) + '\n');
+  child.stdin.write(JSON.stringify(windowsPrintInput(job,document,config)) + '\n');
   try { await ready; }
   catch (error) { clearTimeout(timer); child.kill(); lines.close(); throw error; }
   return { async submit() {

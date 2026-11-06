@@ -199,7 +199,8 @@ try {
   const mixedOutput=(await spool()).filter(job=>job.orderId===mixed);
   assert.equal(mixedOutput.find(job=>job.audience==='barista').document.sections.length,2);
   const dessertOutput=mixedOutput.find(job=>job.audience==='desserts');
-  assert.equal(dessertOutput.queue,'POS80 Printer');assert.equal(dessertOutput.document.sections.length,1);
+  assert.equal(dessertOutput.queue,'Y813BT Sticker');assert.equal(dessertOutput.document.sections.length,1);
+  assert.equal(dessertOutput.document.labelLayout,'reference-v2');
   for(const item of dessertItems)assert.match(dessertOutput.document.sections[0].join(' '),new RegExp(item.product.name));
   assert.match(dessertOutput.document.sections[0].join(' '),/Calentar por separado/);
   await app.restart();await post({orderId:mixed});assert.equal((await spool()).length,beforeMixed+3);
@@ -207,8 +208,11 @@ try {
   dessertSale.receipt_snapshot.items=dessertItems;dessertSale.receipt_snapshot.total=300;dessertSale.receipt_snapshot.tender_mxn=350;dessertSale.receipt_snapshot.change_mxn=50;
   const dessertReply=await post({orderId:dessertsOnly});
   assert.equal(dessertReply.expectedCopies,2);assert.deepEqual(dessertReply.jobs.map(job=>job.audience).sort(),['customer','desserts']);
-  assert.ok((await spool()).filter(job=>job.orderId===dessertsOnly).every(job=>job.queue==='POS80 Printer'));
-  pass('Mixed orders send drink labels plus one POS80 dessert comanda; dessert-only orders send no Bluetooth labels and restart repeats no copies');
+  const dessertOnlyOutput=(await spool()).filter(job=>job.orderId===dessertsOnly);
+  assert.equal(dessertOnlyOutput.find(job=>job.audience==='customer').queue,'POS80 Printer');
+  assert.equal(dessertOnlyOutput.find(job=>job.audience==='desserts').queue,'Y813BT Sticker');
+  assert.equal(dessertOnlyOutput.find(job=>job.audience==='desserts').document.sections.length,1);
+  pass('Mixed orders send cup labels plus one grouped dessert preparation on the same sticker queue; dessert-only orders create one grouped sticker job and restart repeats no copies');
   const privateResponse = await http(); assert.match(privateResponse.headers.get('cache-control'), /private.*no-store/);
   assert.equal(methods.some(method => method.includes('/rpc/') || /^(PATCH|DELETE) /.test(method) || (method.startsWith('POST ') && !method.includes('/auth/v1/token'))), false);
   pass('Print retries perform no checkout/stock/payment writes; responses are private and uncached');

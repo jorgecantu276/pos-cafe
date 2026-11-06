@@ -6,11 +6,11 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {SupabaseClient} from '@supabase/supabase-js';
 import type {SavedOrder} from '../lib/checkout';
-import {saleDocuments,phoneOrderDocuments,type PrintAudience,type SalePrintDocument} from '../lib/sale-printing';
+import {saleDocuments,phoneOrderDocuments,printDocumentProfile,type PrintAudience,type SalePrintDocument} from '../lib/sale-printing';
 import {PrintJournal} from '../lib/print-journal-server';
 import {handlePrintRequest} from '../lib/print-dispatch-server';
 import {handlePhonePrintRequest} from '../lib/phone-print-dispatch-server';
-import {printConfig} from '../lib/windows-print-server';
+import {printConfig,printerAdapter,windowsPrintInput} from '../lib/windows-print-server';
 
 const queues={customer:'POS80 Printer',barista:'Y813BT Sticker'};
 const pastryNames=['Brownie tradicional','Galleta de pistache','Crookie nutella','Muffin de plátano','Cheesecake Oreo','Pastel de zanahoria'];
@@ -26,8 +26,9 @@ function order(drinks=0):SavedOrder {
 test('six different desserts produce one grouped preparation, retaining quantities and notes without cup labels or prices',()=>{
   const sale=order(),before=JSON.stringify(sale),docs=saleDocuments(sale),desserts=docs.desserts!;
   assert.equal(docs.barista.sections.length,0);assert.equal(desserts.sections.length,1);
+  assert.equal(desserts.labelLayout,'reference-v2');assert.equal(desserts.referenceLabels?.length,1);
   const preparation=desserts.sections[0].join('\n');
-  for(const value of ['COMANDA DE POSTRES','2 × Brownie tradicional','1 × Crookie nutella','Calentar por separado','Sin nuez','CONTROL: 12','Ana de prueba','Entregar juntos'])assert.ok(preparation.includes(value),value);
+  for(const value of ['POSTRES','2 × Brownie tradicional','1 × Crookie nutella','Calentar por separado','Sin nuez','CONTROL 12','Ana de prueba','Entregar juntos'])assert.ok(preparation.includes(value),value);
   assert.doesNotMatch(preparation,/\$|TOTAL|Recibido|Cambio|Pago:/);
   const receipt=docs.customer.sections[0];
   for(const item of sale.items)assert.ok(receipt.includes(item.product.name));
@@ -44,7 +45,24 @@ test('mixed orders number only drink cups and retain other categories on their o
   assert.equal(saleDocuments(unknown).desserts,undefined);
 });
 
-test('dessert-only journal creates exactly two receipt-printer jobs and never prepares a Bluetooth label',async()=>{
+test('sticker profile follows the frozen layout marker while historic receipt-shaped desserts keep the receipt driver and form',()=>{
+  const config=printConfig({POS_PRINT_MODE:'windows',POS_PRINT_DATA_DIR:path.resolve('synthetic-print-data'),POS_PRINT_BARISTA_STOCK_CONFIRMED:'1',POS_PRINT_BARISTA_WIDTH_MM:'57.15',POS_PRINT_BARISTA_HEIGHT_MM:'31.75'});
+  const document=saleDocuments(order()).desserts!,job={orderId:'sample',ticket:'123',audience:'desserts' as const,queue:queues.barista,state:'queued' as const,message:'',attempts:0,updatedAt:''};
+  assert.equal(printDocumentProfile('desserts',document),'barista');
+  const sticker=windowsPrintInput(job,document,config);
+  assert.equal(sticker.verticalLabel,true);assert.equal(sticker.fontPoints,9);assert.equal(sticker.identity.driver,'Y813BT Label');assert.equal(sticker.identity.port,'COM3:');assert.deepEqual(sticker.stock,{widthMm:57.15,heightMm:31.75});
+  const legacy:SalePrintDocument={title:'Old dessert comanda',sections:[['COMANDA DE POSTRES','2 × Brownie']]};
+  assert.equal(printDocumentProfile('desserts',legacy),'customer');
+  const receipt=windowsPrintInput({...job,queue:queues.customer},legacy,config);
+  assert.equal(receipt.verticalLabel,false);assert.equal(receipt.fontPoints,11);assert.equal(receipt.identity.driver,'POS80');assert.equal(receipt.identity.port,'CP001');assert.ok(receipt.stock&&receipt.stock.widthMm>70&&receipt.stock.heightMm>200);
+});
+
+test('new dessert sticker dispatch requires the same confirmed stock as drink labels', {skip:process.platform!=='win32'},async()=>{
+  const config=printConfig({POS_PRINT_MODE:'windows',POS_PRINT_DATA_DIR:path.resolve('synthetic-print-data')});
+  await assert.rejects(printerAdapter(config).prepare({orderId:'sample',ticket:'123',audience:'desserts',queue:queues.barista,state:'queued',message:'',attempts:0,updatedAt:''},saleDocuments(order()).desserts!),/tamaño de las etiquetas/);
+});
+
+test('dessert-only journal creates one grouped sticker on the same queue as drinks and no individual dessert labels',async()=>{
   const directory=mkdtempSync(path.join(tmpdir(),'pos-desserts-only-')),sale=order(),prepared:{audience:PrintAudience;queue:string}[]=[];
   const journal=new PrintJournal(path.join(directory,'jobs.sqlite'),{async prepare(job){
     assert.notEqual(job.audience,'barista');prepared.push({audience:job.audience,queue:job.queue});return{async submit(){},dispose(){}};
@@ -52,7 +70,7 @@ test('dessert-only journal creates exactly two receipt-printer jobs and never pr
   try{
     journal.ensure('cashier',sale,queues);const jobs=await journal.dispatch('cashier',sale.id);
     assert.deepEqual(jobs.map(job=>job.audience),['customer','desserts']);
-    assert.deepEqual(prepared,[{audience:'customer',queue:'POS80 Printer'},{audience:'desserts',queue:'POS80 Printer'}]);
+    assert.deepEqual(prepared,[{audience:'customer',queue:'POS80 Printer'},{audience:'desserts',queue:'Y813BT Sticker'}]);
   }finally{journal.close();rmSync(directory,{recursive:true,force:true});}
 });
 
@@ -60,14 +78,14 @@ test('a grouped dessert handoff retries independently and an uncertain result ca
   const directory=mkdtempSync(path.join(tmpdir(),'pos-desserts-')),sale=order(2),sent:PrintAudience[]=[];
   let offline=true,uncertain=false;
   const adapter={async prepare(job:{audience:PrintAudience}){
-    if(job.audience==='desserts'&&offline)throw Error('POS80 sin papel');
+    if(job.audience==='desserts'&&offline)throw Error('Etiquetadora sin papel');
     return{async submit(){sent.push(job.audience);if(job.audience==='desserts'&&uncertain)throw Error('Acuse perdido');},dispose(){}};
   }};
   let journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);
   try{
     journal.ensure('cashier',sale,queues);let jobs=await journal.dispatch('cashier',sale.id);
     assert.equal(jobs.length,3);assert.deepEqual(sent,['customer','barista']);
-    assert.equal(jobs.find(job=>job.audience==='desserts')?.queue,'POS80 Printer');
+    assert.equal(jobs.find(job=>job.audience==='desserts')?.queue,'Y813BT Sticker');
     assert.equal(jobs.find(job=>job.audience==='desserts')?.state,'blocked');
     journal.close();journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);offline=false;uncertain=true;
     await journal.dispatch('cashier',sale.id,'desserts');assert.deepEqual(sent,['customer','barista','desserts']);
@@ -111,6 +129,28 @@ for(const legacyState of ['blocked','uncertain'])test(`legacy ${legacyState} des
   }finally{journal.close();rmSync(directory,{recursive:true,force:true});}
 });
 
+for(const legacyState of ['blocked','submitted','uncertain'])test(`historic receipt-shaped dessert ${legacyState} keeps its saved POS80 override and document after the sticker change`,async()=>{
+  const directory=mkdtempSync(path.join(tmpdir(),'pos-desserts-receipt-history-')),sale=order(),seen:{queue:string;profile:string;document:SalePrintDocument}[]=[];
+  let offline=legacyState==='blocked';
+  const legacy:SalePrintDocument={title:'CM #0123 POSTRES',sections:[['COMANDA DE POSTRES','2 × Brownie tradicional','Nota original']]};
+  const adapter={async prepare(job:{audience:PrintAudience;queue:string},document:SalePrintDocument){
+    if(job.audience==='desserts'&&offline)throw Error('Old receipt printer offline');
+    return{async submit(){seen.push({queue:job.queue,profile:printDocumentProfile(job.audience,document),document});if(job.audience==='desserts'&&legacyState==='uncertain')throw Error('Old receipt acknowledgment lost');},dispose(){}};
+  }};
+  let journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);
+  try{
+    journal.ensureDocuments('cashier',sale,{...queues,desserts:'Saved POS80 alias'},{customer:saleDocuments(sale).customer,barista:{title:'Unused labels',sections:[]},desserts:legacy});
+    await journal.dispatch('cashier',sale.id);const before=JSON.stringify(journal.get('cashier',sale.id));
+    journal.close();journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);
+    journal.ensure('cashier',sale,{customer:'New POS80 alias',barista:'New sticker alias',desserts:'Ignored new override'});
+    assert.equal(JSON.stringify(journal.get('cashier',sale.id)),before);
+    offline=false;await journal.dispatch('cashier',sale.id);
+    const output=seen.filter(copy=>copy.document.title===legacy.title);assert.equal(output.length,1);
+    assert.equal(output[0].queue,'Saved POS80 alias');assert.equal(output[0].profile,'customer');assert.deepEqual(output[0].document,legacy);
+    assert.equal(journal.get('cashier',sale.id).find(job=>job.audience==='desserts')?.queue,'Saved POS80 alias');
+  }finally{journal.close();rmSync(directory,{recursive:true,force:true});}
+});
+
 test('sale and phone APIs expose the grouped audience and pickup payment never repeats preparation',async()=>{
   const directory=mkdtempSync(path.join(tmpdir(),'pos-desserts-api-')),sale=order(1),actor=randomUUID(),phoneId=randomUUID(),sent:{id:string;audience:PrintAudience}[]=[];
   let paid=false;
@@ -123,7 +163,8 @@ test('sale and phone APIs expose the grouped audience and pickup payment never r
   const config=printConfig({POS_PRINT_MODE:'mock',POS_PRINT_DATA_DIR:directory});
   const request=(endpoint:string,body:unknown)=>new Request('http://127.0.0.1/api/'+endpoint,{method:'POST',headers:{'X-Pos-Print':'1'},body:JSON.stringify(body)});
   try{
-    const unpaid=phoneOrderDocuments(phone).desserts!.sections[0].join('\n');assert.match(unpaid,/TELÉFONO T0042 · SIN PAGAR/);assert.doesNotMatch(unpaid,/CONTROL:|\$/);
+    const unpaidDocument=phoneOrderDocuments(phone).desserts!,unpaid=unpaidDocument.sections[0].join('\n');assert.match(unpaid,/TEL\. T0042 · SIN PAGAR/);assert.doesNotMatch(unpaid,/CONTROL:|\$/);
+    assert.equal(unpaidDocument.referenceLabels?.[0].folio,'T0042');assert.equal(unpaidDocument.referenceLabels?.[0].cup,'SIN PAGAR');
     const preparation=await handlePhonePrintRequest(request('phone-printing',{phoneOrderId:phoneId}),client,journal,config);
     assert.equal(preparation.expectedCopies,3);assert.equal(preparation.jobs.length,3);
     paid=true;
