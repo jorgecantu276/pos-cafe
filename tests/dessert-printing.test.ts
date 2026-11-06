@@ -26,7 +26,7 @@ function order(drinks=0):SavedOrder {
 test('six different desserts produce one grouped preparation, retaining quantities and notes without cup labels or prices',()=>{
   const sale=order(),before=JSON.stringify(sale),docs=saleDocuments(sale),desserts=docs.desserts!;
   assert.equal(docs.barista.sections.length,0);assert.equal(desserts.sections.length,1);
-  assert.equal(desserts.labelLayout,'reference-v2');assert.equal(desserts.referenceLabels?.length,1);
+  assert.equal(desserts.labelLayout,'desserts-compact-v1');assert.equal(desserts.referenceLabels?.length,1);
   const preparation=desserts.sections[0].join('\n');
   for(const value of ['POSTRES','2 × Brownie tradicional','1 × Crookie nutella','Calentar por separado','Sin nuez','CONTROL 12','Ana de prueba','Entregar juntos'])assert.ok(preparation.includes(value),value);
   assert.doesNotMatch(preparation,/\$|TOTAL|Recibido|Cambio|Pago:/);
@@ -55,6 +55,9 @@ test('sticker profile follows the frozen layout marker while historic receipt-sh
   assert.equal(printDocumentProfile('desserts',legacy),'customer');
   const receipt=windowsPrintInput({...job,queue:queues.customer},legacy,config);
   assert.equal(receipt.verticalLabel,false);assert.equal(receipt.fontPoints,11);assert.equal(receipt.identity.driver,'POS80');assert.equal(receipt.identity.port,'CP001');assert.ok(receipt.stock&&receipt.stock.widthMm>70&&receipt.stock.heightMm>200);
+  const previousSticker:SalePrintDocument={...document,labelLayout:'reference-v2'};
+  assert.equal(printDocumentProfile('desserts',previousSticker),'barista');
+  assert.deepEqual(windowsPrintInput(job,previousSticker,config).stock,sticker.stock);
 });
 
 test('new dessert sticker dispatch requires the same confirmed stock as drink labels', {skip:process.platform!=='win32'},async()=>{
@@ -129,25 +132,28 @@ for(const legacyState of ['blocked','uncertain'])test(`legacy ${legacyState} des
   }finally{journal.close();rmSync(directory,{recursive:true,force:true});}
 });
 
-for(const legacyState of ['blocked','submitted','uncertain'])test(`historic receipt-shaped dessert ${legacyState} keeps its saved POS80 override and document after the sticker change`,async()=>{
+for(const format of ['receipt','reference-v2'] as const)for(const legacyState of ['blocked','submitted','uncertain'])test(`historic ${format} dessert ${legacyState} keeps its saved queue and document after the compact change`,async()=>{
   const directory=mkdtempSync(path.join(tmpdir(),'pos-desserts-receipt-history-')),sale=order(),seen:{queue:string;profile:string;document:SalePrintDocument}[]=[];
   let offline=legacyState==='blocked';
-  const legacy:SalePrintDocument={title:'CM #0123 POSTRES',sections:[['COMANDA DE POSTRES','2 × Brownie tradicional','Nota original']]};
+  const legacy:SalePrintDocument=format==='receipt'?{title:'CM #0123 POSTRES',sections:[['COMANDA DE POSTRES','2 × Brownie tradicional','Nota original']]}:
+    {title:'CM #0123 POSTRES',labelLayout:'reference-v2',sections:[['Ana','POSTRES','2 × Brownie tradicional','Nota original','#0123 · POSTRES']],
+      styles:[['name','drink','preparation-item','note','footer']],referenceLabels:[{folio:'#0123',cup:'ORDEN',service:'Para Llevar',date:'06/11/26',time:'12:00'}]};
+  const savedQueue=format==='receipt'?'Saved POS80 alias':queues.barista;
   const adapter={async prepare(job:{audience:PrintAudience;queue:string},document:SalePrintDocument){
     if(job.audience==='desserts'&&offline)throw Error('Old receipt printer offline');
     return{async submit(){seen.push({queue:job.queue,profile:printDocumentProfile(job.audience,document),document});if(job.audience==='desserts'&&legacyState==='uncertain')throw Error('Old receipt acknowledgment lost');},dispose(){}};
   }};
   let journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);
   try{
-    journal.ensureDocuments('cashier',sale,{...queues,desserts:'Saved POS80 alias'},{customer:saleDocuments(sale).customer,barista:{title:'Unused labels',sections:[]},desserts:legacy});
+    journal.ensureDocuments('cashier',sale,{...queues,desserts:savedQueue},{customer:saleDocuments(sale).customer,barista:{title:'Unused labels',sections:[]},desserts:legacy});
     await journal.dispatch('cashier',sale.id);const before=JSON.stringify(journal.get('cashier',sale.id));
     journal.close();journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);
     journal.ensure('cashier',sale,{customer:'New POS80 alias',barista:'New sticker alias',desserts:'Ignored new override'});
     assert.equal(JSON.stringify(journal.get('cashier',sale.id)),before);
     offline=false;await journal.dispatch('cashier',sale.id);
     const output=seen.filter(copy=>copy.document.title===legacy.title);assert.equal(output.length,1);
-    assert.equal(output[0].queue,'Saved POS80 alias');assert.equal(output[0].profile,'customer');assert.deepEqual(output[0].document,legacy);
-    assert.equal(journal.get('cashier',sale.id).find(job=>job.audience==='desserts')?.queue,'Saved POS80 alias');
+    assert.equal(output[0].queue,savedQueue);assert.equal(output[0].profile,format==='receipt'?'customer':'barista');assert.deepEqual(output[0].document,legacy);
+    assert.equal(journal.get('cashier',sale.id).find(job=>job.audience==='desserts')?.queue,savedQueue);
   }finally{journal.close();rmSync(directory,{recursive:true,force:true});}
 });
 

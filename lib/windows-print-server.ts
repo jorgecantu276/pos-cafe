@@ -76,7 +76,9 @@ async function windowsPrepare(job: SalePrintJob, document: SalePrintDocument, co
       const message = JSON.parse(line);
       if (message.state === 'ready') readyResolve();
       else if (message.state === 'submitted') { finished = true; doneResolve(); }
-      else { readyReject(new Error('No se pudo enviar la copia. Revisa la conexión y la configuración de la impresora.')); doneReject(new Error('Print helper failed')); }
+      else { readyReject(new Error(message.code === 'dessert-content-too-long'
+        ? 'Los postres no caben en una etiqueta. Consulta el ticket de la orden para prepararlos.'
+        : 'No se pudo enviar la copia. Revisa la conexión y la configuración de la impresora.')); doneReject(new Error('Print helper failed')); }
     } catch { fail(); }
   });
   child.on('exit', () => { clearTimeout(timer); if (!finished) fail(); });

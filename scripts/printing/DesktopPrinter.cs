@@ -13,6 +13,8 @@ public static class CafeDesktopPrinter {
     private static float pageWidth;
     private static float physicalPageWidth;
     private static bool rotateLabel;
+    private static bool compactDesserts;
+    public static void UseCompactDessertLayout() { compactDesserts = true; }
     private static Image receiptLogo;
     private static string receiptLogoData;
     private static string[] qrRows;
@@ -94,6 +96,8 @@ public static class CafeDesktopPrinter {
         fonts["ref-note"] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
         fonts["ref-meta"] = new Font("Arial", 7, FontStyle.Bold, GraphicsUnit.Point);
         fonts["ref-service"] = new Font("Arial", 8, FontStyle.Bold, GraphicsUnit.Point);
+        foreach (float size in new [] { 8.5f, 8f, 7.5f, 7f, 6.5f })
+            fonts["dessert-" + size.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)] = new Font("Arial", size, FontStyle.Bold, GraphicsUnit.Point);
         foreach (string style in new [] { "name", "drink", "modifier", "note", "footer" })
             fonts[style] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
     }
@@ -114,7 +118,8 @@ public static class CafeDesktopPrinter {
             if (referenceLabels != null) {
                 if (sectionIndex >= referenceLabels.Length || referenceLabels[sectionIndex].Length != 5 || section.Length < 3)
                     throw new InvalidOperationException("Incomplete reference label");
-                LayoutReferenceLabel(g, section, styles == null ? null : styles[sectionIndex], referenceLabels[sectionIndex], width, height, output);
+                if (compactDesserts) LayoutCompactDesserts(g, section, styles == null ? null : styles[sectionIndex], referenceLabels[sectionIndex], width, height, output);
+                else LayoutReferenceLabel(g, section, styles == null ? null : styles[sectionIndex], referenceLabels[sectionIndex], width, height, output);
                 continue;
             }
             // A long note may span multiple physical labels. Reserve the cup
@@ -183,6 +188,31 @@ public static class CafeDesktopPrinter {
         }
         if (output.Count == 0 || output.Count > 10000) throw new InvalidOperationException("Invalid page count");
         return output;
+    }
+    private static void LayoutCompactDesserts(Graphics g, string[] section, string[] styles, string[] identity, float width, float height, List<List<Run>> output) {
+        // This version is a single preparation label. Measure complete text first;
+        // never trim a product/note or silently emit more labels to make it fit.
+        float margin = 1.2f * MmToPt, usable = width - 2 * margin;
+        string folio = identity[0];
+        string heading = "POSTRES " + folio + (identity[1] == "SIN PAGAR" ? " SIN PAGAR" : "");
+        string footer = identity[2] + " · " + identity[3] + " " + identity[4];
+        foreach (float size in new [] { 8.5f, 8f, 7.5f, 7f, 6.5f }) {
+            string style = "dessert-" + size.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+            float leading = size * 1.08f + 0.3f;
+            List<Run> page = new List<Run>();
+            float y = margin;
+            foreach (string line in Wrap(g, heading, FontFor(style), usable)) { page.Add(new Run {Text=line,Style=style,X=margin,Y=y}); y += leading; }
+            foreach (string line in Wrap(g, section[0], FontFor(style), usable)) { page.Add(new Run {Text=line,Style=style,X=margin,Y=y}); y += leading; }
+            page.Add(new Run {Text="",Style="label-rule",X=margin,Y=y+1,RuleWidth=usable}); y += 4;
+            for (int row = 2; row < section.Length - 1; row++) {
+                string value = section[row].Trim();
+                foreach (string line in Wrap(g, value, FontFor(style), usable)) { page.Add(new Run {Text=line,Style=style,X=margin,Y=y}); y += leading; }
+            }
+            y += 3;
+            foreach (string line in Wrap(g, footer, FontFor(style), usable)) { page.Add(new Run {Text=line,Style=style,X=margin,Y=y}); y += leading; }
+            if (y <= height - margin) { output.Add(page); return; }
+        }
+        throw new InvalidOperationException("Compact dessert list exceeds one label");
     }
     private static float MeasuredWidth(Graphics g, string text, string style) {
         return g.MeasureString(text, FontFor(style), Int32.MaxValue, StringFormat.GenericTypographic).Width;
@@ -412,6 +442,7 @@ public static class CafeDesktopPrinter {
         svg.Append("</svg>"); System.IO.File.WriteAllText(filename, svg.ToString(), new System.Text.UTF8Encoding(false));
     }
     public static void Dispose() {
+        compactDesserts = false;
         if (receiptLogo != null) receiptLogo.Dispose();
         receiptLogo = null; qrRows = null; receiptLogoData = null;
         if (document != null) document.Dispose();

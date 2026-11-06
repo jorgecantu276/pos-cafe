@@ -23,7 +23,10 @@ try {
     [string[][]]$styles = $null
     if ($printInput.styles) { $styles = @($printInput.styles | ForEach-Object { ,([string[]]$_) }) }
     [string[][]]$referenceLabels = $null
-    if ($printInput.labelLayout -ceq 'reference-v2') {
+    if ($printInput.labelLayout -ceq 'desserts-compact-v1') {
+        [CafeDesktopPrinter]::UseCompactDessertLayout()
+    }
+    if ($printInput.labelLayout -ceq 'reference-v2' -or $printInput.labelLayout -ceq 'desserts-compact-v1') {
         if (@($printInput.referenceLabels).Count -ne $sections.Length) { throw 'Incomplete reference label identity' }
         $referenceLabels = @($printInput.referenceLabels | ForEach-Object { ,([string[]]@($_.folio,$_.cup,$_.service,$_.date,$_.time)) })
     }
@@ -49,7 +52,11 @@ try {
     [CafeDesktopPrinter]::Send()
     [Console]::WriteLine('{"state":"submitted"}')
 } catch {
-    [Console]::WriteLine('{"state":"error"}')
+    if ($_.Exception.Message.Contains('Compact dessert list exceeds one label')) {
+        [Console]::WriteLine('{"state":"error","code":"dessert-content-too-long"}')
+    } else {
+        [Console]::WriteLine('{"state":"error"}')
+    }
     exit 1
 } finally {
     [CafeDesktopPrinter]::Dispose()

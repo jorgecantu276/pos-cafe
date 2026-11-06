@@ -20,7 +20,7 @@ export interface SalePrintDocument {
   // Older local snapshots may contain this unused reference-design metadata.
   // Keep reading their text; never rewrite a saved document to remove it.
   cupLabels?: { folio: string; service: string; date: string; time: string }[];
-  labelLayout?: 'reference-v2';
+  labelLayout?: 'reference-v2' | 'desserts-compact-v1';
   referenceLabels?: { folio: string; cup: string; service: string; date: string; time: string }[];
   receiptBranding?: { version: number; qrUrl: string; qrRows: string[] };
   issuerComplete?: boolean; testOnly?: boolean;
@@ -32,7 +32,7 @@ export interface SalePrintJob {
 export type SalePrintDocuments = Record<'customer' | 'barista', SalePrintDocument> & Partial<Record<'desserts', SalePrintDocument>>;
 
 export function printDocumentProfile(audience: PrintAudience, document: SalePrintDocument): 'customer' | 'barista' {
-  return audience === 'barista' || (audience === 'desserts' && document.labelLayout === 'reference-v2') ? 'barista' : 'customer';
+  return audience === 'barista' || (audience === 'desserts' && (document.labelLayout === 'reference-v2' || document.labelLayout === 'desserts-compact-v1')) ? 'barista' : 'customer';
 }
 
 // Print documents come from the immutable, server-confirmed sale. No catalog lookups.
@@ -125,7 +125,7 @@ function dessertDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_n
   const folio=phone?`TEL. ${ticket} · SIN PAGAR`:order.pager_number!=null?`CONTROL ${order.pager_number} · #${ticket}`:`#${ticket}`;
   const service=text(order.order_type),date=new Date(order.created_at);
   add(`${folio} · POSTRES · ${service}`,'footer');
-  return {title:`CM #${ticket} POSTRES`,sections:[lines],styles:[styles],labelLayout:'reference-v2',
+  return {title:`CM #${ticket} POSTRES`,sections:[lines],styles:[styles],labelLayout:'desserts-compact-v1',
     referenceLabels:[{folio:phone?ticket:folio,cup:phone?'SIN PAGAR':'ORDEN',service,
       date:date.toLocaleDateString('es-MX',{timeZone:'America/Matamoros',day:'2-digit',month:'2-digit',year:'2-digit'}),
       time:date.toLocaleTimeString('en-US',{timeZone:'America/Matamoros',hour:'2-digit',minute:'2-digit',hour12:true})}],

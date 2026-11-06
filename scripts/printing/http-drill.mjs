@@ -200,7 +200,7 @@ try {
   assert.equal(mixedOutput.find(job=>job.audience==='barista').document.sections.length,2);
   const dessertOutput=mixedOutput.find(job=>job.audience==='desserts');
   assert.equal(dessertOutput.queue,'Y813BT Sticker');assert.equal(dessertOutput.document.sections.length,1);
-  assert.equal(dessertOutput.document.labelLayout,'reference-v2');
+  assert.equal(dessertOutput.document.labelLayout,'desserts-compact-v1');
   for(const item of dessertItems)assert.match(dessertOutput.document.sections[0].join(' '),new RegExp(item.product.name));
   assert.match(dessertOutput.document.sections[0].join(' '),/Calentar por separado/);
   await app.restart();await post({orderId:mixed});assert.equal((await spool()).length,beforeMixed+3);
@@ -212,7 +212,8 @@ try {
   assert.equal(dessertOnlyOutput.find(job=>job.audience==='customer').queue,'POS80 Printer');
   assert.equal(dessertOnlyOutput.find(job=>job.audience==='desserts').queue,'Y813BT Sticker');
   assert.equal(dessertOnlyOutput.find(job=>job.audience==='desserts').document.sections.length,1);
-  pass('Mixed orders send cup labels plus one grouped dessert preparation on the same sticker queue; dessert-only orders create one grouped sticker job and restart repeats no copies');
+  assert.equal(dessertOnlyOutput.find(job=>job.audience==='desserts').document.labelLayout,'desserts-compact-v1');
+  pass('Mixed orders send cup labels plus one compact dessert sticker on the same queue; dessert-only orders create one compact sticker job and restart repeats no copies');
   const privateResponse = await http(); assert.match(privateResponse.headers.get('cache-control'), /private.*no-store/);
   assert.equal(methods.some(method => method.includes('/rpc/') || /^(PATCH|DELETE) /.test(method) || (method.startsWith('POST ') && !method.includes('/auth/v1/token'))), false);
   pass('Print retries perform no checkout/stock/payment writes; responses are private and uncached');
