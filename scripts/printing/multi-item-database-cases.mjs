@@ -54,7 +54,7 @@ export async function multiItemDatabaseCases(db,connection,ids) {
   equal(documents.barista.sections.map(lines=>lines.find(line=>['sin hielo','extra hielo','sin tapa'].includes(line))),['sin hielo','sin hielo','extra hielo','sin tapa']);
   equal(documents.barista.sections.map(lines=>lines.find(line=>['Leche de avena','Entera','Almendra'].includes(line))),['Leche de avena','Leche de avena','Entera','Almendra']);
   equal(documents.barista.sections.map(lines=>lines.at(-1).match(/(\d\/4)/)[1]),['1/4','2/4','3/4','4/4']);
-  if(process.env.POS_MULTI_ITEM_DB_EVIDENCE)await writeFile(process.env.POS_MULTI_ITEM_DB_EVIDENCE,JSON.stringify({scope:'Actual UI payload through actual pos_checkout SQL in disposable local PostgreSQL',
+  if(process.env.POS_MULTI_ITEM_DB_EVIDENCE)await writeFile(process.env.POS_MULTI_ITEM_DB_EVIDENCE,JSON.stringify({scope:'pos_checkout and receipt documents in disposable local PostgreSQL',
     exactUiPayloadUsed:Boolean(captured),checks,receipt,documents,ordersCreated:1,orderLines:3,cups:4,total:425,retryCreatedDuplicates:false,physicalPrints:0,liveDataAccess:false},null,2));
   console.log(`PASS ${checks} mixed-item database/print-contract checks; one ticket, three lines, four cups, MXN425; no live data`);
   return checks;

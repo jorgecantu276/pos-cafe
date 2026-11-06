@@ -8,8 +8,8 @@ export async function confirmClosingPrints(confirmAction: (message:string)=>bool
     const result=await response.json();if(!Array.isArray(result.jobs))throw new Error('Respuesta de impresión incompleta');
     const pending=result.jobs.filter((job:{state:string})=>!['submitted','cancelled','confirmed_printed'].includes(job.state));
     if(!pending.length)return true;
-    return confirmAction(`Hay ${pending.length} copias de impresión por revisar. No vuelvas a cobrar. Resuélvelas antes de salir o confirma que el responsable las revisará en Administración → Impresión. ¿Continuar con el cierre?`);
+    return confirmAction(`Hay ${pending.length} copias pendientes. No vuelvas a cobrar. ¿Continuar con el cierre y dejar su revisión al responsable en Administración → Impresión?`);
   } catch {
-    return confirmAction('No se pudo comprobar la impresión. No vuelvas a cobrar ni reimprimas a ciegas. ¿El responsable revisará las copias pendientes en Administración → Impresión antes de continuar?');
+    return confirmAction('No se pudo consultar la impresión. No vuelvas a cobrar ni imprimas otra copia sin revisarla. ¿Continuar con el cierre y dejar la revisión al responsable en Administración → Impresión?');
   }
 }

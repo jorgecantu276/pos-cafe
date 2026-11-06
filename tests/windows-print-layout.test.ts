@@ -2,9 +2,67 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { phoneOrderDocuments,saleDocuments } from '../lib/sale-printing';
+
+const dessertNames=['Brownie tradicional','Galleta de pistache y chocolate blanco','Crookie nutella','Muffin cajeta con queso','Rebanada cheesecake','Cheese danish'];
+const dessertItems=()=>dessertNames.map((name,index)=>({id:String(index),quantity:index===0?2:1,product:{id:String(index),name,price:50,category:'Postres',note:index===2?'Calentar por separado':''}}));
+const labelLayout=(document:object,previewDirectory?:string)=>spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
+  ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
+  {input:JSON.stringify({...document,verticalLabel:true,fontPoints:9,widthMm:56.9,heightMm:32,previewDirectory})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
+
+test('the six real-catalog desserts, two brownies and preparation note fit one physical drink-stock sticker', {skip:process.platform!=='win32'},()=>{
+  const document=saleDocuments({id:'dessert-layout',ticket_number:4321,status:'completed',total:350,
+    items:dessertItems(),customer_name:'Ana López',order_type:'Para Llevar',order_note:'',created_at:'2026-11-05T18:00:00Z',pager_number:12,
+    payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:16,change_mxn:0}).desserts!;
+  const directory=mkdtempSync(path.join(tmpdir(),'pos-compact-desserts-'));
+  try{
+  const result=labelLayout(document,directory);
+  assert.equal(result.status,0,result.stderr||result.stdout);
+  const pages:{lines:string[]}[]=JSON.parse(result.stdout);assert.equal(pages.length,1);assert.equal(document.sections.length,1);
+  const text=pages[0].lines.join(' ');assert.match(text,/POSTRES/);assert.match(text,/CONTROL 12/);assert.match(text,/#4321/);assert.match(text,/Ana López/);
+  assert.match(text,/2 × Brownie tradicional/);assert.match(text,/Calentar por separado/);assert.doesNotMatch(text,/\$|TOTAL|Cambio/);
+  for(const name of dessertNames)assert.ok(text.includes(name),`Complete dessert name: ${name}`);
+  const svg=readFileSync(path.join(directory,'page-1.svg'),'utf8');
+  assert.match(svg,/width="56.9mm" height="32mm"/);assert.match(svg,/rotate\(90\)/);
+  for(const point of [...svg.matchAll(/font-size="([\d.]+)"/g)])assert.ok(+point[1]>=6.5&&+point[1]<=8.5,`Readable compact font: ${point[1]}`);
+  }finally{rmSync(directory,{recursive:true,force:true});}
+});
+
+test('six normal phone desserts fit one physical sticker retaining unpaid folio and every product', {skip:process.platform!=='win32'},()=>{
+  const document=phoneOrderDocuments({id:'phone-dessert-layout',folio:43,contact_name:'Ana de prueba',contact_phone:'8682345678',
+    snapshot:{items:dessertItems(),total:350,customer_name:'Ana de prueba',order_type:'Para Llevar',order_note:'',created_at:'2026-11-05T18:00:00Z'}}).desserts!;
+  const result=labelLayout(document);
+  assert.equal(result.status,0,result.stderr||result.stdout);
+  const pages:{lines:string[]}[]=JSON.parse(result.stdout);assert.equal(pages.length,1);
+  for(const page of pages){const text=page.lines.join(' ');assert.match(text,/POSTRES/);assert.match(text,/T0043/);assert.match(text,/SIN PAGAR/);assert.doesNotMatch(text,/CONTROL/);}
+  const text=pages[0].lines.join(' ');assert.match(text,/2 × Brownie/);assert.match(text,/Calentar por separado/);
+  for(const name of dessertNames)assert.ok(text.includes(name),name);
+});
+
+for(const overflow of ['name','note'])test(`an excessive dessert ${overflow} in a six-item order blocks before output instead of creating additional labels`, {skip:process.platform!=='win32'},()=>{
+  const document=saleDocuments({id:'oversized-dessert',ticket_number:4321,status:'completed',total:30,
+    items:[{id:'dessert',quantity:1,product:{id:'brownie',name:overflow==='name'?'Z'.repeat(220):'Brownie tradicional',price:30,category:'Postres',note:overflow==='note'?'Calentar por separado. '.repeat(30)+'FIN-NOTA':''}},...dessertItems().slice(1)],
+    customer_name:'Ana',order_type:'Para Llevar',order_note:'',created_at:'2026-11-05T18:00:00Z',
+    payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:16,change_mxn:0}).desserts!;
+  const directory=mkdtempSync(path.join(tmpdir(),'pos-dessert-overflow-'));
+  try{
+    const result=labelLayout(document,directory);
+    assert.equal(result.status,1,result.stderr||result.stdout);
+    assert.deepEqual(JSON.parse(result.stdout),{state:'error',code:'dessert-content-too-long'});
+    assert.deepEqual(readdirSync(directory),[],'No partial label preview is emitted');
+  }finally{rmSync(directory,{recursive:true,force:true});}
+});
+
+test('a saved reference-v2 dessert snapshot keeps its identified continuation rendering', {skip:process.platform!=='win32'},()=>{
+  const document={title:'CM #OLD POSTRES',labelLayout:'reference-v2',sections:[['Ana','POSTRES','2 × Brownie tradicional','Calentar. '.repeat(40)+'FIN-ORIGINAL','#OLD · POSTRES']],
+    styles:[['name','drink','preparation-item','note','footer']],referenceLabels:[{folio:'#OLD',cup:'ORDEN',service:'Para Llevar',date:'06/11/26',time:'12:00'}]};
+  const result=labelLayout(document);assert.equal(result.status,0,result.stderr||result.stdout);
+  const pages:{lines:string[]}[]=JSON.parse(result.stdout);assert.ok(pages.length>1);
+  for(const page of pages){assert.match(page.lines.join(' '),/POSTRES/);assert.match(page.lines.join(' '),/#OLD/);}
+  const text=pages.flatMap(page=>page.lines).join(' ');assert.equal((text.match(/Calentar\./g)||[]).length,40);assert.match(text,/FIN-ORIGINAL/);
+});
 
 test('phone preparation keeps its unpaid identity on every rendered continuation without a payment receipt', {skip:process.platform!=='win32'},()=>{
   const documents=phoneOrderDocuments({id:'phone-layout',folio:43,contact_name:'Ana de prueba',contact_phone:'8682345678',

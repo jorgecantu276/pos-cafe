@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { SavedOrder } from './checkout';
-import { saleDocuments, type ReceiptOptions, type PrintAudience, type SalePrintDocument, type SalePrintJob, type PrintState } from './sale-printing';
+import { saleDocuments, printDocumentProfile, type ReceiptOptions, type PrintAudience, type PrintQueues, type SalePrintDocuments, type SalePrintDocument, type SalePrintJob, type PrintState } from './sale-printing';
 
 // Node 24 LTS is the print dispatch runtime. Keep the journal outside release folders.
 interface Row { order_id: string; owner: string; ticket: string; audience: PrintAudience; queue: string; document: string; state: PrintState; message: string; attempts: number; claim: string | null; lease: number; updated: string }
@@ -12,7 +12,6 @@ export interface PrintAdapter { prepare(job: SalePrintJob, document: SalePrintDo
 export type PrintRecoveryAction = 'retry' | 'confirm_printed' | 'replace_missing';
 export interface PrintRecovery { requestId: string; actor: string; owner: string; orderId: string; audience: PrintAudience; action: PrintRecoveryAction; reason: string }
 export interface PrintRecoveryAudit extends PrintRecovery { previousState: string; createdAt: string; ticket: string }
-const audiences: PrintAudience[] = ['customer', 'barista'];
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)]));
@@ -47,7 +46,7 @@ export class PrintJournal {
   private view(row: Row): SalePrintJob {
     return { orderId: row.order_id, ticket: row.ticket, audience: row.audience, queue: row.queue,
       state: row.state === 'submitting' && row.lease < this.clock() ? 'uncertain' : row.state,
-      message: row.state === 'submitting' && row.lease < this.clock() ? 'Resultado incierto. Revisa la cola de Windows y el papel; no se reenviará automáticamente.' : row.message,
+      message: row.state === 'submitting' && row.lease < this.clock() ? 'Envío sin confirmar. Revisa el papel y la cola de Windows antes de reponer esta copia.' : row.message,
       attempts: row.attempts, updatedAt: row.updated };
   }
   list(owner: string): SalePrintJob[] {
@@ -93,13 +92,13 @@ export class PrintJournal {
       const uncertain = row.state === 'uncertain' || (row.state === 'submitting' && row.lease < this.clock());
       if (input.action === 'retry') {
         if (!['queued','blocked'].includes(row.state) && !(row.state === 'preparing' && row.lease < this.clock()))
-          throw new Error('Esta copia no admite reintento seguro. Actualiza su estado.');
+          throw new Error('Comprueba el estado de esta copia antes de reintentar.');
       } else {
         if (!uncertain && !(input.action === 'replace_missing' && row.state === 'submitted'))
-          throw new Error('Espera a que termine el envío activo y actualiza antes de resolverlo.');
+          throw new Error('Actualiza el estado de esta copia antes de resolverla.');
         this.db.prepare(`UPDATE jobs SET state=?,message=?,claim=NULL,lease=0,updated=? WHERE owner=? AND order_id=? AND audience=?`)
           .run(input.action === 'confirm_printed' ? 'submitted' : 'blocked', input.action === 'confirm_printed'
-            ? 'El responsable confirmó la salida en papel. No se reenvió.' : 'El responsable autorizó una reposición tras revisar papel y cola de Windows.',
+            ? 'El responsable confirmó la salida en papel.' : 'Reposición autorizada tras revisar el papel y la cola de Windows.',
           this.now(),input.owner,input.orderId,input.audience);
       }
       this.db.prepare('INSERT INTO recovery_audit VALUES(?,?,?,?,?,?,?,?,?)')
@@ -111,11 +110,11 @@ export class PrintJournal {
     this.db.prepare(`UPDATE jobs SET state='cancelled',message=?,updated=?
       WHERE owner=? AND order_id=? AND state IN ('queued','blocked','preparing')`).run(orderId.startsWith('phone:')?'Pedido cancelado. No enviar a preparación.':'Venta cancelada. No enviar a preparación.',this.now(), owner, orderId);
   }
-  ensure(owner: string, order: SavedOrder, queues: Record<PrintAudience, string>, options: ReceiptOptions = {}, only?: PrintAudience) {
+  ensure(owner: string, order: SavedOrder, queues: PrintQueues, options: ReceiptOptions = {}, only?: PrintAudience) {
     const documents = saleDocuments(order, options);
     this.ensureDocuments(owner,order,queues,documents,only);
   }
-  ensureDocuments(owner:string,sourceDocument:{id:string;ticket_number:string|number},queues:Record<PrintAudience,string>,documents:Record<PrintAudience,SalePrintDocument>,only?:PrintAudience) {
+  ensureDocuments(owner:string,sourceDocument:{id:string;ticket_number:string|number},queues:PrintQueues,documents:SalePrintDocuments,only?:PrintAudience) {
     const order=sourceDocument;
     const sourceHash = createHash('sha256').update(JSON.stringify(canonical(sourceDocument))).digest('hex');
     this.db.exec('BEGIN IMMEDIATE');
@@ -123,9 +122,12 @@ export class PrintJournal {
       const source = this.db.prepare('SELECT * FROM sale_sources WHERE order_id=?').get(order.id) as { owner: string; source_hash: string } | undefined;
       if (source && (source.owner !== owner || source.source_hash !== sourceHash)) throw new Error('La identidad de impresión ya pertenece a otro comprobante.');
       if (!source) this.db.prepare('INSERT INTO sale_sources VALUES(?,?,?)').run(order.id, owner, sourceHash);
-      // Normal sales still create both copies atomically. The standalone
-      // receipt acceptance runner explicitly selects only the customer copy.
-      for (const audience of only ? [only] : audiences) {
+      // Existing source identities retain exactly their original copies, including
+      // older per-dessert stickers. A template update never adds a new handoff.
+      const stored = this.get(owner,order.id);
+      const audiences:PrintAudience[] = source ? stored.map(job=>job.audience)
+        : (Object.keys(documents) as PrintAudience[]).filter(audience=>documents[audience]?.sections.length);
+      for (const audience of only ? audiences.filter(audience=>audience===only) : audiences) {
         const old = this.db.prepare('SELECT * FROM jobs WHERE order_id=? AND audience=?').get(order.id, audience) as Row | undefined;
         if (old) {
           if (old.owner !== owner) throw new Error('La identidad de impresión ya pertenece a otro comprobante.');
@@ -140,14 +142,20 @@ export class PrintJournal {
           }
           continue;
         }
+        const document=documents[audience]!;
+        const queue=audience==='desserts'
+          ? printDocumentProfile(audience,document)==='barista'?queues.barista:queues.desserts??queues.customer
+          : queues[audience];
         this.db.prepare(`INSERT INTO jobs(order_id,owner,ticket,audience,queue,document,state,message,updated)
-          VALUES(?,?,?,?,?,?,'queued','Pendiente de envío',?)`).run(order.id, owner, String(order.ticket_number), audience, queues[audience], JSON.stringify(documents[audience]), this.now());
+          VALUES(?,?,?,?,?,?,'queued','Pendiente de envío',?)`).run(order.id, owner, String(order.ticket_number), audience, queue, JSON.stringify(document), this.now());
       }
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
   async dispatch(owner: string, orderId: string, only?: PrintAudience, eligible?: () => Promise<boolean>) {
-    await Promise.all((only ? [only] : audiences).map(audience => this.send(owner, orderId, audience, eligible)));
+    const stored=this.get(owner,orderId).map(job=>job.audience);
+    const audiences=(['customer','barista','desserts'] as PrintAudience[]).filter(audience=>stored.includes(audience));
+    await Promise.all((only ? audiences.filter(audience=>audience===only) : audiences).map(audience => this.send(owner, orderId, audience, eligible)));
     return this.get(owner, orderId);
   }
   private async send(owner: string, orderId: string, audience: PrintAudience, eligible?: () => Promise<boolean>) {
@@ -173,9 +181,9 @@ export class PrintJournal {
       submitting = true; // Durable commit BEFORE the first potentially printing call.
       await prepared.submit();
       this.db.prepare(`UPDATE jobs SET state='submitted',message=?,updated=?
-        WHERE order_id=? AND audience=? AND claim=?`).run(orderId.startsWith('phone:')?'Enviado a Windows. Si falta la comanda, revisa esa cola antes de reponerla.':'Enviado a Windows. Si falta papel o Bluetooth, revisa esa cola; no vuelvas a cobrar.',this.now(), orderId, audience, claim);
+        WHERE order_id=? AND audience=? AND claim=?`).run(orderId.startsWith('phone:')?'Enviado a Windows. Si falta la comanda, revisa el papel y la cola antes de reponerla.':'Enviado a Windows. Si no salió, revisa el papel y la cola. No vuelvas a cobrar.',this.now(), orderId, audience, claim);
     } catch (error) {
-      const message = submitting ? 'Resultado incierto. Revisa la cola de Windows y el papel; no se reenviará automáticamente.'
+      const message = submitting ? 'Envío sin confirmar. Revisa el papel y la cola de Windows antes de reponer esta copia.'
         : (error instanceof Error ? error.message : 'No se pudo preparar la impresora.');
       this.db.prepare(`UPDATE jobs SET state=?,message=?,updated=? WHERE order_id=? AND audience=? AND claim=? AND state IN ('preparing','submitting')`)
         .run(submitting ? 'uncertain' : 'blocked', message, this.now(), orderId, audience, claim);

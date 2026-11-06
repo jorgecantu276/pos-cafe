@@ -16,9 +16,13 @@ concurrency:
 
 jobs:
   integration:
-    name: Auth and backend integration
+    name: Auth and backend integration (${{ matrix.script }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        script: ['test:admin-http', 'test:phone-http', 'test:restore-business']
     env:
       NEXT_TELEMETRY_DISABLED: '1'
       POS_PRINT_MODE: disabled
@@ -31,12 +35,10 @@ jobs:
           node-version: 24.22.2
           cache: npm
       - run: npm ci
-      - name: Exercise real Auth, PostgREST and production app on a disposable local backend
-        run: npm run test:admin-http
-      - name: Exercise phone preparation and pickup payment with real sessions and simulated printing
-        run: npm run test:phone-http
-      - name: Restore an actual encrypted business backup into a separate empty Auth/backend and operate it
-        run: npm run test:restore-business
+      - name: Reserve local fixture ports against ephemeral client connections
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55450-55529
+      - name: Exercise one isolated Auth/backend scenario on its own runner
+        run: npm run ${{ matrix.script }}
   verify:
     runs-on: windows-latest
     timeout-minutes: 20

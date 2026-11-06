@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as ts from 'typescript';
 import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, type CheckoutReview } from '../lib/checkout';
-import { errorMessage, validPagerNumber } from '../lib/pos-types';
+import { errorMessage, productAvailable, validPagerNumber } from '../lib/pos-types';
 import {withDeadline} from '../lib/request-deadline';
 import {isDefinitiveWriteRejection} from '../lib/write-outcome';
 import {savedShiftHtml} from '../lib/shift-printing';
@@ -321,6 +321,24 @@ test('opening a customization edit leaves the original line intact until confirm
     products:[],cards:[],setSelectedFamilyId:()=>{},buildWizardSteps:()=>[{}],setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},setEditingItemId:()=>{},setEditingQuantity:(quantity:number)=>assert.equal(quantity,original.quantity),setDynamicSteps:()=>{},setCustomizationStep:()=>{},
   })(original);
   assert.deepEqual(useCartStore.getState().items,[original]);
+});
+
+test('actual size-change handler keeps compatible milk and notes while using the new SKU base price',()=>{
+  const small={id:'iced16',name:'Iced coffee caramelo 16 oz',price:95,category:'Bebidas',is_active:true,customizable:true,wizard_steps:['Tipo de Leche']};
+  const large={...small,id:'iced20',name:'Iced coffee caramelo 20 oz',price:125};
+  const milk={id:'oat',name:'avena',phase:'Tipo de Leche',price:15};
+  let chosen:typeof small|null=small,selected=[milk];
+  const note='Sin hielo';let quantity=2;
+  const buildWizardSteps=handler('buildWizardSteps',{useCallback:(fn:unknown)=>fn,dbExtras:[{...milk,active:true}]});
+  handler('handleVariant',{
+    selectedFamily:{variants:[{product:small},{product:large}]},selectedProduct:small,productAvailable,buildWizardSteps,
+    setSelectedProduct:(value:typeof chosen)=>{chosen=value;},setDynamicSteps:()=>{},setActiveExtras:(update:(previous:typeof selected)=>typeof selected)=>{selected=update(selected);},setCustomizationStep:()=>{},
+    setProductNote:()=>assert.fail('Changing size must preserve the note'),setEditingQuantity:()=>{quantity=0;assert.fail('Changing size must preserve quantity');},
+  })('iced20');
+  assert.equal(chosen!.id,'iced20');assert.deepEqual(selected,[milk]);assert.equal(quantity,2);
+  const prepared=customizeProduct(chosen!,selected,note);
+  assert.equal(prepared.basePrice,125);assert.equal(prepared.price,140);assert.equal(prepared.note,note);
+  assert.equal(prepared.price*quantity,280);
 });
 
 test('editing an old draft uses current milk options while preserving the original line and price until saved',()=>{

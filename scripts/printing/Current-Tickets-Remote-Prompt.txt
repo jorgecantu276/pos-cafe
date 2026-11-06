@@ -1,29 +1,31 @@
-Prueba SOLO las dos impresiones actuales en esta PC de la cafetería. Estoy conectado por AnyDesk y hay una persona en el local que puede confirmar el papel y mandar fotos.
+Prueba el ticket y la etiqueta en la PC de la cafetería. Estoy conectado por AnyDesk y una persona del local puede confirmar el papel y mandar fotos.
 
-Localiza Cafe-Prueba-Dos-Impresoras-V9-2026-10-31.zip en la carpeta de transferencia, Escritorio o Descargas. Extráelo en una carpeta NUEVA y separada, por ejemplo D:\Cafe-Prueba-Actual-V9. Reutiliza esa extracción si ya existe y coincide con el manifiesto; no sobreescribas el paquete viejo.
+Localiza Cafe-Prueba-Dos-Impresoras-V9-2026-10-31.zip en transferencia, Escritorio o Descargas. Extráelo en D:\Cafe-Prueba-Actual-V9 o reutiliza una extracción que coincida con manifest.json.
 
-El paquete ORIGINAL sigue en D:\Cafe-Printer-Test-2026-10-31. Su runtime\windows\windows-jobs.sqlite y archivos WAL/SHM se conservan EN SU LUGAR, junto con todas las muestras y auditoría. Usa también su receipt-issuer.json. Si falta el registro original no vacío o el perfil, DETENTE y pregunta por la ubicación correcta. No crees ni copies un registro nuevo como reemplazo.
+Usa el registro original de D:\Cafe-Printer-Test-2026-10-31 sin moverlo. Conserva runtime\windows completo: windows-jobs.sqlite, WAL/SHM, muestras y revisiones. Usa su receipt-issuer.json. Si falta el perfil o el registro original no vacío, pregunta por su ubicación; no crees ni copies un registro de reemplazo.
 
-Autorizo una nueva muestra PRUEBA-D2 para ambas impresoras, sin venta ni cobro real. El ticket debe usar el logotipo/QR y ya NO debe incluir ninguna leyenda de CFDI. La etiqueta debe usar el diseño reference-v2: nombre/folio arriba, bebida grande, opciones con guiones, dos líneas y tipo de entrega/fecha/hora abajo. Solo se imprime negro: el color lo aporta el rollo físico.
+Autorizo la muestra PRUEBA-D2 sin venta ni cobro real. No instales npm, el POS o controladores, cambies ajustes, emparejamiento o calibración ni accedas a datos del negocio. Ejecuta una prueba a la vez.
 
-1. Lee LEEME.txt y verifica todos los archivos de manifest.json. Usa el Node incluido (24.22.2 / SQLite 3.53.4). No instales npm, drivers ni el POS. No cambies preferencias, emparejamiento, calibración ni datos del negocio. No ejecutes pruebas viejas o scripts de reposición. Evita pruebas concurrentes.
+1. Lee LEEME.txt. Verifica los hashes de manifest.json y Node 24.22.2 / SQLite 3.53.4.
 
-2. Desde la NUEVA carpeta, ejecuta SIN imprimir:
+2. Desde la carpeta nueva, consulta sin imprimir:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-CurrentTickets.ps1 -ExistingKitRoot 'D:\Cafe-Printer-Test-2026-10-31'
 
-Confirma POS80 Printer / POS80 / CP001 y Y813BT Sticker / Y813BT Label / COM3:, formatos aprox.72x210mm y57x32mm y colas vacías. Ante fallas o pendientes, no canceles ni fuerces nada: detente y reporta. La vista previa debe indicar journalUnchanged=true, physicalPrints=0. Revisa preview\customer\page-1.png y preview\barista-upright\page-1.png; indica cuántas páginas generó cada una. Esperamos un ticket y una etiqueta. Si no cabe así, detente para revisar antes de imprimir.
+Confirma POS80 Printer / POS80 / CP001, Y813BT Sticker / Y813BT Label / COM3:, formatos de 72 x 210 mm y 57 x 32 mm, y colas vacías. Ante diferencias, fallas o pendientes, detente sin cancelar ni reenviar.
 
-3. Pídeme confirmar con la persona del local: ambas impresoras encendidas, papel de ticket cargado y tapa cerrada, rollo Hybsk2.25x1.25pulgadas (57.15x31.75mm) cargado en la etiqueta y listo. No se puede deducir esto solo de Windows.
+La vista previa debe indicar journalUnchanged=true y physicalPrints=0. Revisa preview\customer\page-1.png y preview\barista-upright\page-1.png. Informa cuántas páginas generó cada una: debe ser un ticket y una etiqueta; si no caben, detente.
 
-4. Con esa confirmación, ejecuta UNA VEZ:
+3. Pídeme confirmar con la persona del local: impresoras encendidas, papel del ticket cargado, tapa cerrada y rollo Hybsk de 57.15 x 31.75 mm cargado. Con esa confirmación, ejecuta una vez:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-CurrentTickets.ps1 -ExistingKitRoot 'D:\Cafe-Printer-Test-2026-10-31' -PrintTest
 
-Usa el caso integrado, sin crear otro script ni otra identidad: PRUEBA-D2, María López, un Iced Matcha Latte, leche de avena/vainilla/1 Shot Espresso, NO PREPARAR; total110, recibido150, cambio40. El paquete guarda su nueva muestra sample-dual-layout-v9.json en el runtime ORIGINAL y envía ambas copias concurrentemente usando el generador/adaptador/registro del POS.
+Usa la muestra integrada PRUEBA-D2: María López, un Iced Matcha Latte con leche de avena, vainilla y 1 Shot Espresso, NO PREPARAR. Total $110 MXN, recibido $150, cambio $40. Conserva sample-dual-layout-v9.json en el registro original; no crees otra muestra.
 
-5. Pídeme dos fotos legibles: ticket completo y etiqueta completa. La persona debe confirmar el mismo folio PRUEBA-D2 en ambos, que terminaron de salir, texto negro legible, sin cortes/encimados, cantidades correctas, ausencia de CFDI, y diseño/fecha/hora de la etiqueta. Pídeme confirmar que el QR impreso abre https://www.instagram.com/_carinitomio/. No declares salida física aprobada por ver 'submitted': solo confirma entrega a Windows.
+4. Pídeme fotos del ticket y la etiqueta completos. La persona debe confirmar folio PRUEBA-D2, texto negro legible, importes correctos y salida completa sin cortes ni texto encimado. El ticket omite las leyendas de CFDI. La etiqueta reference-v2 lleva nombre y folio arriba, bebida grande, opciones con guiones, dos líneas y entrega/fecha/hora abajo; el color lo aporta el rollo. Pídeme confirmar que el QR abre https://www.instagram.com/_carinitomio/.
 
-6. Solo tras confirmar papel completo y ambas colas vacías, repite EXACTAMENTE el mismo -PrintTest una vez para verificar que no reenvía. Compara las dos filas: mismas identidades/intentos/fechas; la persona debe confirmar que no salió papel extra. No elijas otra muestra para reintentar.
+El estado submitted indica envío a Windows. La salida física debe confirmarla la persona del local.
 
-Si falta papel impreso, está incompleto o el estado es incierto, DETENTE y conserva todo. No borres muestras/registros, no restaures SQLite, no canceles colas ni autorices reposiciones por tu cuenta. No uses scripts antiguos de recovery ni SQL directo para cambiar estados.
+5. Solo después de confirmar ambas copias completas y colas vacías, repite exactamente el mismo comando una vez. Deben conservarse identidades, intentos y fechas. Pídeme confirmar que no salió papel extra.
 
-7. Guarda resumen de aprobado/falló/pendiente en la carpeta NUEVA. Verifica unrelatedJournalRowsUnchanged=true y recoveryAuditUnchanged=true en el resultado. El registro ORIGINAL permanece en su lugar. Crea RESULTADOS-D2.zip en la carpeta NUEVA con results, preview, resumen y una copia de runtime\windows\result-dual-layout-v9.json. NO incluyas SQLite/WAL/SHM, el perfil fiscal original ni respaldos del registro. Dime la ruta exacta para traerlo de regreso por AnyDesk. Las fotos las adjuntaré yo. No envíes mensajes a nadie.
+Si una copia falta, está incompleta o el estado es incierto, detente. Conserva todo; no canceles colas, ejecutes reposiciones, cambies de muestra ni borres, edites, copies o restaures el registro.
+
+6. Verifica unrelatedJournalRowsUnchanged=true y recoveryAuditUnchanged=true. Guarda en la carpeta nueva un resumen de aprobado, falló o pendiente. Crea allí RESULTADOS-D2.zip con results, preview, resumen y una copia de runtime\windows\result-dual-layout-v9.json. Excluye SQLite/WAL/SHM, el perfil fiscal y respaldos del registro. Informa la ruta para transferirlo por AnyDesk. Yo adjuntaré las fotos; no envíes mensajes a nadie.

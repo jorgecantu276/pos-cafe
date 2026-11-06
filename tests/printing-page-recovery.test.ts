@@ -22,7 +22,7 @@ async function harness(state='blocked'){
 test('a new print retry cannot execute another window’s pending action',async()=>{
   const h=await harness();try{
     h.inject();await h.click('Reintentar esta copia');assert.equal(h.calls.length,0);assert.equal(h.dom.window.localStorage.getItem('pos_print_recovery:v1:manager'),JSON.stringify(old));
-    await h.click('Revisar cambio pendiente');assert.equal(h.calls.length,1);assert.deepEqual(h.calls[0],old);
+    await h.click('Comprobar revisión pendiente');assert.equal(h.calls.length,1);assert.deepEqual(h.calls[0],old);
     assert.doesNotMatch(h.dom.window.document.body.textContent!,/Impresión reanudada|Reposición enviada/);
   }finally{await h.clean();}
 });
@@ -35,6 +35,6 @@ test('a late pending print action leaves the newly entered inspection unchanged'
     const text=h.dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!,setter=Object.getOwnPropertyDescriptor(h.dom.window.HTMLTextAreaElement.prototype,'value')!.set!;
     await act(async()=>{setter.call(text,'Revisé la bandeja y Windows');text.dispatchEvent(new h.dom.window.Event('input',{bubbles:true}));text.dispatchEvent(new h.dom.window.Event('change',{bubbles:true}));});
     h.inject();await h.click('Reponer esta copia');assert.equal(h.calls.length,0);assert.equal(text.value,'Revisé la bandeja y Windows');assert.equal(h.dom.window.document.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked,true);
-    await h.click('Revisar cambio pendiente');assert.equal(h.calls.length,1);assert.deepEqual(h.calls[0],old);
+    await h.click('Comprobar revisión pendiente');assert.equal(h.calls.length,1);assert.deepEqual(h.calls[0],old);
   }finally{await h.clean();}
 });

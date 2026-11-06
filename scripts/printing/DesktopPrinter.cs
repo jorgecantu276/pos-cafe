@@ -5,7 +5,7 @@ using System.Drawing;
 using System.Drawing.Printing;
 
 public static class CafeDesktopPrinter {
-    private sealed class Run { public string Text; public string Style; public float Y; public string[] Cells; public float? X; public float RuleWidth; }
+    private sealed class Run { public string Text; public string Style; public float Y; public string[] Cells; public float? X; public float RuleWidth; public int PreparationGroup; public bool PreparationName; public string PreparationContext; }
     private static PrintDocument document;
     private static List<List<Run>> pages;
     private static Font regular, bold;
@@ -13,6 +13,8 @@ public static class CafeDesktopPrinter {
     private static float pageWidth;
     private static float physicalPageWidth;
     private static bool rotateLabel;
+    private static bool compactDesserts;
+    public static void UseCompactDessertLayout() { compactDesserts = true; }
     private static Image receiptLogo;
     private static string receiptLogoData;
     private static string[] qrRows;
@@ -63,8 +65,7 @@ public static class CafeDesktopPrinter {
         }
         RectangleF area = document.DefaultPageSettings.PrintableArea;
         InitializeFonts(points);
-        // Keep the installed 57 x 32 mm form; rotate the logical 32 x 57 mm
-        // artwork inside that page, as physically accepted on October 31.
+        // Rotate the logical 32 x 57 mm artwork inside the installed 57 x 32 mm form.
         rotateLabel = verticalLabel;
         physicalPageWidth = area.Width * 0.72f;
         pageWidth = (rotateLabel ? area.Height : area.Width) * 0.72f;
@@ -95,6 +96,8 @@ public static class CafeDesktopPrinter {
         fonts["ref-note"] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
         fonts["ref-meta"] = new Font("Arial", 7, FontStyle.Bold, GraphicsUnit.Point);
         fonts["ref-service"] = new Font("Arial", 8, FontStyle.Bold, GraphicsUnit.Point);
+        foreach (float size in new [] { 8.5f, 8f, 7.5f, 7f, 6.5f })
+            fonts["dessert-" + size.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)] = new Font("Arial", size, FontStyle.Bold, GraphicsUnit.Point);
         foreach (string style in new [] { "name", "drink", "modifier", "note", "footer" })
             fonts[style] = new Font("Arial", 8.5f, FontStyle.Bold, GraphicsUnit.Point);
     }
@@ -115,7 +118,8 @@ public static class CafeDesktopPrinter {
             if (referenceLabels != null) {
                 if (sectionIndex >= referenceLabels.Length || referenceLabels[sectionIndex].Length != 5 || section.Length < 3)
                     throw new InvalidOperationException("Incomplete reference label");
-                LayoutReferenceLabel(g, section, styles == null ? null : styles[sectionIndex], referenceLabels[sectionIndex], width, height, output);
+                if (compactDesserts) LayoutCompactDesserts(g, section, styles == null ? null : styles[sectionIndex], referenceLabels[sectionIndex], width, height, output);
+                else LayoutReferenceLabel(g, section, styles == null ? null : styles[sectionIndex], referenceLabels[sectionIndex], width, height, output);
                 continue;
             }
             // A long note may span multiple physical labels. Reserve the cup
@@ -185,6 +189,31 @@ public static class CafeDesktopPrinter {
         if (output.Count == 0 || output.Count > 10000) throw new InvalidOperationException("Invalid page count");
         return output;
     }
+    private static void LayoutCompactDesserts(Graphics g, string[] section, string[] styles, string[] identity, float width, float height, List<List<Run>> output) {
+        // This version is a single preparation label. Measure complete text first;
+        // never trim a product/note or silently emit more labels to make it fit.
+        float margin = 1.2f * MmToPt, usable = width - 2 * margin;
+        string folio = identity[0];
+        string heading = "POSTRES " + folio + (identity[1] == "SIN PAGAR" ? " SIN PAGAR" : "");
+        string footer = identity[2] + " · " + identity[3] + " " + identity[4];
+        foreach (float size in new [] { 8.5f, 8f, 7.5f, 7f, 6.5f }) {
+            string style = "dessert-" + size.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+            float leading = size * 1.08f + 0.3f;
+            List<Run> page = new List<Run>();
+            float y = margin;
+            foreach (string line in Wrap(g, heading, FontFor(style), usable)) { page.Add(new Run {Text=line,Style=style,X=margin,Y=y}); y += leading; }
+            foreach (string line in Wrap(g, section[0], FontFor(style), usable)) { page.Add(new Run {Text=line,Style=style,X=margin,Y=y}); y += leading; }
+            page.Add(new Run {Text="",Style="label-rule",X=margin,Y=y+1,RuleWidth=usable}); y += 4;
+            for (int row = 2; row < section.Length - 1; row++) {
+                string value = section[row].Trim();
+                foreach (string line in Wrap(g, value, FontFor(style), usable)) { page.Add(new Run {Text=line,Style=style,X=margin,Y=y}); y += leading; }
+            }
+            y += 3;
+            foreach (string line in Wrap(g, footer, FontFor(style), usable)) { page.Add(new Run {Text=line,Style=style,X=margin,Y=y}); y += leading; }
+            if (y <= height - margin) { output.Add(page); return; }
+        }
+        throw new InvalidOperationException("Compact dessert list exceeds one label");
+    }
     private static float MeasuredWidth(Graphics g, string text, string style) {
         return g.MeasureString(text, FontFor(style), Int32.MaxValue, StringFormat.GenericTypographic).Width;
     }
@@ -196,11 +225,17 @@ public static class CafeDesktopPrinter {
         float footerTop = height - margin - footerHeight, bottom = footerTop - 3;
         List<string> drink = new List<string>(Wrap(g, section[1], FontFor("ref-drink"), usable));
         List<Run> body = new List<Run>();
+        int preparationGroup = 0, nextPreparationGroup = 0;
+        string preparationContext = null;
         for (int i = 2; i < section.Length - 1; i++) {
             bool note = styles != null && i < styles.Length && styles[i] == "note";
+            bool preparationName = styles != null && i < styles.Length && styles[i] == "preparation-item";
+            if (preparationName) { preparationGroup = ++nextPreparationGroup; preparationContext = section[i]; }
+            if (note && section[i].StartsWith("ORDEN:", StringComparison.Ordinal)) { preparationGroup = 0; preparationContext = null; }
             string style = note ? "ref-note" : "ref-body";
             string value = note ? section[i] : "- " + section[i];
-            foreach (string line in Wrap(g, value, FontFor(style), usable)) body.Add(new Run { Text = line, Style = style });
+            foreach (string line in Wrap(g, value, FontFor(style), usable)) body.Add(new Run { Text = line, Style = style,
+                PreparationGroup = preparationGroup, PreparationName = preparationName, PreparationContext = preparationContext });
         }
         int next = 0, part = 0;
         do {
@@ -220,8 +255,30 @@ public static class CafeDesktopPrinter {
             if (y + required > bottom) throw new InvalidOperationException("Customer/drink identity leaves no room for label instructions");
             foreach (string line in drink) { page.Add(new Run {Text=line,Style="ref-drink",X=margin,Y=y}); y += LineHeight("ref-drink"); }
             y += 3;
+            float freshCapacity = bottom - y;
+            if (next < body.Count && body[next].PreparationGroup > 0 && !body[next].PreparationName) {
+                List<string> context = new List<string>(Wrap(g, "- " + body[next].PreparationContext, FontFor("ref-body"), usable));
+                if (context.Count * LineHeight("ref-body") + LineHeight(body[next].Style) > freshCapacity)
+                    context = new List<string>(Wrap(g, "POSTRE " + body[next].PreparationGroup + " CONT.", FontFor("ref-body"), usable));
+                foreach (string line in context) {
+                    if (y + LineHeight("ref-body") + LineHeight(body[next].Style) > bottom) break;
+                    page.Add(new Run {Text=line,Style="ref-body",X=margin,Y=y}); y += LineHeight("ref-body");
+                }
+            }
             int first = next;
             while (next < body.Count && y + LineHeight(body[next].Style) <= bottom) {
+                if (body[next].PreparationName && (next == 0 || !body[next - 1].PreparationName
+                    || body[next - 1].PreparationGroup != body[next].PreparationGroup)) {
+                    float nameHeight = 0, groupHeight = 0;
+                    for (int row = next; row < body.Count && body[row].PreparationGroup == body[next].PreparationGroup; row++) {
+                        groupHeight += LineHeight(body[row].Style);
+                        if (body[row].PreparationName) nameHeight += LineHeight(body[row].Style);
+                    }
+                    float keepHeight = groupHeight <= freshCapacity ? groupHeight : nameHeight;
+                    // New grouped-dessert rows stay together when they fit a fresh
+                    // label. Oversized names/notes still advance without dropping text.
+                    if (keepHeight <= freshCapacity && y + keepHeight > bottom) break;
+                }
                 Run line = body[next++]; page.Add(new Run {Text=line.Text,Style=line.Style,X=margin,Y=y}); y += LineHeight(line.Style);
             }
             if (first == next && next < body.Count) throw new InvalidOperationException("No instruction fits label");
@@ -385,6 +442,7 @@ public static class CafeDesktopPrinter {
         svg.Append("</svg>"); System.IO.File.WriteAllText(filename, svg.ToString(), new System.Text.UTF8Encoding(false));
     }
     public static void Dispose() {
+        compactDesserts = false;
         if (receiptLogo != null) receiptLogo.Dispose();
         receiptLogo = null; qrRows = null; receiptLogoData = null;
         if (document != null) document.Dispose();

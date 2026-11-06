@@ -8,8 +8,7 @@ import { printerAdapter, type PrintConfig } from '../../lib/windows-print-server
 import { readReceiptIssuer } from '../../lib/receipt-issuer-server';
 import type { SavedOrder } from '../../lib/checkout';
 
-// Bundled into the portable hardware kit. It contains no Supabase client or API
-// credentials and cannot charge a customer or change the cafe database.
+// Printer test kit using synthetic orders.
 const root = path.dirname(fileURLToPath(import.meta.url));
 process.chdir(root);
 // Optional local issuer profile is separate from versioned source and contains
@@ -65,10 +64,10 @@ try {
   const result = JSON.stringify({ mode, testCase, saleId: order.id, labelMm: physical ? [widthMm, heightMm] : null, jobs }, null, 2);
   writeFileSync(path.join(directory, 'last-result.json'), result);
   writeFileSync(path.join(directory, `result-${testCase}.json`), result);
-  console.log(physical ? 'PRUEBA FÍSICA — SIN BASE DE DATOS NI COBROS' : 'SIMULACIÓN — NO SE USÓ NINGUNA IMPRESORA');
+  console.log(physical ? 'Prueba física con datos de muestra' : 'Simulación sin impresoras');
   console.log(`Caso guardado: ${testCase} | Folio: ${order.ticket_number}`);
   for (const job of jobs) console.log(`${job.audience === 'customer' ? 'CLIENTE USB' : 'BARRA BLUETOOTH'} | ${job.queue} | ${job.state} | ${job.message}`);
-  console.log('Repetir el comando conserva el mismo folio y NO reenvía copias aceptadas por Windows.');
-  console.log('Si Windows aceptó el trabajo pero no salió papel, revisa esa cola; no borres el registro para forzar un reenvío.');
+  console.log('Usa el mismo comando y la misma muestra para reintentar; las copias aceptadas o inciertas no se reenvían.');
+  console.log('Si no salió papel, revisa la cola de Windows. Conserva el registro de impresión.');
   if (jobs.some(job => job.state !== 'submitted')) process.exitCode = 2;
 } finally { journal.close(); }

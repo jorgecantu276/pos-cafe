@@ -167,7 +167,7 @@ public sealed class CafeProcessJob : IDisposable {
   for ($restart = 0; $restart -le 3; $restart++) {
     if ($restart -gt 0) {
       $delay = [int][Math]::Pow(2, $restart - 1)
-      Write-Host "La aplicacion se detuvo. Reintentando en $delay segundos ($restart de 3). No se repetiran ventas ni impresiones."
+      Write-Host "La aplicacion se detuvo. Reintentando en $delay segundos ($restart de 3)."
       Start-Sleep -Seconds $delay
     }
     if (@(Get-CafeListeners).Count -gt 0) { throw 'El puerto fue ocupado por otro programa. No se inicio otra copia; pide ayuda.' }
@@ -194,7 +194,7 @@ public sealed class CafeProcessJob : IDisposable {
     }
     if ($ready) {
       Write-Host "Caja disponible en $baseUrl - cierra esta ventana para detenerla."
-      if ($config.PrintMode -eq 'mock') { Write-Host 'IMPRESION SIMULADA: no se enviara papel.' }
+      if ($config.PrintMode -eq 'mock') { Write-Host 'Impresion de prueba: no imprime en papel.' }
       if (-not $NoBrowser -and -not $browserOpened) { $cafeWindow = Open-CafeWindow; $browserOpened = $true }
       while (-not $child.HasExited) {
         if ($DesktopApp -and $cafeWindow -and $cafeWindow.HasExited) { return }

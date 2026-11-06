@@ -1,11 +1,45 @@
-# Two-copy printing for Cariñito Mío
+# Printing for Cariñito Mío
 
 The October 30 request replaces manual post-sale print choices. One completed
 sale records a browser outbox entry before checkout recovery is retired. The
-dispatcher then creates both jobs in one durable local transaction and attempts
-the USB and Bluetooth handoffs concurrently. Printer speeds and connectivity
+dispatcher creates the required jobs in one durable local transaction and attempts
+the printer handoffs concurrently. Printer speeds and connectivity
 determine when paper actually emerges; simultaneous physical completion cannot
 be promised.
+
+## Dessert preparation
+
+New orders group all products in category **Postres** into one preparation
+document on the same Y813BT sticker queue as drinks. It uses the existing
+57 × 32 mm form and rotation with the `desserts-compact-v1` label layout. It lists
+quantities, modifiers and notes without prices, with a **POSTRES** heading,
+customer, folio and delivery control. Drinks retain one label per cup; their
+cup count excludes desserts. A dessert-only order has the customer ticket and
+one grouped dessert job. A mixed order also has the drink-label job. Other
+categories keep their existing label behavior.
+
+The dessert job has its own `desserts` journal audience and recovery controls.
+Phone preparation keeps the unpaid warning; pickup payment sends only the paid
+customer receipt. Existing journal sources retain their exact original copy set
+and saved documents, including older per-dessert labels. Replaying an old order
+never adds a new dessert comanda. Previously saved receipt-shaped dessert
+documents keep their POS80 queue and receipt rendering. Saved `reference-v2`
+dessert documents keep their original sticker rendering and continuations.
+Both explicit sticker layouts use the barista printer profile; documents
+without either marker retain the receipt printer profile.
+
+New dessert lists must fit **one physical sticker**. The renderer measures all
+names, quantities, modifiers and notes with Arial Bold, selecting the largest
+size that fits from 8.5, 8, 7.5, 7 and 6.5 pt. It never removes text or creates
+continuation labels for this format. If the full content does not fit at 6.5 pt,
+preparation fails before printer handoff with `dessert-content-too-long`;
+the dessert job stays blocked and the cashier sees a clear message. The
+customer receipt and drink jobs keep their independent journal states.
+`-LayoutOnly` returns this error with exit code 1 and emits no partial preview.
+Physical readability of this new compact layout remains to be checked on the
+café PC. A rollback build must understand the compact layout and `desserts`
+to recover pending new jobs;
+keep the current journal and do not substitute a pre-dessert build for recovery.
 
 ## Recovery across cashier changes
 

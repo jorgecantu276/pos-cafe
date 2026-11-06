@@ -4,20 +4,20 @@ import { appendFileSync, closeSync, fsyncSync, openSync, readFileSync } from 'no
 import path from 'node:path';
 import machine from '../config/cafe-printers.json';
 import type { PrintAdapter, PreparedPrint } from './print-journal-server';
-import type { PrintAudience, SalePrintDocument, SalePrintJob } from './sale-printing';
+import { printDocumentProfile, type PrintQueues, type SalePrintDocument, type SalePrintJob } from './sale-printing';
 
 export interface PrintConfig {
   mode: 'mock' | 'windows'; directory: string;
-  queues: Record<PrintAudience, string>;
+  queues: PrintQueues;
   baristaStock: { widthMm: number; heightMm: number } | null;
   mockFaults?: string;
 }
 export function printConfig(env: Record<string, string | undefined> = process.env): PrintConfig {
-  if (!['mock', 'windows'].includes(env.POS_PRINT_MODE ?? '')) throw new Error('Falta activar y configurar la impresión local. La venta ya está guardada; no vuelvas a cobrar.');
+  if (!['mock', 'windows'].includes(env.POS_PRINT_MODE ?? '')) throw new Error('La impresión local no está configurada.');
   if (!env.POS_PRINT_DATA_DIR || !path.isAbsolute(env.POS_PRINT_DATA_DIR)) throw new Error('Configura una carpeta absoluta y permanente para el registro de impresión.');
   if (/^(?:\\\\|\/\/)/.test(env.POS_PRINT_DATA_DIR)) throw new Error('El registro de impresión requiere un disco local; no uses una carpeta de red.');
   const queues = { customer: env.POS_PRINT_CUSTOMER_QUEUE || machine.customer.queue, barista: env.POS_PRINT_BARISTA_QUEUE || machine.barista.queue };
-  if (queues.customer.toLowerCase() === queues.barista.toLowerCase()) throw new Error('Cliente y barra deben tener colas distintas.');
+  if (queues.customer.toLowerCase() === queues.barista.toLowerCase()) throw new Error('Configura una impresora distinta para tickets y etiquetas.');
   const widthMm = Number(env.POS_PRINT_BARISTA_WIDTH_MM || machine.barista.selectedWidthMm), heightMm = Number(env.POS_PRINT_BARISTA_HEIGHT_MM || machine.barista.selectedHeightMm);
   return { mode: env.POS_PRINT_MODE as PrintConfig['mode'], directory: env.POS_PRINT_DATA_DIR, queues,
     baristaStock: env.POS_PRINT_BARISTA_STOCK_CONFIRMED === '1' && widthMm >= 25 && widthMm <= 150 && heightMm >= 20 && heightMm <= 300 ? { widthMm, heightMm } : null,
@@ -41,15 +41,22 @@ export function printerAdapter(config: PrintConfig): PrintAdapter {
       }, dispose() {} };
     }
     if (process.platform !== 'win32') throw new Error('La impresión física requiere Windows en la PC de caja.');
-    if (job.audience === 'customer' && document.kind!=='phone' && document.issuerComplete !== true && !document.testOnly) throw new Error('Configura los datos fiscales del emisor antes de imprimir tickets de venta. La prueba de hardware usa muestras identificadas como PRUEBA.');
-    if (job.audience === 'barista' && !config.baristaStock) throw new Error('Confirma el tamaño de las etiquetas y la configuración del controlador Bluetooth antes de enviar a barra.');
+    if (job.audience === 'customer' && document.kind!=='phone' && document.issuerComplete !== true && !document.testOnly) throw new Error('Faltan los datos fiscales del emisor. Pide al responsable que los configure.');
+    if (printDocumentProfile(job.audience,document) === 'barista' && !config.baristaStock) throw new Error('Falta confirmar el tamaño de las etiquetas y el controlador Bluetooth.');
     return windowsPrepare(job, document, config);
   } };
 }
 
+export function windowsPrintInput(job: SalePrintJob, document: SalePrintDocument, config: PrintConfig) {
+  const profile=printDocumentProfile(job.audience,document);
+  return { queue: job.queue, title: `${document.title} ${job.orderId} ${job.audience}`,
+    sections: document.sections, styles: document.styles, labelLayout:document.labelLayout, referenceLabels:document.referenceLabels, receiptBranding: document.receiptBranding, verticalLabel: profile === 'barista', layoutTitle: document.title, fontPoints: profile === 'barista' ? 9 : 11,
+    identity: { driver: machine[profile].driver, port: machine[profile].port },
+    stock: profile === 'barista' ? config.baristaStock : { widthMm: machine.customer.paperWidthMm, heightMm: machine.customer.paperHeightMm } };
+}
+
 async function windowsPrepare(job: SalePrintJob, document: SalePrintDocument, config: PrintConfig): Promise<PreparedPrint> {
-  // Separate desktop helper under the signed-in cashier's Windows account.
-  // Shell interpolation and RAW/ESC-POS assumptions are deliberately absent.
+  // Run the helper under the signed-in cashier's Windows account.
   const executable = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
   const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', path.join(process.cwd(), 'scripts/printing/windows-print.ps1')],
     { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -59,7 +66,7 @@ async function windowsPrepare(job: SalePrintJob, document: SalePrintDocument, co
   const done = new Promise<void>((resolve, reject) => { doneResolve = resolve; doneReject = reject; });
   void done.catch(() => {});
   let finished = false;
-  const fail = () => { const error = new Error('El auxiliar de impresión no respondió. Revisa Windows y el controlador.'); readyReject(error); doneReject(error); };
+  const fail = () => { const error = new Error('El servicio de impresión no respondió. Revisa la impresora en Windows.'); readyReject(error); doneReject(error); };
   let timer = setTimeout(() => { fail(); child.kill(); }, 30_000);
   child.on('error', fail); child.stdin.on('error', fail);
   child.stderr.resume(); // Driver diagnostics may contain local paths; never return them to clients.
@@ -69,14 +76,13 @@ async function windowsPrepare(job: SalePrintJob, document: SalePrintDocument, co
       const message = JSON.parse(line);
       if (message.state === 'ready') readyResolve();
       else if (message.state === 'submitted') { finished = true; doneResolve(); }
-      else { readyReject(new Error('No se pudo preparar o enviar la impresora. Revisa su conexión y configuración.')); doneReject(new Error('Print helper failed')); }
+      else { readyReject(new Error(message.code === 'dessert-content-too-long'
+        ? 'Los postres no caben en una etiqueta. Consulta el ticket de la orden para prepararlos.'
+        : 'No se pudo enviar la copia. Revisa la conexión y la configuración de la impresora.')); doneReject(new Error('Print helper failed')); }
     } catch { fail(); }
   });
   child.on('exit', () => { clearTimeout(timer); if (!finished) fail(); });
-  child.stdin.write(JSON.stringify({ queue: job.queue, title: `${document.title} ${job.orderId} ${job.audience}`,
-    sections: document.sections, styles: document.styles, labelLayout:document.labelLayout, referenceLabels:document.referenceLabels, receiptBranding: document.receiptBranding, verticalLabel: job.audience === 'barista', layoutTitle: document.title, fontPoints: job.audience === 'barista' ? 9 : 11,
-    identity: { driver: machine[job.audience].driver, port: machine[job.audience].port },
-    stock: job.audience === 'barista' ? config.baristaStock : { widthMm: machine.customer.paperWidthMm, heightMm: machine.customer.paperHeightMm } }) + '\n');
+  child.stdin.write(JSON.stringify(windowsPrintInput(job,document,config)) + '\n');
   try { await ready; }
   catch (error) { clearTimeout(timer); child.kill(); lines.close(); throw error; }
   return { async submit() {

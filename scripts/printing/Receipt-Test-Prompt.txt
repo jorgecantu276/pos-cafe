@@ -1,27 +1,27 @@
-Test ONLY the new Cariñito Mío customer receipt on this café PC.
+Prueba el ticket del cliente en la PC de la cafetería con una muestra sin venta real.
 
-Locate Cafe-Receipt-Only-V8-2026-10-31.zip in the transfer folder, Desktop or Downloads. Extract it into a separate local folder such as D:\Cafe-Receipt-Only-V8-2026-10-31. If a verified extraction already exists, reuse it. Do not extract over the old test kit.
+Localiza Cafe-Receipt-Only-V8-2026-10-31.zip en la carpeta de transferencia, Escritorio o Descargas. Extráelo en D:\Cafe-Receipt-Only-V8-2026-10-31 o reutiliza una extracción que coincida con manifest.json.
 
-The ORIGINAL kit root is D:\Cafe-Printer-Test-2026-10-31. Keep its complete runtime\windows folder, windows-jobs.sqlite, WAL/SHM files, saved samples and recovery history IN PLACE. This update contains no journal. If the original nonempty journal or receipt-issuer.json is missing, STOP and ask me for the correct original location. Never create a substitute journal, restore an older one, or use a copied journal as the active test journal.
+Usa D:\Cafe-Printer-Test-2026-10-31 como paquete original. Conserva allí runtime\windows completo: windows-jobs.sqlite, WAL/SHM, muestras y revisiones. Usa su receipt-issuer.json. Si falta el perfil o el registro original no vacío, pregunta por su ubicación; no crees ni copies un registro de reemplazo.
 
-I authorize the new synthetic receipt test. No old case, Bluetooth label, driver/preference change, pairing, calibration, migration, app installation or live/cloud sale is authorized by this prompt. Do not run old recovery scripts, cancel Windows jobs, edit SQLite or force replacement. Avoid concurrent printer-test scripts.
+La prueba autoriza solo la muestra del ticket PRUEBA-R8. No instales el POS o controladores, cambies ajustes, pruebes Bluetooth ni accedas a ventas reales. Ejecuta una prueba a la vez.
 
-1. Read START-HERE.txt. Verify all manifest.json hashes and the bundled runtime (Node v24.22.2 / SQLite 3.53.4).
+1. Lee START-HERE.txt. Verifica todos los hashes de manifest.json y Node 24.22.2 / SQLite 3.53.4.
 
-2. From the NEW extracted folder, run the inspection/preview command without printing:
+2. Desde la carpeta nueva, consulta sin imprimir:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-NewReceipt.ps1 -ExistingKitRoot 'D:\Cafe-Printer-Test-2026-10-31'
 
-Confirm POS80 Printer / POS80 / CP001 and the approximately 72 x 210 mm form. Stop for mismatches, a known printer fault, or pending receipt jobs. Check that preview reports journalUnchanged=true and physicalPrints=0, and inspect preview/page-1.png. It must show the supplied Taller Repostero logo, phone, clear item columns/total, issuer details below payment, Instagram QR and closing phrase. Do not query or print the Bluetooth device for this test.
+Confirma POS80 Printer / POS80 / CP001, formato de 72 x 210 mm y cola vacía. Ante diferencias o fallas, detente. La vista previa debe indicar journalUnchanged=true y physicalPrints=0. Revisa preview/page-1.png: logo, teléfono, columnas, total, datos fiscales debajo del pago, QR y frase final.
 
-3. Ask me to confirm receipt paper is loaded, cover latched and the printer ready. Then run ONCE:
+3. Pídeme confirmar papel cargado, tapa cerrada e impresora lista. Con esa confirmación, ejecuta una vez:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-NewReceipt.ps1 -ExistingKitRoot 'D:\Cafe-Printer-Test-2026-10-31' -PrintTest
 
-Expected new folio: PRUEBA-R8. One Iced coffee caramelo with oat milk, ANA (PRUEBA), SIN HIELO / NO PREPARAR. Total MXN110, received MXN150, change MXN40. This adds only the new customer copy to the ORIGINAL journal; zero barista jobs. Its stable sample is runtime\windows\sample-receipt-branding-v8.json. Always retain and reuse that identity.
+PRUEBA-R8: ANA (PRUEBA), un Iced coffee caramelo con leche de avena, SIN HIELO / NO PREPARAR. Total $110 MXN, recibido $150, cambio $40. Solo se añade la copia del cliente; conserva sample-receipt-branding-v8.json y su identidad en el registro original.
 
-4. Ask me to inspect actual paper for logo darkness, readable/complete text, alignment/feed, amounts, issuer, closing phrase and handle. Ask me to scan the QR and confirm it opens https://www.instagram.com/_carinitomio/. Windows 'submitted' alone is not a physical pass.
+4. Pídeme comprobar el papel completo, texto legible, alineación, importes, datos fiscales y frase final. Pídeme escanear el QR y confirmar que abre https://www.instagram.com/_carinitomio/. El estado submitted indica envío a Windows; la salida se confirma en papel.
 
-5. After I confirm complete paper output and the receipt queue is empty, repeat the EXACT SAME -PrintTest command once to verify duplicate suppression. Compare the new customer job's attempts/timestamp; they must stay unchanged, with no extra paper and no barista output. Do not create a different sample identity.
+5. Solo después de confirmar papel completo y cola vacía, repite exactamente el mismo comando una vez. Los intentos y la fecha del trabajo deben seguir iguales, sin papel extra ni impresión de barra.
 
-If paper is missing, output incomplete, or state uncertain: inspect paper/queue and STOP. Do not authorize recovery or resend by changing folders, deleting the sample, resetting the journal, or choosing another case. Ask me for the physical observation needed.
+Si falta papel, está incompleto o el envío es incierto, detente. Revisa papel y cola sin cancelar trabajos, ejecutar reposiciones, cambiar de muestra ni borrar, editar, copiar o restaurar el registro.
 
-Save a concise passed/failed/pending note in the NEW update folder. Preserve runtime\windows\result-receipt-branding-v8.json in the ORIGINAL kit and verify unrelatedJournalRowsUnchanged=true and baristaJobsCreated=0. Do not overwrite old results or ONSITE-RESULTS.txt. Finish with the receipt state, personal paper/QR confirmation, duplicate result and preserved journal path. Ask only for missing locations, physical readiness/observations or an actual blocker, not another blanket print approval.
+Guarda una nota de aprobado, falló o pendiente en la carpeta nueva, sin sobrescribir resultados anteriores. Conserva runtime\windows\result-receipt-branding-v8.json en el paquete original. Verifica unrelatedJournalRowsUnchanged=true y baristaJobsCreated=0. Informa papel, QR, duplicados y ruta del registro. Pregunta solo por ubicaciones faltantes, confirmaciones físicas o un bloqueo concreto.

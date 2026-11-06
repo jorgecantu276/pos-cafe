@@ -20,7 +20,7 @@ try {
         if ($forms.Count -eq 0) { throw "Falta el formato de papel esperado en $($target.Queue)" }
         $jobs = @(Get-PrintJob -PrinterName $target.Queue)
         $rows += @{Queue=$target.Queue;Driver=$printer[0].DriverName;Port=$printer[0].PortName;JobCount=$jobs.Count;Jobs=@($jobs | Select-Object ID,DocumentName,JobStatus,TotalPages,PagesPrinted)}
-        if ($jobs.Count -gt 0) { throw "Hay trabajos pendientes en $($target.Queue). No cancelar ni reenviar; revisar antes de continuar." }
+        if ($jobs.Count -gt 0) { throw "Hay trabajos pendientes en $($target.Queue). Revisa la cola antes de continuar; no canceles ni reenvies." }
     }
     $rows | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $results "queues-before-$stamp.json") -Encoding UTF8
     $node = Join-Path $PSScriptRoot 'node.exe'

@@ -8,7 +8,7 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const destination = process.argv[2];
-assert(destination && path.isAbsolute(destination), 'Pass a NEW absolute package directory');
+assert(destination && path.isAbsolute(destination), 'Indica una carpeta de salida nueva con ruta completa.');
 assert.equal(process.platform, 'win32'); assert.equal(process.arch, 'x64'); assert.equal(process.version, 'v24.22.2');
 const probe = new DatabaseSync(':memory:');
 const sqlite = probe.prepare('SELECT sqlite_version() AS version').get().version; probe.close();
@@ -19,59 +19,59 @@ await mkdir(path.join(destination, 'public/receipt-branding'), { recursive: true
 const bundle = await build({ entryPoints: [path.join(root, 'scripts/printing/receipt-test.ts')],
   outfile: path.join(destination, 'receipt-test.mjs'), bundle: true, platform: 'node', format: 'esm', target: 'node24', metafile: true });
 const allowed = ['receipt-test.ts','cafe-printers.json','receipt-branding.json','print-journal-server.ts','windows-print-server.ts','sale-printing.ts','receipt-issuer-server.ts'];
-assert(Object.keys(bundle.metafile.inputs).every(file=>allowed.includes(path.basename(file))), 'Unexpected package dependency');
+assert(Object.keys(bundle.metafile.inputs).every(file=>allowed.includes(path.basename(file))), 'El paquete incluye una dependencia inesperada.');
 for (const file of ['DesktopPrinter.cs','windows-print.ps1']) await copyFile(path.join(root,'scripts/printing',file),path.join(destination,'scripts/printing',file));
 await copyFile(path.join(root,'scripts/printing/Test-NewReceipt.ps1'),path.join(destination,'Test-NewReceipt.ps1'));
 await copyFile(path.join(root,'scripts/printing/Receipt-Test-Prompt.txt'),path.join(destination,'CAFE-PC-PROMPT.txt'));
 await copyFile(path.join(root,'public/receipt-branding/carinito-logo-v1.jpg'),path.join(destination,'public/receipt-branding/carinito-logo-v1.jpg'));
 await copyFile(process.execPath,path.join(destination,'node.exe'));
 await copyFile(path.join(path.dirname(process.execPath),'LICENSE'),path.join(destination,'Node-LICENSE.txt'));
-const instructions = `CARIÑITO MÍO — NEW RECEIPT ONLY — V8 — OCTOBER 31, 2026
+const instructions = String.raw`CARIÑITO MÍO — PRUEBA DEL TICKET V8
+31 de octubre de 2026
 
-Extract this ZIP into a NEW separate local folder, for example:
-D:\\Cafe-Receipt-Only-V8-2026-10-31
-Do not extract over, move, replace, delete or restore the old test folder.
+Extrae el ZIP en una carpeta separada, por ejemplo:
+D:\Cafe-Receipt-Only-V8-2026-10-31
 
-The existing kit remains at D:\\Cafe-Printer-Test-2026-10-31.
-Its runtime\\windows\\windows-jobs.sqlite and associated files stay IN PLACE.
-This package contains NO journal, issuer profile, cloud credentials or sales DB.
-It requires the existing nonempty journal and existing receipt-issuer.json.
-It prints no barista label and never authorizes a recovery replacement.
+Usa el registro existente en D:\Cafe-Printer-Test-2026-10-31 sin moverlo.
+Se necesitan runtime\windows\windows-jobs.sqlite, sus archivos WAL/SHM,
+las muestras guardadas y receipt-issuer.json. Si faltan o el registro está
+vacío, busca la carpeta original antes de continuar. No crees otro registro.
+Este paquete no incluye esos datos y prueba solo el ticket del cliente.
+No cambia el POS, los controladores, sus ajustes ni los datos del negocio.
+Ejecuta una prueba a la vez con el Node 24.22.2 / SQLite 3.53.4 incluido.
 
-From the NEW extracted folder, preview/inspect WITHOUT PRINTING:
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Test-NewReceipt.ps1 -ExistingKitRoot 'D:\\Cafe-Printer-Test-2026-10-31'
+1. Verifica los hashes de manifest.json y consulta la vista previa:
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-NewReceipt.ps1 -ExistingKitRoot 'D:\Cafe-Printer-Test-2026-10-31'
 
-Read the output and preview/page-1.png. The existing journal is opened read-only
-for this step. It must report journalUnchanged=true and physicalPrints=0.
-Verify POS80 Printer / POS80 / CP001 and the approximately 72 x 210 mm form.
-No Bluetooth power action or label inspection is needed for this receipt test.
+   Debe indicar journalUnchanged=true y physicalPrints=0.
+   Revisa preview/page-1.png, POS80 Printer / POS80 / CP001 y el formato
+   de 72 x 210 mm. No se consulta ni imprime la etiqueta Bluetooth.
 
-After checking receipt paper and an empty Windows receipt queue, print ONCE:
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Test-NewReceipt.ps1 -ExistingKitRoot 'D:\\Cafe-Printer-Test-2026-10-31' -PrintTest
+2. Con papel cargado, tapa cerrada, impresora lista y cola vacía, imprime una vez:
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-NewReceipt.ps1 -ExistingKitRoot 'D:\Cafe-Printer-Test-2026-10-31' -PrintTest
 
-Expected: PRUEBA-R8, ANA (PRUEBA), one Iced coffee caramelo with oat milk,
-SIN HIELO / NO PREPARAR; MXN110 total, MXN150 received, MXN40 change.
-Check the supplied logo, phone, title, columns, total, issuer block, QR,
-MENÚ E INSTAGRAM, closing phrase and Instagram handle. Scan the physical QR:
-https://www.instagram.com/_carinitomio/
+   Muestra PRUEBA-R8: ANA (PRUEBA), un Iced coffee caramelo con leche de avena,
+   SIN HIELO / NO PREPARAR. Total $110 MXN, recibido $150, cambio $40.
+   El registro original recibe solo la nueva copia del cliente y conserva
+   sample-receipt-branding-v8.json y result-receipt-branding-v8.json.
 
-The new sample is saved in the ORIGINAL runtime/windows as
-sample-receipt-branding-v8.json, with one new CUSTOMER journal row only.
-The original jobs, source records and recovery audit are checked for changes.
-Keep that sample identity. The result is result-receipt-branding-v8.json.
-Old case results and original sample files are not overwritten.
+3. Comprueba el papel completo: logo, teléfono, columnas, importes, datos
+   fiscales debajo del pago, frase final y usuario de Instagram. Escanea
+   el QR; debe abrir https://www.instagram.com/_carinitomio/.
+   El estado submitted indica envío a Windows; confirma la salida en papel.
 
-Submitted means Windows accepted the job, not proof of complete paper output.
-If paper is missing or state is uncertain, inspect paper/Windows and STOP.
-Do not delete files, select a new identity, edit SQLite, cancel jobs or use old
-one-off recovery scripts. The SAME command preserves the submission guard.
-After personally confirmed complete output and an empty queue, repeating it
-once may verify duplicate suppression; it should not send new paper.
+4. Tras confirmar el papel completo y la cola vacía, repite exactamente el
+   mismo comando una vez. No deben cambiar los intentos ni salir papel extra.
+   Conserva la muestra y el registro, incluidos sus archivos asociados.
 
-No npm install, POS installation, migration, driver/preference change, pairing,
-Bluetooth recovery run or physical print of the old cases is part of this test.
-Keep the entire original kit and journal, including WAL/SHM companion files.
-Do not run concurrent acceptance scripts while checking record preservation.
+Si falta papel, está incompleto o el envío es incierto, detente y revisa
+el papel y la cola de Windows. No borres, copies, restaures o edites el registro,
+cambies de muestra, canceles trabajos ni ejecutes scripts de reposición.
+El mismo comando conserva la protección contra duplicados.
+
+Guarda el resultado como aprobado, falló o pendiente, con la comprobación
+del papel, QR y duplicados. Verifica unrelatedJournalRowsUnchanged=true
+y baristaJobsCreated=0. Conserva los resultados anteriores.
 `;
 await writeFile(path.join(destination,'START-HERE.txt'),instructions);
 const files = ['receipt-test.mjs','Test-NewReceipt.ps1','CAFE-PC-PROMPT.txt','node.exe','Node-LICENSE.txt','scripts/printing/DesktopPrinter.cs','scripts/printing/windows-print.ps1','public/receipt-branding/carinito-logo-v1.jpg','START-HERE.txt'];
@@ -81,4 +81,4 @@ await writeFile(path.join(destination,'manifest.json'),JSON.stringify({kind:'cus
   sourceCommit:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),
   sourceDirty:!!execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim(),node:process.version,sqlite,
   requiresExistingJournal:true,journalIncluded:false,baristaPrinting:false,files:hashes},null,2));
-console.log('Prepared existing-journal, customer-only package: '+destination);
+console.log('Paquete de prueba del ticket creado: '+destination);

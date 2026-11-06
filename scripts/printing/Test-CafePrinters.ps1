@@ -7,12 +7,12 @@ if (-not $PrintTest -and -not $Simulate) {
     exit $LASTEXITCODE
 }
 $node = Join-Path $PSScriptRoot 'node.exe'
-if (-not (Test-Path -LiteralPath $node)) { throw 'Falta node.exe del paquete verificado.' }
+if (-not (Test-Path -LiteralPath $node)) { throw 'Falta node.exe en el paquete.' }
 if ($PrintTest) {
     $profile = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'machine-profile.json') | ConvertFrom-Json
     if ($LabelWidthMm -eq 0) { $LabelWidthMm = $profile.barista.selectedWidthMm }
     if ($LabelHeightMm -eq 0) { $LabelHeightMm = $profile.barista.selectedHeightMm }
-    if ($LabelWidthMm -le 0 -or $LabelHeightMm -le 0) { throw 'Mide primero las etiquetas. Usa -LabelWidthMm y -LabelHeightMm. No se imprimio nada.' }
+    if ($LabelWidthMm -le 0 -or $LabelHeightMm -le 0) { throw 'Indica las medidas del rollo con -LabelWidthMm y -LabelHeightMm. No se imprimio.' }
     & $node (Join-Path $PSScriptRoot 'physical-test.mjs') --print "--width=$LabelWidthMm" "--height=$LabelHeightMm" "--case=$TestCase"
 } else {
     & $node (Join-Path $PSScriptRoot 'physical-test.mjs') --simulate "--case=$TestCase"

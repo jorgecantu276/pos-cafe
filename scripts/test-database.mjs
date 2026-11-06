@@ -24,6 +24,8 @@ import { requiredPagerDatabaseCases } from './pagers/database-cases.mjs';
 import { phoneOrderDatabaseCases } from './phone-orders/database-cases.mjs';
 import { deliveryReadinessDatabaseCases } from './delivery-readiness/database-cases.mjs';
 import { deliveryProjectionCases } from './delivery-readiness/projection-cases.mjs';
+import { milkChoiceCases } from './catalog/milk-choice-cases.mjs';
+import { menuUpdateCases } from './catalog/menu-update-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
 // User-owned TEMP survives PostgreSQL's restricted Windows token; a hosted
@@ -233,6 +235,9 @@ try {
   assertions+=await phoneOrderDatabaseCases(db,connection,ids,await readFile(resolve(root,'supabase/migrations/202611020019_phone_orders.sql'),'utf8'));
   assertions+=await deliveryReadinessDatabaseCases(db,connection,ids,await readFile(resolve(root,'supabase/migrations/202611020020_delivery_readiness.sql'),'utf8'));
   assertions+=await deliveryProjectionCases(db,connection,ids,await readFile(resolve(root,'supabase/migrations/202611020021_staff_revision_read.sql'),'utf8'));
+  await db.query(await readFile(resolve(root,'supabase/migrations/202611050023_alternative_milk_choice.sql'),'utf8'));
+  assertions+=await milkChoiceCases(db,connection);
+  if(process.env.POS_MENU_BASELINE&&process.env.POS_MENU_UPDATE_SQL)assertions+=await menuUpdateCases(db,connection,process.env.POS_MENU_BASELINE,process.env.POS_MENU_UPDATE_SQL);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {
   await Promise.allSettled(clients.map(c=>c.end()));
