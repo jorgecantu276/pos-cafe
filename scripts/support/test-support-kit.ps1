@@ -59,7 +59,7 @@ try { & $helper -InstallDirectory $app -ConfigPath $configFile -OutputDirectory 
 if(!$blocked) { throw 'Pull request accepted as support issue' }
 $global:posSupportTestMode='private'
 $sent=& $helper -InstallDirectory $app -ConfigPath $configFile -OutputDirectory (Join-Path $fixture 'sent-reports') -IssueNumber 123 -Enviar
-if($sent.Sent -ne $true -or !($global:posSupportTestCalls[-1] -like 'issue comment 123 *--body-file *')) { throw 'Private followup failed' }
+if($sent.Sent -ne $true -or !($global:posSupportTestCalls[-1] -like 'issue comment 123 --repo github.com/jorgecantu276/pos-cafe --body-file *')) { throw 'Private followup host or body-file failed' }
 Write-Output 'PASS: private issue target validated; followup uses body file.'
 $global:posSupportTestMode='lost-response'
 $failed=$false

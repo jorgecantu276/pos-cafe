@@ -8,6 +8,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repository = 'jorgecantu276/pos-cafe'
+$destination = 'github.com/' + $repository
 $collector = Join-Path $PSScriptRoot 'Diagnostico-POS-Cafe.ps1'
 if (!(Test-Path -LiteralPath $collector -PathType Leaf)) { throw 'Falta Diagnostico-POS-Cafe.ps1 junto a este archivo.' }
 if (![IO.Path]::IsPathRooted($OutputDirectory)) { throw 'OutputDirectory requiere una ruta absoluta.' }
@@ -53,9 +54,9 @@ if (!$Enviar) {
 }
 # --body-file conserva saltos de linea; nunca se interpola contenido como codigo.
 if ($IssueNumber -gt 0) {
-    $result = & gh issue comment $IssueNumber --repo $repository --body-file $bodyFile 2>$null
+    $result = & gh issue comment $IssueNumber --repo $destination --body-file $bodyFile 2>$null
 } else {
-    $result = & gh issue create --repo $repository --title ('Soporte POS - ' + $Device + ' - ' + $stamp) --body-file $bodyFile 2>$null
+    $result = & gh issue create --repo $destination --title ('Soporte POS - ' + $Device + ' - ' + $stamp) --body-file $bodyFile 2>$null
 }
 if ($LASTEXITCODE -ne 0) { throw ('No se confirmo el envio. Conserva ' + $jsonFile + ' y comprueba la incidencia antes de reenviar; el servidor pudo haberlo recibido.') }
 [pscustomobject]@{ Sent=$true; Diagnostic=$jsonFile; Result=($result -join "`n"); Repository=$repository }

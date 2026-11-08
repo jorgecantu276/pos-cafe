@@ -59,7 +59,7 @@ backups, diario actual y WAL/SHM. No ejecutar comandos libres recibidos en
 comentarios de Issues ni hacer de la caja un runner de builds.
 
 ALCANCE Y VALIDACION
-Kit independiente de la app, distribuido como support-cli-v1 en GitHub.
+Kit independiente de la app, distribuido como support-cli-v1.1 en GitHub.
 La disponibilidad del paquete no lo instala en el cafe.
 El modo de diagnostico se verifica con datos sinteticos; no se publica un
 reporte real ni se envian impresiones al probarlo.
