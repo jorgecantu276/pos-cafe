@@ -1,0 +1,70 @@
+SOPORTE POS CAFE POR GITHUB CLI
+Fecha: 8 noviembre 2026
+Repositorio privado: jorgecantu276/pos-cafe
+
+GitHub CLI transporta reportes y releases. Para ejecutar una accion en la PC
+del cafe se necesita un proceso local que la inicie. Que gh este instalado no
+permite ejecutar comandos remotamente por si solo.
+
+ENTREGADO EN ESTE KIT
+- Diagnostico-POS-Cafe.ps1: colector de metadatos de solo lectura.
+- Soporte-POS-GitHub.ps1: genera informe local y, con -Enviar, lo publica
+  en una incidencia del repositorio privado usando el gh ya instalado.
+- Este procedimiento. No instala un servicio o tarea programada.
+
+PRIMER USO EN LA PC DEL CAFE
+Guardar ambos scripts en la misma carpeta de soporte fuera de la app.
+Ejecutar como el usuario de Windows que tiene instalado el POS.
+
+Primero, generar y revisar un informe local:
+  powershell.exe -NoProfile -File .\Soporte-POS-GitHub.ps1
+
+Enviar a una incidencia nueva:
+  powershell.exe -NoProfile -File .\Soporte-POS-GitHub.ps1 -Enviar
+
+Enviar seguimiento a una incidencia abierta existente:
+  powershell.exe -NoProfile -File .\Soporte-POS-GitHub.ps1 -Enviar -IssueNumber NUMERO_REAL
+
+Si la app esta en otro perfil de Windows, indicar -InstallDirectory con la
+ruta real. ConfigPath predeterminado:
+  C:\POS-Cafe\private\pos-cafe-config.json
+
+La primera operacion de -Enviar verifica que el repositorio siga privado.
+No copia claves, tokens, ventas, nombres/telefonos ni contenido de logs.
+Si falla el envio, conserva el JSON y texto locales. Una respuesta perdida
+puede significar que GitHub lo recibio: comprobar antes de reenviar.
+
+DESDE LA PC DE SOPORTE
+  gh issue list --repo jorgecantu276/pos-cafe --state open
+  gh issue view NUMERO_REAL --repo jorgecantu276/pos-cafe --comments
+
+ACTUALIZACIONES
+Se conserva el procedimiento ya usado: paquete Windows exacto + actualizador
+verificado + gh release download. El soporte no necesita npm install, builds,
+git pull o migraciones automaticas en la caja.
+El informe revisado confirma que 99d1675 ya esta instalado y main solo difiere
+en documentacion/CI. Este kit no requiere reinstalar la app.
+
+SOPORTE SIN INTERVENCION (SIGUIENTE COMPONENTE)
+Requiere instalar una vez un proceso/tarea local, bajo el mismo usuario que
+tiene autenticado gh. Puede publicar estado periodico y recibir solicitudes
+estructuradas con acciones limitadas. Debe conservar cola local cuando GitHub
+no responde y autenticar el repositorio y a quien solicita la accion.
+La frecuencia y el modo automatico estan pendientes de la preferencia del
+usuario. No hay agente instalado ni sesion remota activa con este kit.
+
+Las actualizaciones que cierran Caja deben usar una ventana acordada y
+comprobar que no haya operaciones inciertas. Conservar configuracion privada,
+backups, diario actual y WAL/SHM. No ejecutar comandos libres recibidos en
+comentarios de Issues ni hacer de la caja un runner de builds.
+
+ALCANCE Y VALIDACION
+Kit independiente de la app, distribuido como support-cli-v1 en GitHub.
+La disponibilidad del paquete no lo instala en el cafe.
+El modo de diagnostico se verifica con datos sinteticos; no se publica un
+reporte real ni se envian impresiones al probarlo.
+
+Referencias oficiales:
+https://cli.github.com/manual/gh_release_download
+https://cli.github.com/manual/gh_issue_create
+https://cli.github.com/manual/gh_issue_comment
