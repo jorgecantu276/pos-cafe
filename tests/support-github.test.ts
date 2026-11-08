@@ -23,6 +23,8 @@ test('automatic GitHub monitor recovers acknowledgments and preserves owned stat
   });
   assert.match(output, /automatic heartbeat reuses one issue\/comment/);
   assert.match(output, /overlapping cycles rejected/);
-  assert.match(output, /task XML repeats every 15 minutes/);
+  assert.match(output, /task XML runs daily at 08:00/);
+  assert.match(output, /same-day report is skipped/);
+  assert.match(output, /recognized 15-minute monitor upgraded to daily/);
   assert.match(output, /installer copies outside POS, registers once/);
 });

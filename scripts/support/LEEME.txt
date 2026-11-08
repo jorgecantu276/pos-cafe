@@ -5,12 +5,14 @@ Repositorio privado: jorgecantu276/pos-cafe
 INICIO AUTOMATICO (UNA SOLA VEZ EN LA PC DEL CAFE)
   powershell.exe -NoProfile -File .\Instalar-Soporte-GitHub.ps1
 
-Instala el monitor fuera de Caja y una tarea cada 15 minutos y al iniciar
-sesion. Actualiza un solo comentario en una incidencia privada del equipo.
+Instala el monitor fuera de Caja y una tarea diaria a las 08:00, hora de la PC.
+Actualiza un solo comentario en una incidencia privada del equipo. Si esta
+apagada, recupera la ejecucion pendiente cuando vuelve a estar disponible.
+Si ya publico con exito ese dia en hora de Matamoros, omite captura y API.
 Devuelve la URL del primer informe. Requiere PC encendida, internet y sesion
 Windows del mismo usuario iniciada; puede quedar bloqueada. No requiere una
 persona enviando cada informe. No guarda tokens/contrasenas de gh en archivos.
-Rutas: LOCALAPPDATA\POSCafeSupport\agent-v2 y state-v2.
+Rutas: LOCALAPPDATA\POSCafeSupport\agent-v3 y state-v2.
 Tarea: POSCafe-GitHub-Support-cafe-caja-01.
 No actualiza, detiene o reinicia Caja; no cobra, migra o imprime.
 
@@ -64,7 +66,7 @@ Cada captura queda primero en pending-report.json. Si GitHub no responde,
 conserva el ultimo estado local y la fecha de envio exitoso; al volver la red
 envia el estado mas reciente. Verifica repositorio privado, cuenta, autor y
 marcadores antes de editar su comentario. No ejecuta instrucciones de Issues.
-Mas de 45 minutos sin informe requiere revisar PC/red/sesion/tarea. No hay
+Mas de 48 horas sin informe requiere revisar PC/red/sesion/tarea. No hay
 un servicio externo de notificaciones por inactividad. Para detener el monitor,
 deshabilitar su tarea Windows sin borrar el estado ni cambiar el POS.
 
@@ -74,7 +76,10 @@ backups, diario actual y WAL/SHM. No ejecutar comandos libres recibidos en
 comentarios de Issues ni hacer de la caja un runner de builds.
 
 ALCANCE Y VALIDACION
-Kit independiente de la app, distribuido como support-cli-v2 en GitHub.
+Kit independiente de la app, distribuido como support-cli-v3 en GitHub.
+Reconoce y cambia la tarea v2 de 15 minutos a diaria, conservando el estado.
+El monitor no usa Actions ni modelos de IA. Un ciclo normal hace cinco llamadas
+REST; las pruebas CI al cambiar codigo si consumen el computo de GitHub.
 La disponibilidad del paquete no lo instala en el cafe.
 Se verifican diagnostico, transporte, respuestas perdidas, identidad de
 comentarios, bloqueo entre ciclos e instalador con Scheduler simulado.

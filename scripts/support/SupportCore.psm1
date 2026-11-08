@@ -64,7 +64,7 @@ function Get-PosSupportWarnings {
 }
 
 function Invoke-PosSupportCycle {
-    param($Settings,[string]$AgentDirectory)
+    param($Settings,[string]$AgentDirectory,[switch]$Force)
     if($Settings.Repository -cne 'jorgecantu276/pos-cafe' -or $Settings.Device -notmatch '^[a-z0-9-]{1,40}$' -or !$Settings.PublisherLogin) { throw 'support_settings_invalid' }
     $directory=[IO.Path]::GetFullPath([string]$Settings.StateDirectory)
     $null=New-Item -ItemType Directory -Path $directory -Force
@@ -74,6 +74,12 @@ function Invoke-PosSupportCycle {
         $stateFile=Join-Path $directory 'state.json'
         $state=if(Test-Path -LiteralPath $stateFile) { Get-Content -LiteralPath $stateFile -Raw|ConvertFrom-Json } else { [pscustomobject]@{version=2;issueNumber=0;commentId=0;lastSuccessAt=$null;lastError=$null} }
         if($state.version -ne 2 -or [long]$state.issueNumber -lt 0 -or [long]$state.commentId -lt 0) { throw 'support_state_invalid' }
+        if(!$Force -and $state.lastSuccessAt) {
+            $lastSuccess=[DateTime]::Parse([string]$state.lastSuccessAt).ToUniversalTime()
+            $lastDay=[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($lastSuccess,'Central Standard Time').Date
+            $today=[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow,'Central Standard Time').Date
+            if($lastDay -eq $today) { return @{skipped=$true;reason='already_reported_today';issueNumber=$state.issueNumber;url=('https://github.com/'+$Settings.Repository+'/issues/'+$state.issueNumber)} }
+        }
         try {
             try { $report=(& (Join-Path $AgentDirectory 'Diagnostico-POS-Cafe.ps1') -InstallDirectory $Settings.InstallDirectory -ConfigPath $Settings.ConfigPath | Out-String)|ConvertFrom-Json }
             catch { $report=[pscustomobject]@{checkedAtUtc=[DateTime]::UtcNow.ToString('o');scope='Read-only metadata. No business writes or paper.';collectionFailed=$true} }
@@ -105,7 +111,7 @@ function Invoke-PosSupportCycle {
                 if($matches.Count -eq 1) { $state.commentId=[long]$matches[0].id }
             }
             $warnings=@(Get-PosSupportWarnings -Report $report)
-            $body=$commentMarker+"`nEquipo: "+$Settings.Device+"`nUltima comprobacion UTC: "+$report.checkedAtUtc+"`nIntervalo esperado: 15 minutos. Mas de 45 minutos sin informe requiere revisar conectividad, sesion Windows o monitor.`n`nAvisos: "+$(if($warnings.Count){$warnings -join ', '}else{'sin avisos en metadatos'})+"`n`nSolo metadatos. No certifica papel o restauracion. No incluye secretos, ventas o contenido de logs.`n`n"+'```json'+"`n"+($report|ConvertTo-Json -Depth 12)+"`n"+'```'
+            $body=$commentMarker+"`nEquipo: "+$Settings.Device+"`nUltima comprobacion UTC: "+$report.checkedAtUtc+"`nFrecuencia: una vez al dia. Mas de 48 horas sin informe requiere revisar conectividad, sesion Windows o monitor.`n`nAvisos: "+$(if($warnings.Count){$warnings -join ', '}else{'sin avisos en metadatos'})+"`n`nSolo metadatos. No certifica papel o restauracion. No incluye secretos, ventas o contenido de logs.`n`n"+'```json'+"`n"+($report|ConvertTo-Json -Depth 12)+"`n"+'```'
             if([Text.Encoding]::UTF8.GetByteCount($body) -gt 50000) { throw 'support_report_size_limit' }
             if($state.commentId) {
                 $comment=Invoke-PosSupportApi -GhExecutable $gh -Endpoint ($api+'/issues/comments/'+$state.commentId) -StateDirectory $directory
@@ -128,7 +134,7 @@ function Invoke-PosSupportCycle {
 }
 
 function New-PosSupportTaskXml {
-    param([string]$ShellPath,[string]$MonitorPath,[string]$SettingsPath,[string]$UserSid,[string]$Device,[DateTime]$Start=(Get-Date).AddMinutes(1))
+    param([string]$ShellPath,[string]$MonitorPath,[string]$SettingsPath,[string]$UserSid,[string]$Device,[DateTime]$Start=(Get-Date).Date.AddHours(8))
     if($Device -notmatch '^[a-z0-9-]{1,40}$' -or $UserSid -notmatch '^S-1-[0-9-]+$') { throw 'support_task_identity_invalid' }
     $escape={param($value) [Security.SecurityElement]::Escape([string]$value)}
     $arguments='-NoProfile -NonInteractive -WindowStyle Hidden -File "'+$MonitorPath+'" -SettingsPath "'+$SettingsPath+'"'
@@ -136,9 +142,9 @@ function New-PosSupportTaskXml {
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
 <RegistrationInfo><Description>POSCafe GitHub Support v2 $Device</Description></RegistrationInfo>
-<Triggers><TimeTrigger><Repetition><Interval>PT15M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition><StartBoundary>$($Start.ToString('yyyy-MM-ddTHH:mm:ss'))</StartBoundary><Enabled>true</Enabled></TimeTrigger><LogonTrigger><Enabled>true</Enabled><UserId>$UserSid</UserId></LogonTrigger></Triggers>
+<Triggers><CalendarTrigger><StartBoundary>$($Start.ToString('yyyy-MM-ddTHH:mm:ss'))</StartBoundary><Enabled>true</Enabled><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger></Triggers>
 <Principals><Principal id="Author"><UserId>$UserSid</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
-<Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable><Enabled>true</Enabled><Hidden>true</Hidden><WakeToRun>false</WakeToRun><ExecutionTimeLimit>PT5M</ExecutionTimeLimit><Priority>7</Priority></Settings>
+<Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable><Enabled>true</Enabled><Hidden>true</Hidden><WakeToRun>false</WakeToRun><ExecutionTimeLimit>PT5M</ExecutionTimeLimit><Priority>7</Priority><RestartOnFailure><Interval>PT30M</Interval><Count>2</Count></RestartOnFailure></Settings>
 <Actions Context="Author"><Exec><Command>$(& $escape $ShellPath)</Command><Arguments>$(& $escape $arguments)</Arguments><WorkingDirectory>$(& $escape (Split-Path -Parent $MonitorPath))</WorkingDirectory></Exec></Actions>
 </Task>
 "@

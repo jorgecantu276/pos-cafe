@@ -19,13 +19,16 @@ usuario de Windows que tiene instalado Caja y autenticado GitHub CLI. Admite
 explícitos. No requiere crear tokens ni escribir contraseñas de GitHub en
 archivos: utiliza el inicio de sesión que ya tiene `gh`.
 
-Instala los scripts en `%LOCALAPPDATA%\POSCafeSupport\agent-v2`, configuración
-sin secretos en `settings-v2.json` y estado local en `state-v2`. La tarea
-`POSCafe-GitHub-Support-cafe-caja-01` corre al iniciar sesión y cada 15 minutos,
+Instala los scripts en `%LOCALAPPDATA%\POSCafeSupport\agent-v3`, configuración
+sin secretos en `settings-v3.json` y conserva el estado local en `state-v2`. La tarea
+`POSCafe-GitHub-Support-cafe-caja-01` corre una vez al día a las 08:00, hora de la PC,
 como el usuario actual con privilegios limitados. No cambia la app o su diario.
 La PC necesita estar encendida, conectada y con esa sesión de Windows iniciada;
 puede estar bloqueada. Cerrar sesión o apagarla interrumpe el reporte hasta
-volver a iniciar sesión. La tarea tiene límite de cinco minutos y evita
+volver a estar disponible; Windows recupera la ejecución pendiente. El monitor
+omite la captura y las llamadas a GitHub si ya publicó con éxito ese día en
+hora de Matamoros. No hay un segundo disparo al iniciar sesión. La tarea tiene
+límite de cinco minutos y evita
 instancias simultáneas; un bloqueo local también impide dos ciclos en paralelo.
 
 El primer ciclo crea una incidencia identificada por equipo y un comentario de
@@ -40,7 +43,7 @@ el último estado local y la fecha de éxito anterior; la siguiente ejecución
 recoge y envía el estado más reciente. No es un archivo histórico de todas las
 capturas. GitHub muestra avisos por respaldo sin confirmar/mayor a 26 horas,
 error de respaldo, versión/configuración/diario/impresoras sin comprobar y menos
-de 5 GiB libres. El informe muestra la hora UTC: más de 45 minutos sin reporte
+de 5 GiB libres. El informe muestra la hora UTC: más de 48 horas sin reporte
 requiere revisar PC, conectividad, sesión o tarea. No hay todavía un servicio
 externo que envíe una notificación si la PC deja de reportar.
 
@@ -54,6 +57,22 @@ no se confirma pero se registró la tarea, informa ese estado y reintenta en
 el próximo ciclo. Una tarea o versión local ajena nunca se sobrescribe.
 Para detener el monitor, deshabilitar su tarea en Windows; conservar el estado
 si se reinstala. Esto no detiene el POS ni cambia sus respaldos.
+
+El instalador reconoce la tarea v2 de 15 minutos, valida cuenta y configuración
+anteriores y cambia su programación a diaria conservando la incidencia y el
+estado. Solo reemplaza esa tarea reconocida, nunca una ajena. Si falla una
+ejecución programada, Windows permite hasta dos reintentos separados por 30
+minutos; no publica otro informe tras un éxito el mismo día.
+
+## Consumo de GitHub
+
+El monitor corre en Windows y usa REST mediante GitHub CLI, no GitHub Actions.
+No llama a modelos de IA. Un ciclo normal hace cinco solicitudes de API; la
+primera alta y la instalación requieren algunas adicionales. Las pruebas CI
+por cambios de código sí consumen el cómputo incluido en el plan del repositorio.
+La API tiene límites de solicitudes separados de ese cómputo. Ver
+[límites REST](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
+y [facturación de Actions](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
 
 ## Diagnóstico y envío
 

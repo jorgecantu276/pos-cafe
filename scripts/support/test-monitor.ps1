@@ -53,52 +53,56 @@ Import-Module (Join-Path $PSScriptRoot 'SupportCore.psm1') -Force
 $settings=[pscustomobject]@{Repository='jorgecantu276/pos-cafe';Device='fixture-cafe';PublisherLogin='fixture-owner';GhExecutable='gh';InstallDirectory=$app;ConfigPath=$config;StateDirectory=(Join-Path $fixture 'state')}
 $global:posMonitorTestDb.lose='issue'
 $failed=$false
-try { Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot|Out-Null } catch { $failed=$true }
+try { Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot -Force|Out-Null } catch { $failed=$true }
 if(!$failed -or !(Test-Path -LiteralPath (Join-Path $settings.StateDirectory 'pending-report.json'))) { throw 'Lost enrollment did not preserve report' }
-$result=Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot
+$result=Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot -Force
 if(!$result.published -or $global:posMonitorTestDb.issues.Count -ne 1 -or $global:posMonitorTestDb.comments.Count -ne 1) { throw 'Lost enrollment not recovered exactly once' }
-Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot|Out-Null
+Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot -Force|Out-Null
 if($global:posMonitorTestDb.issues.Count -ne 1 -or $global:posMonitorTestDb.comments.Count -ne 1 -or !($global:posMonitorTestDb.calls[-1] -like 'PATCH *')) { throw 'Heartbeat created duplicate issue/comment' }
 if($global:posMonitorTestDb.comments[0].body.Contains($canary)) { throw 'Secret leaked into heartbeat' }
 Write-Output 'PASS: automatic heartbeat reuses one issue/comment; lost enrollment recovered; no secrets.'
+$dailyCalls=$global:posMonitorTestDb.calls.Count
+$daily=Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot
+if(!$daily.skipped -or $daily.reason -cne 'already_reported_today' -or $global:posMonitorTestDb.calls.Count -ne $dailyCalls) { throw 'Daily report was duplicated or used API calls' }
+Write-Output 'PASS: same-day report is skipped before collecting or calling GitHub.'
 $statePath=Join-Path $settings.StateDirectory 'state.json'
 $state=Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json
 $state.commentId=0;Write-PosSupportJson -Path $statePath -Value $state
 $global:posMonitorTestDb.comments=@();$global:posMonitorTestDb.lose='comment'
-try { Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot|Out-Null } catch { }
-Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot|Out-Null
+try { Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot -Force|Out-Null } catch { }
+Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot -Force|Out-Null
 if($global:posMonitorTestDb.comments.Count -ne 1) { throw 'Lost comment created duplicate' }
 $originalBody=$global:posMonitorTestDb.comments[0].body
 $global:posMonitorTestDb.comments[0].body='Human notes which must not be overwritten'
 $failed=$false
-try { Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot|Out-Null } catch { $failed=$true }
+try { Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot -Force|Out-Null } catch { $failed=$true }
 if(!$failed -or $global:posMonitorTestDb.comments[0].body -cne 'Human notes which must not be overwritten') { throw 'Unrelated comment overwritten' }
 $global:posMonitorTestDb.comments[0].body=$originalBody
 $global:posMonitorTestDb.private=$false
 $beforeCalls=$global:posMonitorTestDb.calls.Count
-try { Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot|Out-Null } catch { }
+try { Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot -Force|Out-Null } catch { }
 $newCalls=@($global:posMonitorTestDb.calls|Select-Object -Skip $beforeCalls)
 if(@($newCalls|Where-Object {$_ -match '^(PATCH|POST) '}).Count) { throw 'Public repository received report' }
 $global:posMonitorTestDb.private=$true
 $global:posMonitorTestDb.login='different-account'
 $failed=$false
-try { Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot|Out-Null } catch { $failed=$true }
+try { Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot -Force|Out-Null } catch { $failed=$true }
 if(!$failed) { throw 'Changed publisher accepted' }
 $global:posMonitorTestDb.login='fixture-owner'
 $lock=[IO.File]::Open((Join-Path $settings.StateDirectory 'cycle.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
-try { $blocked=Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot;if(!$blocked.skipped){throw 'Concurrent cycle accepted'} } finally { $lock.Dispose() }
+try { $blocked=Invoke-PosSupportCycle -Settings $settings -AgentDirectory $PSScriptRoot -Force;if(!$blocked.skipped){throw 'Concurrent cycle accepted'} } finally { $lock.Dispose() }
 Write-Output 'PASS: lost comment recovered; unrelated comments, public repos, changed accounts and overlapping cycles rejected.'
 $taskXml=New-PosSupportTaskXml -ShellPath 'C:\Windows\powershell.exe' -MonitorPath 'C:\Support & Tools\Monitor.ps1' -SettingsPath 'C:\Support & Tools\settings.json' -UserSid 'S-1-5-21-1234' -Device 'fixture-cafe'
 [xml]$xml=$taskXml
 $ns=New-Object Xml.XmlNamespaceManager($xml.NameTable);$ns.AddNamespace('t','http://schemas.microsoft.com/windows/2004/02/mit/task')
-if($xml.SelectSingleNode('//t:Interval',$ns).InnerText -cne 'PT15M' -or $xml.SelectSingleNode('//t:LogonType',$ns).InnerText -cne 'InteractiveToken' -or $xml.SelectSingleNode('//t:MultipleInstancesPolicy',$ns).InnerText -cne 'IgnoreNew') { throw 'Task schedule/account contract incorrect' }
+if($xml.SelectSingleNode('//t:DaysInterval',$ns).InnerText -cne '1' -or $xml.SelectSingleNode('//t:StartBoundary',$ns).InnerText -notlike '*T08:00:00' -or $xml.SelectNodes('//t:Repetition|//t:LogonTrigger',$ns).Count -ne 0 -or $xml.SelectSingleNode('//t:LogonType',$ns).InnerText -cne 'InteractiveToken' -or $xml.SelectSingleNode('//t:MultipleInstancesPolicy',$ns).InnerText -cne 'IgnoreNew') { throw 'Daily task schedule/account contract incorrect' }
 if($xml.SelectSingleNode('//t:Arguments',$ns).InnerText -notlike '*Support & Tools*') { throw 'XML path escaping failed' }
 $scheduler=New-Object -ComObject 'Schedule.Service'
 $definition=$scheduler.NewTask(0)
 $definition.XmlText=$taskXml
-if(!$definition.XmlText.Contains('PT15M')) { throw 'Windows Task Scheduler rejected the XML definition' }
+if(!$definition.XmlText.Contains('ScheduleByDay')) { throw 'Windows Task Scheduler rejected the XML definition' }
 if((Get-FileHash -LiteralPath (Join-Path $data 'windows-jobs.sqlite')).Hash -cne $journalHash) { throw 'Monitor modified journal' }
-Write-Output 'PASS: task XML repeats every 15 minutes as current interactive user; journal unchanged.'
+Write-Output 'PASS: task XML runs daily at 08:00 as current interactive user; journal unchanged.'
 $global:posMonitorInstalledTask=$null
 $global:posMonitorTaskRegistrations=0
 function global:Get-Command {
@@ -117,12 +121,19 @@ function global:Register-ScheduledTask {
 $supportFixtureHome=Join-Path $fixture 'automatic-support'
 $installed=& (Join-Path $PSScriptRoot 'Instalar-Soporte-GitHub.ps1') -InstallDirectory $app -ConfigPath $config -SupportHome $supportFixtureHome -Device 'fixture-install'
 if($installed.Installed -ne $true -or $global:posMonitorTaskRegistrations -ne 1 -or !$installed.Report.published) { throw 'Automatic installer failed' }
-if(!(Test-Path -LiteralPath (Join-Path $supportFixtureHome 'agent-v2\Monitor-POS-GitHub.ps1'))) { throw 'Monitor files not preserved outside POS' }
+if(!(Test-Path -LiteralPath (Join-Path $supportFixtureHome 'agent-v3\Monitor-POS-GitHub.ps1'))) { throw 'Monitor files not preserved outside POS' }
 & (Join-Path $PSScriptRoot 'Instalar-Soporte-GitHub.ps1') -InstallDirectory $app -ConfigPath $config -SupportHome $supportFixtureHome -Device 'fixture-install'|Out-Null
 if($global:posMonitorTaskRegistrations -ne 1) { throw 'Rerun replaced existing task' }
+$legacyConfig=Get-Content -LiteralPath (Join-Path $supportFixtureHome 'settings-v3.json') -Raw|ConvertFrom-Json
+$legacyConfig.PSObject.Properties.Remove('DailyAt')
+Write-PosSupportJson -Path (Join-Path $supportFixtureHome 'settings-v2.json') -Value $legacyConfig
+$global:posMonitorInstalledTask.Actions[0].Arguments=$global:posMonitorInstalledTask.Actions[0].Arguments.Replace('agent-v3','agent-v2').Replace('settings-v3.json','settings-v2.json')
+& (Join-Path $PSScriptRoot 'Instalar-Soporte-GitHub.ps1') -InstallDirectory $app -ConfigPath $config -SupportHome $supportFixtureHome -Device 'fixture-install'|Out-Null
+if($global:posMonitorTaskRegistrations -ne 2 -or $global:posMonitorInstalledTask.Actions[0].Arguments -notlike '*agent-v3*') { throw 'Recognized legacy task was not upgraded to daily' }
 $global:posMonitorInstalledTask.Description='Some unrelated task'
 $failed=$false
 try { & (Join-Path $PSScriptRoot 'Instalar-Soporte-GitHub.ps1') -InstallDirectory $app -ConfigPath $config -SupportHome $supportFixtureHome -Device 'fixture-install'|Out-Null } catch { $failed=$true }
-if(!$failed -or $global:posMonitorTaskRegistrations -ne 1) { throw 'Unrelated task overwritten' }
+if(!$failed -or $global:posMonitorTaskRegistrations -ne 2) { throw 'Unrelated task overwritten' }
 if((Get-FileHash -LiteralPath (Join-Path $data 'windows-jobs.sqlite')).Hash -cne $journalHash) { throw 'Installer modified journal' }
 Write-Output 'PASS: installer copies outside POS, registers once, reuses matching task and rejects unrelated tasks; no real task installed in test.'
+Write-Output 'PASS: recognized 15-minute monitor upgraded to daily while preserving its state.'
