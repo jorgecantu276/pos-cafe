@@ -14,6 +14,8 @@ $canary='SECRET-CANARY-NEVER-REPORT-123456'
 @{ PrintMode='windows';PrintDataDirectory=$data;BackupDirectory=$backups;ClipEnabled=$false;RequireExistingPrintJournal=$true;SupabaseServiceRoleKey=$canary;SupabaseAnonKey=$canary;ClipTokenFile=$canary;ReceiptIssuerFile=$canary } | ConvertTo-Json | Set-Content -LiteralPath $configFile
 [IO.File]::WriteAllText((Join-Path $data 'windows-jobs.sqlite'),'journal-canary-no-open')
 [IO.File]::WriteAllText(($configFile+'.server-error.log'),$canary)
+@{instanceToken=$canary;processId=123;releaseId='fixture-release';configId='fixture-config'}|ConvertTo-Json|Set-Content -LiteralPath ($configFile+'.instance.json')
+function global:Invoke-RestMethod { param($Uri,$Method,$TimeoutSec) [pscustomobject]@{protocol=1;instanceToken='SECRET-CANARY-NEVER-REPORT-123456';processId=123;releaseId='fixture-release';configId='fixture-config'} }
 @{ version=1;lastSuccess=@{createdAt='2026-11-08T12:00:00Z';bytes=123;sha256=('b'*64)};lastError=$canary } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $backups 'status.json')
 function global:Get-Printer { [pscustomobject]@{ Name='POS80 Printer';DriverName='Fixture';PortName='CP001';PrinterStatus='Normal' } }
 function global:Get-PrintJob { param($PrinterName) @() }
@@ -29,6 +31,7 @@ if($json.Contains($canary)-or $body.Contains($canary)) { throw 'Secret content l
 $report=$json|ConvertFrom-Json
 if($report.release.commit -cne ('a'*40)-or $report.backup.errorPresent -ne $true-or $report.configuration.serviceKeyConfigured -ne $true) { throw 'Diagnostic lost required flags' }
 if($report.printers[0].pendingJobs -ne 0) { throw 'Queue result incorrect' }
+if($report.localServer.status -cne 'verified') { throw 'Local instance was not checked' }
 if((Get-FileHash -LiteralPath (Join-Path $data 'windows-jobs.sqlite')).Hash -cne $before.Hash) { throw 'Journal modified' }
 Write-Output 'PASS: no GitHub call in preview; secrets/log content excluded; required metadata present; journal unchanged.'
 $global:posSupportTestCalls=New-Object System.Collections.Generic.List[string]

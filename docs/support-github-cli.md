@@ -7,9 +7,53 @@ instalado en la PC del café; la actualización `99d1675` se instaló mediante
 diario actuales. No hace falta reinstalar la app para usar este colector.
 
 GitHub CLI necesita ejecutarse en la PC que recoge el diagnóstico. No proporciona
-por sí solo una consola remota. Este primer kit se inicia localmente: no instala
-un runner, servicio o tarea programada ni ejecuta comandos recibidos en Issues.
-El soporte sin intervención necesita instalar un ejecutor local por separado.
+por sí solo una consola remota. El kit automático instala una tarea local una
+sola vez y luego publica el estado sin intervención. No ejecuta comandos
+recibidos en Issues ni transforma la caja en un runner de builds.
+
+## Monitor automático
+
+Ejecutar una vez `Instalar-Soporte-GitHub.ps1` desde el kit verificado, como el
+usuario de Windows que tiene instalado Caja y autenticado GitHub CLI. Admite
+`-InstallDirectory`, `-ConfigPath`, `-SupportHome` y `-Device` para rutas/alias
+explícitos. No requiere crear tokens ni escribir contraseñas de GitHub en
+archivos: utiliza el inicio de sesión que ya tiene `gh`.
+
+Instala los scripts en `%LOCALAPPDATA%\POSCafeSupport\agent-v2`, configuración
+sin secretos en `settings-v2.json` y estado local en `state-v2`. La tarea
+`POSCafe-GitHub-Support-cafe-caja-01` corre al iniciar sesión y cada 15 minutos,
+como el usuario actual con privilegios limitados. No cambia la app o su diario.
+La PC necesita estar encendida, conectada y con esa sesión de Windows iniciada;
+puede estar bloqueada. Cerrar sesión o apagarla interrumpe el reporte hasta
+volver a iniciar sesión. La tarea tiene límite de cinco minutos y evita
+instancias simultáneas; un bloqueo local también impide dos ciclos en paralelo.
+
+El primer ciclo crea una incidencia identificada por equipo y un comentario de
+estado. Los siguientes editan ese mismo comentario; no generan una incidencia
+por ciclo ni reemplazan notas ajenas. Verifica repositorio privado, cuenta que
+publica, autor, marcadores y pertenencia del comentario. Si se pierde una
+respuesta de creación, el siguiente ciclo busca el marcador antes de crear.
+No ejecuta instrucciones escritas en títulos, cuerpos o comentarios.
+
+Cada captura queda primero en `pending-report.json`. Una caída de red conserva
+el último estado local y la fecha de éxito anterior; la siguiente ejecución
+recoge y envía el estado más reciente. No es un archivo histórico de todas las
+capturas. GitHub muestra avisos por respaldo sin confirmar/mayor a 26 horas,
+error de respaldo, versión/configuración/diario/impresoras sin comprobar y menos
+de 5 GiB libres. El informe muestra la hora UTC: más de 45 minutos sin reporte
+requiere revisar PC, conectividad, sesión o tarea. No hay todavía un servicio
+externo que envíe una notificación si la PC deja de reportar.
+
+El monitor es de diagnóstico: no reinicia, imprime, cobra, aplica migraciones
+o actualiza el POS. Las actualizaciones siguen el paquete/hash/rollback
+revisados y una ventana de mantenimiento. El canal queda listo para revisar
+desde soporte sin una persona recogiendo manualmente cada informe.
+
+El instalador genera un informe inicial y devuelve la URL. Si el primer envío
+no se confirma pero se registró la tarea, informa ese estado y reintenta en
+el próximo ciclo. Una tarea o versión local ajena nunca se sobrescribe.
+Para detener el monitor, deshabilitar su tarea en Windows; conservar el estado
+si se reinstala. Esto no detiene el POS ni cambia sus respaldos.
 
 ## Diagnóstico y envío
 
@@ -39,7 +83,10 @@ rutas explícitas. No cambiar el usuario de Windows para ejecutar el diagnóstic
 sin indicar la instalación correcta.
 
 El informe contiene commit/runtime, indicadores de configuración, fechas y
-error-presente del respaldo, metadatos del diario/logs, espacio y colas. No
+error-presente del respaldo, metadatos del diario/logs, espacio y colas. También
+compara la identidad del servidor local con la guardada por el launcher, sin
+transmitir el token de instancia. Un servidor cerrado se informa como tal;
+no se presupone que deba permanecer abierto fuera del horario del café. No
 incluye claves, contenido de logs, ventas, nombres/teléfonos de clientes ni
 datos fiscales. No abre SQLite, detiene Caja, cambia el sistema o envía papel.
 La presencia del archivo de respaldo no certifica su restauración.
@@ -77,6 +124,12 @@ que los secretos y contenido de logs quedan fuera, que se rechazan repositorios
 públicos/PR, que se usa el archivo de cuerpo y que una respuesta perdida conserva
 la evidencia y el diario sin reintentar. No conecta a GitHub ni al backend ni
 envía papel.
+
+También comprueba ciclos automáticos, respuestas perdidas al crear incidencia
+y comentario, un solo comentario de estado, bloqueo entre ciclos, identidad del
+publicador, rechazo de notas ajenas, XML interpretado por Windows Task Scheduler
+sin registrar una tarea real y un instalador con Scheduler simulado. Comprueba
+instalación fuera de Caja, repetición idempotente y rechazo de tareas ajenas.
 
 Referencias: [descarga de releases](https://cli.github.com/manual/gh_release_download),
 [crear incidencias](https://cli.github.com/manual/gh_issue_create) y
