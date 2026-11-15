@@ -12,3 +12,9 @@ Cada instalación configura su propia base de datos y sus propias cuentas. Café
 | Smoothies, venta y reintento en Supabase local | node scripts/smoothies/local-sale-drill.mjs |
 
 Las pruebas con Supabase levantan una instancia desechable con datos sintéticos. Ejecuta los ensayos de Smoothies uno a la vez, ya que comparten los puertos de prueba. Para los requisitos de la instalación real, consulta [la guía de Smoothies](smoothies-local.md).
+
+## Prueba local de Papelería
+
+El ensayo de Papelería ejecuta el carrito y el generador de tickets compartidos con una base SQLite sintética. Cubre lectura de códigos con ceros iniciales, venta en MXN, reintento, cancelación y restauración. La prueba evita archivos del negocio y no es un instalador de Papelería.
+
+    node --import tsx scripts/papeleria/trial.mts
