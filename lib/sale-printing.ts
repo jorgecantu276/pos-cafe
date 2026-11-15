@@ -17,6 +17,7 @@ export function validReceiptIssuer(issuer: ReceiptIssuer | undefined): issuer is
 export interface SalePrintDocument {
   kind?: 'phone';
   title: string; sections: string[][]; styles?: PrintLineStyle[][];
+  blockedReason?: string;
   // Older local snapshots may contain this unused reference-design metadata.
   // Keep reading their text; never rewrite a saved document to remove it.
   cupLabels?: { folio: string; service: string; date: string; time: string }[];
@@ -107,9 +108,13 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
 }
 
 const dessert = (item: SavedOrder['items'][number]) => text(item.product.category).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'postres';
+const individualBrownie = (item: SavedOrder['items'][number]) =>
+  dessert(item) && /^brownie\b.*\bnieve\b/i.test(text(item.product.name));
+const groupedDessert = (item: SavedOrder['items'][number]) => dessert(item) && !individualBrownie(item);
+
 function preparationDocuments(order: Pick<SavedOrder,'items'|'customer_name'|'order_note'|'order_type'|'created_at'|'pager_number'>,ticket:string,phone=false): Pick<SalePrintDocuments,'barista'|'desserts'> {
-  const desserts = order.items.filter(dessert);
-  return { barista:preparationDocument({...order,items:order.items.filter(item=>!dessert(item))},ticket,phone),
+  const desserts = order.items.filter(groupedDessert);
+  return { barista:preparationDocument({...order,items:order.items.filter(item=>!groupedDessert(item))},ticket,phone),
     ...(desserts.length?{desserts:dessertDocument({...order,items:desserts},ticket,phone)}:{}) };
 }
 
@@ -134,19 +139,27 @@ function dessertDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_n
 
 function preparationDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_note'|'order_type'|'created_at'|'pager_number'>,ticket:string,phone=false):SalePrintDocument {
   const units = order.items.reduce((sum, i) => sum + i.quantity, 0);
-  if (units > 2000) throw new Error('La orden requiere revisión por su cantidad de etiquetas.');
+  if (units > 2000) return {
+    title: `CM #${ticket} BARRA`,
+    sections: [],
+    blockedReason: 'La orden requiere revisión por su cantidad de etiquetas. Usa el ticket para revisar la preparación.',
+    ...(phone ? { kind: 'phone' as const } : {}),
+  };
+  const brownieUnits = order.items.filter(individualBrownie).reduce((sum, item) => sum + item.quantity, 0);
+  let brownie = 0;
   let unit = 0;
   const baristaStyles: PrintLineStyle[][] = [];
   const referenceLabels: NonNullable<SalePrintDocument['referenceLabels']> = [];
   const sections = order.items.flatMap(item => Array.from({ length: item.quantity }, () => {
+    const position = individualBrownie(item) ? `POSTRE ${++brownie}/${brownieUnits}` : `${++unit}/${units-brownieUnits}`;
     const lines = [text(order.customer_name) || 'Mostrador', text(item.product.name)];
     const styles: PrintLineStyle[] = ['name', 'drink'];
     for (const extra of item.product.displayExtras ?? []) { lines.push(text(extra.name)); styles.push('modifier'); }
     if (item.product.note) { lines.push(text(item.product.note)); styles.push('note'); }
     if (order.order_note) { lines.push(`ORDEN: ${text(order.order_note)}`); styles.push('modifier'); }
     const time = new Date(order.created_at).toLocaleTimeString('es-MX', { timeZone: 'America/Matamoros', hour: '2-digit', minute: '2-digit', hour12: false });
-    lines.push(`${phone?`TELÉFONO ${ticket} · SIN PAGAR`:`#${ticket}`} · ${++unit}/${units} · ${order.pager_number != null ? `CONTROL: ${order.pager_number} · ` : ''}${text(order.order_type)} · ${time}`); styles.push('footer');
-    referenceLabels.push({ folio:phone?`TELÉFONO ${ticket} · SIN PAGAR`:order.pager_number != null ? `CONTROL ${order.pager_number} · #${ticket}` : `#${ticket}`,cup:`${unit}/${units}`,service:text(order.order_type),
+    lines.push(`${phone?`TELÉFONO ${ticket} · SIN PAGAR`:`#${ticket}`} · ${position} · ${order.pager_number != null ? `CONTROL: ${order.pager_number} · ` : ''}${text(order.order_type)} · ${time}`); styles.push('footer');
+    referenceLabels.push({ folio:phone?`TELÉFONO ${ticket} · SIN PAGAR`:order.pager_number != null ? `CONTROL ${order.pager_number} · #${ticket}` : `#${ticket}`,cup:position,service:text(order.order_type),
       date:new Date(order.created_at).toLocaleDateString('es-MX',{timeZone:'America/Matamoros',day:'2-digit',month:'2-digit',year:'2-digit'}),
       time:new Date(order.created_at).toLocaleTimeString('en-US',{timeZone:'America/Matamoros',hour:'2-digit',minute:'2-digit',hour12:true}) });
     baristaStyles.push(styles);

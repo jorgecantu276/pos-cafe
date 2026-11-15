@@ -7,6 +7,9 @@ import path from 'node:path';
 import { createServerClient } from '@supabase/ssr';
 import { startApp } from '../staging/app.mjs';
 import { work } from '../staging/runtime.mjs';
+const port = Number(process.env.POS_PRINT_TEST_PORT ?? 3112);
+assert.ok([3101, 3112].includes(port), 'Only dedicated loopback printing test ports are allowed');
+const appOrigin = `http://127.0.0.1:${port}`;
 await mkdir(work, { recursive: true });
 
 // Own loopback fixture implements READ-ONLY Auth/PostgREST responses. It cannot
@@ -67,9 +70,9 @@ try {
   const issuer = path.join(directory, 'synthetic-issuer.json');
   await writeFile(issuer, JSON.stringify({ legalName: 'EMISOR FICTICIO', rfc: 'AAA010101AAA', taxRegime: '601 - General de Ley Personas Morales',
     establishmentAddress: 'Domicilio ficticio', postalCode: '87380', city: 'Matamoros' }));
-  app = await startApp(config, { port: 3112, printing: { directory, faults, issuer } }); await app.ready();
-  const url = 'http://127.0.0.1:3112/api/printing';
-  const http = (body, cookie = cookies[0], origin = 'http://127.0.0.1:3112') => fetch(url, {
+  app = await startApp(config, { port, printing: { directory, faults, issuer } }); await app.ready();
+  const url = appOrigin + '/api/printing';
+  const http = (body, cookie = cookies[0], origin = appOrigin) => fetch(url, {
     method: body ? 'POST' : 'GET', redirect: 'manual', headers: { Cookie: cookie, Origin: origin, 'X-Pos-Print': '1', 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(75_000) });
   const post = async body => { const response = await http(body); const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result)); return result; };
@@ -90,7 +93,7 @@ try {
   assert.deepEqual((await spool()).map(j => j.queue).sort(), ['POS80 Printer', 'Y813BT Sticker'].sort());
   const documents = await spool(); assert.match(documents.find(j => j.audience === 'barista').document.sections.flat().join(' '), /Leche de avena.*Sin hielo.*Entregar juntos/);
   pass('Bluetooth retry routes only the missing preparation copy; both copies use the same immutable folio');
-  const receiptUrl = 'http://127.0.0.1:3112/api/receipts?orderId=' + first;
+  const receiptUrl = appOrigin + '/api/receipts?orderId=' + first;
   const receiptResponse = await fetch(receiptUrl, { headers: { Cookie: cookies[0] }, redirect: 'manual' });
   assert.equal(receiptResponse.status, 200);
   const savedReceipt = await receiptResponse.json();
@@ -182,7 +185,7 @@ try {
       const saleLines=doc=>doc.sections[0].filter((_,index)=>doc.styles[0][index]!=='issuer');
       assert.deepEqual(saleLines(customer),saleLines(documents.customer));
       assert.deepEqual(printed.find(job=>job.audience==='barista').document,documents.barista);
-      const response=await fetch('http://127.0.0.1:3112/api/receipts?orderId='+receipt.id,{headers:{Cookie:cookies[0]}});
+      const response=await fetch(appOrigin+'/api/receipts?orderId='+receipt.id,{headers:{Cookie:cookies[0]}});
       assert.equal(response.status,200);const saved=await response.json();
       assert.equal(saved.source,'stored');assert.deepEqual(saved.document,customer);
       assert.equal((await spool()).length,before+2);
@@ -214,6 +217,47 @@ try {
   assert.equal(dessertOnlyOutput.find(job=>job.audience==='desserts').document.sections.length,1);
   assert.equal(dessertOnlyOutput.find(job=>job.audience==='desserts').document.labelLayout,'desserts-compact-v1');
   pass('Mixed orders send cup labels plus one compact dessert sticker on the same queue; dessert-only orders create one compact sticker job and restart repeats no copies');
+  const brownies = newSale(4007), brownieSale = orders.get(brownies).receipt_snapshot;
+  brownieSale.items.push(dessertItems[1], ...[
+    ['Brownie cheesecake nieve', 2], ['Brownie oreo nieve', 1],
+  ].map(([name, quantity], index) => ({
+    id: 'brownie-' + index, quantity, product: { id: 'synthetic-brownie-' + index, name, category: 'Postres', price: 100 },
+  })));
+  Object.assign(brownieSale, { total: 570, tender_mxn: 600, change_mxn: 30 });
+  const countBeforeBrownies = (await spool()).length;
+  await Promise.all(Array.from({ length: 4 }, () => post({ orderId: brownies })));
+  const brownieJobs = (await spool()).filter(job => job.orderId === brownies);
+  assert.equal(brownieJobs.length, 3);
+  const brownieLabels = brownieJobs.find(job => job.audience === 'barista').document;
+  assert.deepEqual(brownieLabels.sections.map(section => section[1]), [
+    'Iced coffee caramelo', 'Iced coffee caramelo', 'Brownie cheesecake nieve', 'Brownie cheesecake nieve', 'Brownie oreo nieve',
+  ]);
+  assert.deepEqual(brownieLabels.referenceLabels.map(label => label.cup), [
+    '1/2', '2/2', 'POSTRE 1/3', 'POSTRE 2/3', 'POSTRE 3/3',
+  ]);
+  const groupedLabel = brownieJobs.find(job => job.audience === 'desserts').document;
+  assert.equal(groupedLabel.sections.length, 1);
+  assert.match(groupedLabel.sections[0].join(' '), /Galleta de pistache/);
+  assert.doesNotMatch(groupedLabel.sections[0].join(' '), /Brownie/);
+  await app.restart();
+  await post({ orderId: brownies });
+  assert.equal((await spool()).length, countBeforeBrownies + 3);
+  pass('Brownie varieties get one sticker per unit beside drink labels and the compact dessert sticker; retries and restart add no jobs');
+  const bulk = newSale(4008), bulkSale = orders.get(bulk).receipt_snapshot;
+  bulkSale.items = [1000, 1000, 1].map((quantity, index) => ({
+    id: 'bulk-brownie-' + index, quantity,
+    product: { id: 'bulk-brownie', name: 'Brownie oreo nieve', category: 'Postres', price: 50 },
+  }));
+  Object.assign(bulkSale, { total: 100050, tender_mxn: 100050, change_mxn: 0 });
+  const bulkReply = await post({ orderId: bulk });
+  assert.equal(bulkReply.expectedCopies, 2);
+  assert.equal(bulkReply.jobs.find(job => job.audience === 'customer').state, 'submitted');
+  const blockedLabels = bulkReply.jobs.find(job => job.audience === 'barista');
+  assert.equal(blockedLabels.state, 'blocked');
+  assert.match(blockedLabels.message, /cantidad de etiquetas/);
+  await post({ orderId: bulk });
+  assert.deepEqual((await spool()).filter(job => job.orderId === bulk).map(job => job.audience), ['customer']);
+  pass('A bulk order above the label limit still gets its receipt and never submits a preparation job');
   const privateResponse = await http(); assert.match(privateResponse.headers.get('cache-control'), /private.*no-store/);
   assert.equal(methods.some(method => method.includes('/rpc/') || /^(PATCH|DELETE) /.test(method) || (method.startsWith('POST ') && !method.includes('/auth/v1/token'))), false);
   pass('Print retries perform no checkout/stock/payment writes; responses are private and uncached');

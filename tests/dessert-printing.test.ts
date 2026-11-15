@@ -77,6 +77,47 @@ test('dessert-only journal creates one grouped sticker on the same queue as drin
   }finally{journal.close();rmSync(directory,{recursive:true,force:true});}
 });
 
+test('the sticker limit keeps the customer ticket available and preserves an earlier preparation document', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'pos-brownie-limit-'));
+  const sent: { audience: PrintAudience; document: SalePrintDocument }[] = [];
+  const journal = new PrintJournal(path.join(directory, 'jobs.sqlite'), {
+    async prepare(job, document) {
+      return { async submit() { sent.push({ audience: job.audience, document }); }, dispose() {} };
+    },
+  });
+  try {
+    const sale = order();
+    sale.items = [1000, 1000, 1].map(quantity => ({
+      ...sale.items[0], id: randomUUID(), quantity,
+      product: { ...sale.items[0].product, name: 'Brownie oreo nieve' },
+    }));
+    sale.total = 2001 * sale.items[0].product.price;
+    journal.ensure('cashier', sale, queues);
+    const jobs = await journal.dispatch('cashier', sale.id);
+    assert.deepEqual(sent.map(job => job.audience), ['customer']);
+    assert.equal(jobs.find(job => job.audience === 'customer')?.state, 'submitted');
+    assert.equal(jobs.find(job => job.audience === 'barista')?.state, 'blocked');
+    assert.match(jobs.find(job => job.audience === 'barista')?.message ?? '', /cantidad de etiquetas/);
+    await journal.dispatch('cashier', sale.id);
+    assert.equal(sent.length, 1);
+
+    const historical = { ...sale, id: randomUUID() };
+    const original = { title: 'Etiqueta anterior', sections: [['2001 × Brownie oreo nieve']] };
+    journal.ensureDocuments('cashier', historical, queues, {
+      customer: saleDocuments(historical).customer,
+      barista: { title: 'Sin bebidas', sections: [] },
+      desserts: original,
+    });
+    journal.ensure('cashier', historical, queues);
+    const oldJobs = await journal.dispatch('cashier', historical.id);
+    assert.deepEqual(oldJobs.map(job => job.audience), ['customer', 'desserts']);
+    assert.deepEqual(sent.find(job => job.audience === 'desserts')?.document, original);
+  } finally {
+    journal.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('a grouped dessert handoff retries independently and an uncertain result cannot resend after restart',async()=>{
   const directory=mkdtempSync(path.join(tmpdir(),'pos-desserts-')),sale=order(2),sent:PrintAudience[]=[];
   let offline=true,uncertain=false;
