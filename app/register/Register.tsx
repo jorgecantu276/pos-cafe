@@ -611,11 +611,13 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     }
     const steps = product.wizard_steps.map((phaseName: string) => {
        const phaseOptions = dbExtras.filter(e => e.phase === phaseName && e.active).map(e => e.name);
+       const phaseLabel = phaseName === 'Leche alternativa Matcha' ? 'Leche alternativa'
+          : phaseName === 'Cold foam Matcha' ? 'Cold foam' : phaseName;
        return {
           id: phaseName,
-          title: `Seleccionar ${phaseName}`,
+          title: `Seleccionar ${phaseLabel}`,
           options: phaseOptions,
-          exclusive: ['Tamaño', 'Tipo de Leche', 'Leche alternativa', 'Creamer', 'Helado gourmet', 'Temperatura'].includes(phaseName),
+          exclusive: ['Tamaño', 'Tipo de Leche', 'Leche alternativa', 'Leche alternativa Matcha', 'Creamer', 'Helado gourmet', 'Temperatura'].includes(phaseName),
           required: ['Helado gourmet', 'Temperatura'].includes(phaseName)
        };
     }).filter((step) => step.options.length > 0);

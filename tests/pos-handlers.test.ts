@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as ts from 'typescript';
 import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, type CheckoutReview } from '../lib/checkout';
-import { errorMessage, productAvailable, validPagerNumber } from '../lib/pos-types';
+import { errorMessage, productAvailable, validPagerNumber, type WizardStep } from '../lib/pos-types';
 import {withDeadline} from '../lib/request-deadline';
 import {isDefinitiveWriteRejection} from '../lib/write-outcome';
 import {savedShiftHtml} from '../lib/shift-printing';
@@ -339,6 +339,26 @@ test('actual size-change handler keeps compatible milk and notes while using the
   const prepared=customizeProduct(chosen!,selected,note);
   assert.equal(prepared.basePrice,125);assert.equal(prepared.price,140);assert.equal(prepared.note,note);
   assert.equal(prepared.price*quantity,280);
+});
+
+test('Matcha milk is a single choice and uses only the Matcha prices',()=>{
+  const matchaMilk='Leche alternativa Matcha';
+  const sharedLala={id:'shared-lala',name:'Lala 100',phase:'Leche alternativa',price:15,active:true};
+  const matchaLala={...sharedLala,id:'matcha-lala',phase:matchaMilk,price:0};
+  const almond={...matchaLala,id:'matcha-almond',name:'Leche de almendra'};
+  const foam={id:'matcha-foam',name:'Cold foam extra',phase:'Cold foam Matcha',price:15,active:true};
+  const dbExtras=[sharedLala,matchaLala,almond,foam];
+  const buildWizardSteps=handler('buildWizardSteps',{useCallback:(fn:unknown)=>fn,dbExtras});
+  const dynamicSteps=buildWizardSteps({customizable:true,wizard_steps:[matchaMilk,foam.phase]}) as WizardStep[];
+  assert.deepEqual(dynamicSteps.slice(0,2).map(({title,options,exclusive})=>[title,options,exclusive]),[
+    ['Seleccionar Leche alternativa',['Lala 100','Leche de almendra'],true],
+    ['Seleccionar Cold foam',['Cold foam extra'],false],
+  ]);
+  let selected=[{id:almond.id,phase:almond.phase,name:almond.name,price:almond.price}];
+  handler('chooseExtra',{customizationStep:0,dynamicSteps,activeExtras:selected,dbExtras,appearance:'workspace',
+    setActiveExtras:(extras:typeof selected)=>{selected=extras;},
+  })('Lala 100');
+  assert.deepEqual(selected,[{id:matchaLala.id,phase:matchaMilk,name:'Lala 100',price:0}]);
 });
 
 test('editing an old draft uses current milk options while preserving the original line and price until saved',()=>{
