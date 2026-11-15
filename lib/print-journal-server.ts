@@ -126,7 +126,10 @@ export class PrintJournal {
       // older per-dessert stickers. A template update never adds a new handoff.
       const stored = this.get(owner,order.id);
       const audiences:PrintAudience[] = source ? stored.map(job=>job.audience)
-        : (Object.keys(documents) as PrintAudience[]).filter(audience=>documents[audience]?.sections.length);
+        : (Object.keys(documents) as PrintAudience[]).filter(audience => {
+          const document = documents[audience];
+          return document?.sections.length || document?.blockedReason;
+        });
       for (const audience of only ? audiences.filter(audience=>audience===only) : audiences) {
         const old = this.db.prepare('SELECT * FROM jobs WHERE order_id=? AND audience=?').get(order.id, audience) as Row | undefined;
         if (old) {
@@ -170,7 +173,9 @@ export class PrintJournal {
     let prepared: PreparedPrint | undefined;
     let submitting = false;
     try {
-      prepared = await this.adapter.prepare(this.view(row), JSON.parse(row.document));
+      const document: SalePrintDocument = JSON.parse(row.document);
+      if (document.blockedReason) throw new Error(document.blockedReason);
+      prepared = await this.adapter.prepare(this.view(row), document);
       // Preparation can wait on Windows. Re-read authoritative eligibility only
       // after it completes, before the durable handoff fence. An already handed
       // off Windows job cannot be recalled by a later database cancellation.

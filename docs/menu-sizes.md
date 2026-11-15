@@ -23,8 +23,13 @@ conservan sus IDs; tickets guardados y pedidos telefónicos conservan sus precio
 Iced Coffee conserva el grupo **Tipo de Leche**: entera, deslactosada y
 deslactosada light sin recargo; almendra, avena, coco y Lala 100 suman $15.
 Matcha usa **Leche alternativa**, con las seis leches existentes sin recargo y
-Lala 100 a $15. Los grupos son independientes; no se cambian precios compartidos
-para corregir solo una bebida. Fruta extra y cold foam conservan sus precios.
+Lala 100 sin recargo con el ajuste de noviembre. El ajuste sustituye **Fruta
+extra** por **Cold foam extra** a $15 en las siete presentaciones de Matcha.
+Ceremonial muestra el extra en una sola sección. Los cambios conservan los
+identificadores y precios base de los productos.
+
+**Chai Latte** conserva la tarjeta de 16 oz, con **Frío** y **Caliente** a $95.
+Avena, almendra y coco cuestan $15 adicionales en el grupo **Tipo de Leche**.
 
 La migración 023 exige una sola elección de leche alternativa en venta manual,
 cotización CLIP y pedidos telefónicos. La actualización del catálogo se aplicó
@@ -32,3 +37,8 @@ con guardas de revisión y solicitudes auditadas, conservando las filas anterior
 de inventario. Las nuevas presentaciones empiezan en modo de disponibilidad,
 sin cantidades inventadas. Los borradores con un extra que ya no corresponde
 deben revisarse; no se modifica una solicitud de cobro pendiente.
+
+El ajuste de noviembre está en
+[`scripts/catalog/november-matcha-extras.sql`](../scripts/catalog/november-matcha-extras.sql).
+La prueba `npm run test:db` lo aplica a un catálogo de ensayo en PostgreSQL
+local y comprueba los importes nuevos y la recuperación de tickets anteriores.

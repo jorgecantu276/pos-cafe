@@ -41,6 +41,39 @@ test('six normal phone desserts fit one physical sticker retaining unpaid folio 
   for(const name of dessertNames)assert.ok(text.includes(name),name);
 });
 
+test('brownies with ice cream get a sticker per unit and stay out of the grouped desserts', {skip:process.platform!=='win32'},()=>{
+  const items=[
+    {id:'nieve',quantity:2,product:{id:'brownie-nieve',name:'Brownie cheesecake nieve',price:110,category:'Postres',note:'Nieve aparte'}},
+    {id:'plain',quantity:1,product:{id:'brownie',name:'Brownie tradicional',price:50,category:'Postres'}},
+    {id:'drink',quantity:1,product:{id:'chai',name:'Te chai frio',price:95,category:'Bebidas'}},
+  ];
+  const snapshot={items,total:365,customer_name:'Ana López',order_type:'Para Llevar',order_note:'',created_at:'2026-11-05T18:00:00Z'};
+  const sale=saleDocuments({...snapshot,id:'brownie-layout',ticket_number:4321,status:'completed',pager_number:12,
+    payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:16,change_mxn:0});
+  const phone=phoneOrderDocuments({id:'phone-brownie-layout',folio:43,contact_name:'Ana López',contact_phone:'8682345678',snapshot});
+  for(const [documents,folio] of [[sale,/#4321/],[phone,/T0043/]] as const){
+    const result=labelLayout(documents.barista);
+    assert.equal(result.status,0,result.stderr||result.stdout);
+    const pages:{lines:string[]}[]=JSON.parse(result.stdout);
+    assert.equal(pages.length,3);
+    assert.deepEqual(documents.barista.referenceLabels?.map(label=>label.cup),['POSTRE 1/2','POSTRE 2/2','1/1']);
+    for(const page of pages.slice(0,2)){
+      const text=page.lines.join(' ');
+      assert.match(text,/Brownie cheesecake nieve/i);
+      assert.match(text,/Nieve aparte/i);
+      assert.match(text,folio);
+      assert.match(text,documents===sale?/CONTROL 12/:/SIN PAGAR/);
+    }
+    assert.match(pages[2].lines.join(' '),/Te chai frio/i);
+    const desserts=documents.desserts!;
+    assert.equal(desserts.sections.length,1);
+    assert.match(desserts.sections[0].join(' '),/1 × Brownie tradicional/);
+    assert.doesNotMatch(desserts.sections[0].join(' '),/nieve/i);
+  }
+  assert.equal(saleDocuments({...snapshot,items:[items[0]],total:220,id:'nieve-only',ticket_number:4322,
+    status:'completed',payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:16,change_mxn:0}).desserts,undefined);
+});
+
 for(const overflow of ['name','note'])test(`an excessive dessert ${overflow} in a six-item order blocks before output instead of creating additional labels`, {skip:process.platform!=='win32'},()=>{
   const document=saleDocuments({id:'oversized-dessert',ticket_number:4321,status:'completed',total:30,
     items:[{id:'dessert',quantity:1,product:{id:'brownie',name:overflow==='name'?'Z'.repeat(220):'Brownie tradicional',price:30,category:'Postres',note:overflow==='note'?'Calentar por separado. '.repeat(30)+'FIN-NOTA':''}},...dessertItems().slice(1)],

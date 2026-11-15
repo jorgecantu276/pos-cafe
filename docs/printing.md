@@ -9,14 +9,14 @@ be promised.
 
 ## Dessert preparation
 
-New orders group all products in category **Postres** into one preparation
-document on the same Y813BT sticker queue as drinks. It uses the existing
+New orders group regular products in **Postres** into one preparation document
+on the same Y813BT sticker queue as drinks. It uses the existing
 57 × 32 mm form and rotation with the `desserts-compact-v1` label layout. It lists
 quantities, modifiers and notes without prices, with a **POSTRES** heading,
 customer, folio and delivery control. Drinks retain one label per cup; their
-cup count excludes desserts. A dessert-only order has the customer ticket and
-one grouped dessert job. A mixed order also has the drink-label job. Other
-categories keep their existing label behavior.
+cup count excludes desserts. Each brownie with ice cream gets its own label in
+the same job as the drink labels. Brownie labels have their own **POSTRE** count.
+The grouped job is created when the order contains other desserts.
 
 The dessert job has its own `desserts` journal audience and recovery controls.
 Phone preparation keeps the unpaid warning; pickup payment sends only the paid
