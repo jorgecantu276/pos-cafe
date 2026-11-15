@@ -78,8 +78,8 @@ try {
     await page.getByRole('button',{name:'Confirmar importación'}).click();
     const imported=await response;
     assert.equal(imported.status(),200,await imported.text());
-    await page.getByText('Plan de inventario · Pendiente del conteo de apertura',{exact:true}).click();
-    await page.getByText(/Cantidad por definir/).waitFor();
+    await page.locator('summary').filter({ hasText: /^Conteo de apertura/ }).click();
+    await page.getByText(/Previsto sin definir/).waitFor();
     console.log('PASS: importación desde Catálogo con sesión de administrador y revisión del plan de apertura.');
   }
   const apply = async file => ok(await service.rpc('pos_import_smoothies',{p_actor:adminId,p_data:parseSmoothiesForm(file)}));
