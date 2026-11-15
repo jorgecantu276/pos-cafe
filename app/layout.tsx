@@ -1,20 +1,22 @@
+import { posProfile } from '@/lib/pos-profile';
 import type { Metadata, Viewport } from "next";
+import Script from 'next/script';
 import "./globals.css";
 import ServiceWorkerRegistration from './ServiceWorkerRegistration';
 
 
 export const metadata: Metadata = {
-  title: 'Cariñito Mío POS',
-  manifest: '/manifest.json',
+  title: posProfile.title,
+  manifest: posProfile.manifest,
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Cariñito Mío',
+    title: posProfile.shortName,
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0071e3',
+  themeColor: posProfile.themeColor,
   width: 'device-width',
   initialScale: 1,
 };
@@ -29,7 +31,8 @@ export default function RootLayout({
       lang="es-MX"
       className="h-full antialiased"
     >
-      <body className="min-h-full flex flex-col"><ServiceWorkerRegistration />{children}</body>
+      {posProfile.id === 'smoothies' && process.env.NEXT_PUBLIC_SMOOTHIES_PORTABLE === '1' && <Script src="/smoothies-config.js" strategy="beforeInteractive" />}
+      <body className={`min-h-full flex flex-col${posProfile.id === 'smoothies' ? ' smoothies-app' : ''}`}><ServiceWorkerRegistration />{children}</body>
     </html>
   );
 }

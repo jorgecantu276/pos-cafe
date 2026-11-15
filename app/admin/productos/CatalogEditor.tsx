@@ -6,8 +6,11 @@ import AdminDialog from '../AdminDialog';
 
 export interface CatalogForm {
   name: string; price: string; category: string; phase: string; customizable: boolean; image_url: string; wizard_steps: string[];
+  productIds?: string[];
 }
-export default function CatalogEditor({ type, editing, values, onChange, categories, phases, busy, pending, message, onUploadPhoto, onSubmit, onClose }: {
+export default function CatalogEditor({ type, editing, values, onChange, categories, phases, busy, pending, message, onUploadPhoto, onSubmit, onClose, minimumPrice = 0, assignmentProducts }: {
+  minimumPrice?: number;
+  assignmentProducts?: { id: string; name: string; is_active: boolean | null }[];
   type: 'items' | 'extras'; editing: boolean; values: CatalogForm; onChange: Dispatch<SetStateAction<CatalogForm>>;
   categories: string[]; phases: string[]; busy: boolean; pending: boolean; message: string;
   onUploadPhoto: (file: File, extension: string) => Promise<string>;
@@ -28,7 +31,7 @@ export default function CatalogEditor({ type, editing, values, onChange, categor
       const url = await onUploadPhoto(file, extension);
       onChange(current => ({ ...current, image_url: url }));
     } catch {
-      setPhotoError('No se pudo subir la foto. Intenta de nuevo o usa un enlace.');
+      setPhotoError(assignmentProducts ? 'No se pudo subir la foto. Intenta de nuevo.' : 'No se pudo subir la foto. Intenta de nuevo o usa un enlace.');
     } finally {
       setUploading(false);
     }
@@ -43,14 +46,14 @@ export default function CatalogEditor({ type, editing, values, onChange, categor
     <form id="catalog-editor-form" onSubmit={event => { if (disabled) event.preventDefault(); else onSubmit(event); }}>
       <fieldset disabled={disabled} className="catalog-fields">
         <label className="admin-field catalog-field-name">Nombre<input data-dialog-autofocus name="name" value={values.name} required maxLength={200} onChange={e => onChange({ ...values, name: e.target.value })}/></label>
-        <label className="admin-field">Precio (MXN)<input name="price" type="number" inputMode="decimal" min="0" max="1000000" step="0.01" value={values.price} required onChange={e => onChange({ ...values, price: e.target.value })}/></label>
+        <label className="admin-field">Precio (MXN)<input name="price" type="number" inputMode="decimal" min={minimumPrice} max="1000000" step="0.01" value={values.price} required onChange={e => onChange({ ...values, price: e.target.value })}/></label>
         {type === 'items' ? <>
           <div className="admin-field">{newCategory ? <>
             <label htmlFor="catalog-new-category">Nueva categoría</label><div className="admin-inline-field"><input id="catalog-new-category" required maxLength={100} value={values.category} onChange={e => onChange({ ...values, category: e.target.value })}/><button type="button" onClick={() => { setNewCategory(false); onChange({ ...values, category: categories[0] }); }}>Elegir existente</button></div>
           </> : <label>Categoría<select value={values.category} onChange={e => { if (e.target.value === '__NEW__') { setNewCategory(true); onChange({ ...values, category: '' }); } else onChange({ ...values, category: e.target.value }); }}>{categories.map(c => <option key={c}>{c}</option>)}<option value="__NEW__">Crear categoría…</option></select></label>}</div>
-          <div className="catalog-preparation"><label className="admin-check-label"><input type="checkbox" checked={values.customizable} onChange={e => onChange({ ...values, customizable: e.target.checked })}/>Permitir opciones de preparación</label>
+          {!assignmentProducts && <div className="catalog-preparation"><label className="admin-check-label"><input type="checkbox" checked={values.customizable} onChange={e => onChange({ ...values, customizable: e.target.checked })}/>Permitir opciones de preparación</label>
             {values.customizable && <fieldset className="catalog-option-groups"><legend>Opciones de preparación</legend><div>{phases.map(phase => <label key={phase} className="admin-check-label"><input type="checkbox" checked={values.wizard_steps.includes(phase)} onChange={e => onChange({ ...values, wizard_steps: e.target.checked ? [...values.wizard_steps, phase] : values.wizard_steps.filter(v => v !== phase) })}/>{phase}</label>)}</div></fieldset>}
-          </div>
+          </div>}
           <div className="catalog-photo">
             {values.image_url && <ProductPhoto product={values} illustrativeFallback={false} width={64} height={64} />}
             <label className="admin-field">Subir foto
@@ -64,13 +67,27 @@ export default function CatalogEditor({ type, editing, values, onChange, categor
             {photoError && <p role="alert">{photoError}</p>}
             {values.image_url && <button type="button" className="admin-secondary-button"
               onClick={() => onChange(current => ({ ...current, image_url: '' }))}>Quitar foto</button>}
-            <details><summary>Usar enlace</summary>
+            {!assignmentProducts && <details><summary>Usar enlace</summary>
               <label className="admin-field">Enlace de la foto<input type="url" name="image_url" maxLength={2048} value={values.image_url} onChange={e => onChange({ ...values, image_url: e.target.value })}/></label>
-            </details>
+            </details>}
           </div>
         </> : <div className="admin-field">{newPhase ? <>
           <label htmlFor="catalog-new-phase">Nuevo grupo de extras</label><div className="admin-inline-field"><input id="catalog-new-phase" required maxLength={100} value={values.phase} onChange={e => onChange({ ...values, phase: e.target.value })}/><button type="button" onClick={() => { setNewPhase(false); onChange({ ...values, phase: phases[0] }); }}>Elegir existente</button></div>
         </> : <label>Grupo de extras<select value={values.phase} onChange={e => { if (e.target.value === '__NEW__') { setNewPhase(true); onChange({ ...values, phase: '' }); } else onChange({ ...values, phase: e.target.value }); }}>{phases.map(phase => <option key={phase}>{phase}</option>)}<option value="__NEW__">Crear grupo…</option></select></label>}</div>}
+        {type === 'extras' && assignmentProducts && <fieldset className="catalog-option-groups">
+          <legend>¿En qué productos se ofrece?</legend>
+          {assignmentProducts.length === 0 && <p>Agrega un producto al menú para asignarle este extra.</p>}
+          {assignmentProducts.length > 0 && <div>
+            <button type="button" className="admin-secondary-button" onClick={() => onChange({ ...values, productIds: assignmentProducts.filter(product => product.is_active !== false).map(product => product.id) })}>Marcar activos</button>
+            <button type="button" className="admin-secondary-button" onClick={() => onChange({ ...values, productIds: [] })}>Quitar selección</button>
+            {assignmentProducts.map(product => <label key={product.id} className="admin-check-label">
+              <input type="checkbox" checked={values.productIds?.includes(product.id) ?? false}
+                onChange={event => onChange({ ...values, productIds: event.target.checked
+                  ? [...(values.productIds ?? []), product.id] : values.productIds?.filter(id => id !== product.id) })}/>
+              {product.name}{product.is_active === false ? ' (inactivo)' : ''}
+            </label>)}
+          </div>}
+        </fieldset>}
       </fieldset>
     </form>
   </AdminDialog>;

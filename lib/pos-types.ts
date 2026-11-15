@@ -15,6 +15,7 @@ export interface ProductRow {
   wizard_steps: string[] | null;
 }
 export interface ExtraRow {
+  applicable_product_ids?: string[] | null;
   catalog_revision?:number;
   id: string;
   name: string;
@@ -22,6 +23,10 @@ export interface ExtraRow {
   phase: string;
   active: boolean | null;
 }
+export const extraAppliesToProduct = (extra: ExtraRow, productId: string) =>
+  extra.applicable_product_ids == null || extra.applicable_product_ids.includes(productId);
+
+export const isSmoothie = (product: { category?: string | null }) => product.category?.trim().toLowerCase() === 'smoothies';
 export interface Customer {
   id: string;
   name: string;

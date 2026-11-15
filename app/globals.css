@@ -20,6 +20,17 @@
   --font-mono: Consolas, monospace;
 }
 
+.smoothies-app {
+  --ui-bg: #faf5f0;
+  --ui-ink: #38252b;
+  --ui-muted: #6c545c;
+  --ui-line: #ebddd5;
+  --ui-accent: #812d50;
+  --smoothie-accent-soft: #fae8ef;
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

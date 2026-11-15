@@ -75,3 +75,58 @@ jobs:
           npm run release:windows -- $targetFile $releaseFolder
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows/smoke-release.mjs $releaseFolder
+  smoothies-package:
+    name: Portable Smoothies package (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.2
+          cache: npm
+      - run: npm ci
+      - name: Build and check the installable Windows package
+        shell: pwsh
+        run: |
+          $runtime = node -p 'process.execPath'
+          $version = node -p 'process.versions.node'
+          $license = Join-Path (Split-Path -Parent $runtime) 'LICENSE'
+          if (!(Test-Path -LiteralPath $license -PathType Leaf)) {
+            $license = Join-Path $env:RUNNER_TEMP 'Node-LICENSE.txt'
+            Invoke-WebRequest "https://raw.githubusercontent.com/nodejs/node/v$version/LICENSE" -OutFile $license
+          }
+          $env:SMOOTHIES_NODE_LICENSE = $license
+          $release = Join-Path $env:RUNNER_TEMP 'pos-smoothies-portable'
+          node scripts/smoothies/package-windows.mjs $release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          foreach ($entry in 'node.exe', 'app/server.js', 'Instalar POS Smoothies.cmd') {
+            if (!(Test-Path -LiteralPath (Join-Path $release $entry) -PathType Leaf)) {
+              throw "Package file missing: $entry"
+            }
+          }
+          $packagedVersion = & (Join-Path $release 'node.exe') -p 'process.versions.node'
+          if ($LASTEXITCODE -ne 0 -or $packagedVersion -ne $version) {
+            throw 'Portable Node did not run with the pinned version.'
+          }
+
+          $fixture = Join-Path $env:RUNNER_TEMP 'smoothies-install-config'
+          $settings = Join-Path $fixture 'instalacion.env'
+          $nodeExe = Join-Path $release 'node.exe'
+          $provision = Join-Path $release 'app/scripts/smoothies/provision-supabase.mjs'
+          & $nodeExe $provision $settings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $initial = (Get-FileHash -LiteralPath $settings).Hash
+          & $nodeExe $provision $settings
+          if ($LASTEXITCODE -ne 0 -or (Get-FileHash -LiteralPath $settings).Hash -ne $initial) {
+            throw 'Provisioning must preserve an existing configuration.'
+          }
+          $compose = Join-Path $fixture 'supabase/compose.yml'
+          if (Select-String -LiteralPath $compose -Pattern '__[A-Z_]+__' -Quiet) {
+            throw 'Unresolved placeholder in the generated Compose template.'
+          }
+          node scripts/smoothies/smoke-portable-config.mjs $release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

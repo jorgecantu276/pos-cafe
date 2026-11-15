@@ -1,3 +1,4 @@
+import { posProfile } from './pos-profile';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ShiftReport } from './shift';
 import { escapeHtml, writePrintDocument } from './printing';
@@ -13,7 +14,7 @@ export function savedShiftHtml(report: SavedShift, reprint = false) {
   const rows = [['Fondo inicial',report.starting_cash],['Ventas totales',report.total_sales],
     ['Ventas en efectivo',Number(report.expected_cash)-Number(report.starting_cash)+Number(report.total_expenses)],
     ['Retiros / gastos',report.total_expenses],['Efectivo esperado',report.expected_cash],['Efectivo contado',report.counted_cash],['Diferencia',report.difference]] as const;
-  return `<main style="font:12px Arial,sans-serif;width:70mm;margin:auto;color:#000"><h1>Corte de caja (Z)</h1><h2>Cariñito Mío</h2>
+  return `<main style="font:12px Arial,sans-serif;width:70mm;margin:auto;color:#000"><h1>Corte de caja (Z)</h1><h2>${posProfile.shortName}</h2>
     ${reprint?'<p>REIMPRESIÓN DEL CORTE GUARDADO</p>':''}<p>Cajero: ${escapeHtml(report.user_name??'Sin nombre registrado')}</p>
     <p>Apertura: ${date(report.opened_at)}<br>Cierre: ${date(report.closed_at??report.created_at)}</p><p>Folio: ${escapeHtml(report.id)}</p><hr>
     ${rows.map(([label,value])=>`<p style="display:flex;justify-content:space-between"><span>${label}</span><b>${money(value)}</b></p>`).join('')}

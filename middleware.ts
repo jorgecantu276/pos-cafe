@@ -4,9 +4,10 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { isAuthUnavailable } from '@/lib/user-management';
 import { loginReturnTarget } from '@/lib/login-return';
 import { withDeadline } from '@/lib/request-deadline';
+import { supabasePublicKey } from '@/lib/supabase-public-config';
 
 export async function middleware(request: NextRequest) {
-  if (request.nextUrl.pathname === '/api/local-instance') return NextResponse.next();
+  if (['/api/local-instance','/smoothies-config.js'].includes(request.nextUrl.pathname)) return NextResponse.next();
   const updates = new Map<string, { name: string; value: string; options: CookieOptions }>();
   const authHeaders = new Headers();
   const complete = (response: NextResponse) => {
@@ -19,7 +20,7 @@ export async function middleware(request: NextRequest) {
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabasePublicKey(),
     {
       cookies: {
         getAll: () => request.cookies.getAll(),
@@ -78,6 +79,6 @@ export const config = {
      * Ignorar las rutas internas de Next.js y archivos estáticos
      * para no gastar recursos revisando imágenes o el favicon.
      */
-    '/((?!_next/static|_next/image|favicon.ico|sw\\.js$|workbox-[^/]+\\.js$|manifest\\.json$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|sw\\.js$|workbox-[^/]+\\.js$|manifest(?:-smoothies)?\\.json$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

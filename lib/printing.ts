@@ -1,3 +1,4 @@
+import { posProfile } from './pos-profile';
 export type PrintFormat = 'receipt' | 'sticker';
 
 export function escapeHtml(value: unknown): string {
@@ -26,7 +27,7 @@ export function openPrintWindow(): Window | null {
   return target;
 }
 
-export function writePrintDocument(target: Window, content: string, format: PrintFormat = 'receipt', title = 'Cariñito Mío'): void {
+export function writePrintDocument(target: Window, content: string, format: PrintFormat = 'receipt', title: string = posProfile.shortName): void {
   target.document.open();
   target.document.write(`<!doctype html><html lang="es-MX"><head><meta charset="utf-8">
     <title>${escapeHtml(title)}</title><style>${printStyles(format)}</style></head><body>${content}

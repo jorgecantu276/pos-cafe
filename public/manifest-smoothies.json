@@ -1,0 +1,8 @@
+{
+  "name": "POS Smoothies",
+  "short_name": "Smoothies",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F5F7",
+  "theme_color": "#0071e3"
+}

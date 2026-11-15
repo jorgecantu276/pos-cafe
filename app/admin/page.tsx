@@ -1,5 +1,7 @@
+import { posProfile } from '@/lib/pos-profile';
 import Link from 'next/link';
 import { Banknote, ChevronRight, Coffee, ContactRound, ReceiptText, Settings2 } from 'lucide-react';
+import SmoothiesToday from './SmoothiesToday';
 
 const mainTools = [
   { name: 'Ventas', detail: 'Consultar, reimprimir o cancelar tickets', path: 'ventas', icon: ReceiptText },
@@ -10,6 +12,7 @@ const mainTools = [
 
 export default function Administration() {
   return <div className="workspace-admin-menu workspace-admin-simple"><div className="workspace-admin-page-title"><h1>Administración</h1></div>
+    {posProfile.id === 'smoothies' && <SmoothiesToday />}
     <nav className="workspace-admin-main-tools" aria-label="Herramientas principales">{mainTools.map(({name, detail, path, icon: Icon}) => <Link href={`/admin/${path}`} key={path}>
       <span className="workspace-admin-menu-icon"><Icon size={24} strokeWidth={1.7}/></span><span className="workspace-admin-menu-label"><strong>{name}</strong><small>{detail}</small></span><ChevronRight size={18} aria-hidden="true"/>
     </Link>)}</nav>

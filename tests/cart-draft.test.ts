@@ -75,6 +75,8 @@ test('corrupt drafts, invalid quantities and missing catalog choices are blocked
   const raw=f.values.get(cartDraftKey('alice'))!;
   assert.throws(()=>f.bind('alice','shift',[]),/producto/); assert.equal(f.values.get(cartDraftKey('alice')),raw);
   assert.throws(()=>f.bind('alice','shift',[coffee],[]),/extra/);
+  assert.throws(()=>f.bind('alice','shift',[coffee],[{ ...milk, applicable_product_ids: ['otro-producto'] }]),/extra/);
+  assert.equal(f.values.get(cartDraftKey('alice')),raw);
   for (const quantity of [0,-1,1.5,Infinity,1001]) {
     const damaged=JSON.parse(raw); damaged.items[0].quantity=quantity;
     assert.throws(()=>readCartDraft(JSON.stringify(damaged),'alice','shift'),/necesita revisión/);

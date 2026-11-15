@@ -1,5 +1,5 @@
 import { customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
-import type { CatalogProduct, ExtraRow } from './pos-types';
+import { extraAppliesToProduct, type CatalogProduct, type ExtraRow } from './pos-types';
 
 type Storage = Pick<globalThis.Storage, 'getItem' | 'setItem' | 'removeItem'>;
 interface Draft {
@@ -54,7 +54,7 @@ export function restoreDraftItems(draft: Draft, products: CatalogProduct[], extr
     if (!product) throw Error('Un producto del pedido ya no está disponible. Revisa el pedido antes de cobrar.');
     const selected = line.extraIds.map(id => {
       const extra = extras.find(e => e.id === id && e.active);
-      if (!extra || !product.customizable || !product.wizard_steps?.includes(extra.phase))
+      if (!extra || !product.customizable || !product.wizard_steps?.includes(extra.phase) || !extraAppliesToProduct(extra, product.id))
         throw Error('Un extra del pedido ya no está disponible. Revisa el pedido antes de cobrar.');
       return { id: extra.id, name: extra.name, phase: extra.phase, price: Number(extra.price ?? 0) };
     });

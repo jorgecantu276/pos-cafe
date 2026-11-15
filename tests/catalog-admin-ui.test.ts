@@ -56,7 +56,10 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
       return Object.assign(response, { abortSignal: () => response });
     } };
   const imports: Record<string, unknown> = { '@/components/ProductPhoto': { default: () => null, __esModule: true }, '@/lib/catalog-management': management, '@/lib/pos-types': types, '@/lib/use-resource': resource,
-    '@/lib/supabase': { supabase: client }, './CatalogEditor': { default: CatalogEditor, __esModule: true }, '@/app/LoadFailure': { default: () => null, __esModule: true } };
+    '@/lib/supabase': { supabase: client }, './CatalogEditor': { default: CatalogEditor, __esModule: true },
+    './SmoothiesImport': { default: () => null, __esModule: true }, './WeeklySpecial': { default: () => null, __esModule: true },
+    './OpeningCount': { default: () => null, __esModule: true },
+    '@/app/LoadFailure': { default: () => null, __esModule: true } };
   const compiled = ts.transpileModule(readFileSync(new URL('../app/admin/productos/page.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true, target: ts.ScriptTarget.ES2020 } }).outputText;
   const exports: { default?: ComponentType } = {}, require = createRequire(import.meta.url);
   new Function('require', 'exports', compiled)((name: string) => imports[name] ?? require(name), exports);

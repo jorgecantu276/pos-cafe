@@ -9,5 +9,6 @@ export async function GET(request: NextRequest) {
   if (!['127.0.0.1', 'localhost', '[::1]'].includes(request.nextUrl.hostname) || !instanceToken || !releaseId || !configId) {
     return new NextResponse(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
   }
-  return NextResponse.json({ protocol: 1, instanceToken, processId: process.pid, releaseId, configId }, { headers: { 'Cache-Control': 'no-store' } });
+  return NextResponse.json({ protocol: 1, instanceToken, processId: process.pid, releaseId, configId,
+    packageId: process.env.POS_LAUNCH_PACKAGE_ID || undefined }, { headers: { 'Cache-Control': 'no-store' } });
 }

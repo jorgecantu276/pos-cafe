@@ -64,10 +64,12 @@ export function readCheckoutReview(raw: string | null): CheckoutReview | null {
     || ('provider' in value && value.provider !== 'clip')) throw new Error('No se pudo abrir la venta pendiente. Pide ayuda al responsable antes de cobrar.');
   return value as CheckoutReview;
 }
-export function checkoutPayload(items: readonly CartItem[], fields: Omit<CheckoutPayload, 'items'>): CheckoutPayload {
+export function checkoutPayload(items: readonly CartItem[], fields: Omit<CheckoutPayload, 'items'>, requiresPager = true): CheckoutPayload {
   if (fields.phone_order_id) {
     if(fields.pager_number!=null||typeof fields.phone_order_revision!=='number'||!Number.isInteger(fields.phone_order_revision)||fields.phone_order_revision<0)throw new Error('Actualiza el pedido por teléfono antes de cobrar.');
-  } else if (!validPagerNumber(fields.pager_number)) throw new Error('Elige un control del 1 al 30 antes de cobrar.');
+  } else if ((requiresPager || fields.pager_number != null) && !validPagerNumber(fields.pager_number)) {
+    throw new Error('Elige un control del 1 al 30 antes de cobrar.');
+  }
   if (!items.length || items.some(i => !Number.isInteger(i.quantity) || i.quantity < 1
     || (i.product.displayExtras ?? []).some(e => !e.id))) throw new Error('Revisa las cantidades y vuelve a seleccionar los extras del catálogo.');
   return { ...fields, items: items.map(i => ({ product_id: i.product.id, quantity: i.quantity,

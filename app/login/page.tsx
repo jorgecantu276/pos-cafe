@@ -1,4 +1,5 @@
 'use client';
+import { posProfile } from '@/lib/pos-profile';
 
 import { WorkspaceKeyboard } from '../register/WorkspaceRegister';
 import '../register/workspace.css';
@@ -7,12 +8,12 @@ import './login.css';
 import { type LoginProfile } from '@/lib/pos-types';
 import StaffAvatar from '@/components/StaffAvatar';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { loginReturnTarget } from '@/lib/login-return';
 import { RequestTimeout, withDeadline } from '@/lib/request-deadline';
-import { Keyboard, Eye, EyeOff, Coffee, Check, ArrowRight } from 'lucide-react';
+import { Keyboard, Eye, EyeOff, Coffee, Check, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function LoginPage() {
   const [users, setUsers] = useState<LoginProfile[]>([]);
@@ -27,6 +28,12 @@ export default function LoginPage() {
   const [keyboard, setKeyboard] = useState(false);
 
   const router = useRouter();
+  const passwordInput = useRef<HTMLInputElement>(null);
+  const smoothies = posProfile.id === 'smoothies';
+
+  useEffect(() => {
+    if (smoothies && selectedUsername) passwordInput.current?.focus();
+  }, [selectedUsername, smoothies]);
 
 
   // 🟢 1. OBTENER USUARIOS DE LA BASE DE DATOS
@@ -59,7 +66,7 @@ export default function LoginPage() {
     setError(null);
     try {
       // 🟢 2. RECONSTRUIR EL CORREO FANTASMA PARA EL LOGIN
-      const fakeEmail = `${selectedUsername.replace(/\s+/g, '').toLowerCase()}@carinitomio.local`;
+      const fakeEmail = `${selectedUsername.replace(/\s+/g, '').toLowerCase()}@${posProfile.staffDomain}`;
 
       const { error: signInError } = await withDeadline(() => supabase.auth.signInWithPassword({
         email: fakeEmail,
@@ -88,14 +95,14 @@ export default function LoginPage() {
 
   const selectedUser = users.find(u => u.username === selectedUsername);
 
-  return <main className="workspace-login"><header><span className="workspace-login-brand"><Coffee size={22} /><strong>Cariñito Mío</strong></span><span>Caja</span></header><section className="workspace-login-panel"><div className="workspace-login-heading"><span aria-hidden="true"><Coffee size={30} /></span><h1>Iniciar sesión</h1><p>Elige tu usuario.</p></div>
+  return <main className="workspace-login"><header><span className="workspace-login-brand">{smoothies ? <Sparkles size={22} /> : <Coffee size={22} />}<strong>{posProfile.brand}</strong></span><span>Caja</span></header><section className="workspace-login-panel"><div className="workspace-login-heading"><span aria-hidden="true">{smoothies ? <Sparkles size={30} /> : <Coffee size={30} />}</span><h1>{smoothies && selectedUser ? `Hola, ${selectedUser.full_name.split(' ')[0]}` : 'Iniciar sesión'}</h1><p>{smoothies && selectedUser ? 'Escribe tu contraseña.' : 'Elige tu usuario.'}</p></div>
     <form onSubmit={handleLogin}><fieldset disabled={loading} className="workspace-login-profiles"><legend>Usuario</legend>
       {loadingUsers ? <p role="status">Cargando usuarios…</p> : users.map(user => <button type="button" key={user.id} aria-label={user.full_name} aria-pressed={selectedUsername === user.username} onClick={() => handleUserSelect(user.username || '')}>
         <StaffAvatar value={user.avatar_url} username={user.username || user.full_name} size={40} className="workspace-login-avatar"/><span className="workspace-login-profile-copy"><strong><span>{user.full_name.split(' ')[0]}</span> {user.full_name.split(' ').slice(1).join(' ')}</strong><small>{user.username}</small></span>{selectedUsername === user.username && <Check size={21} aria-hidden="true" />}
       </button>)}
       {!loadingUsers && !users.length && <p>No hay usuarios disponibles.</p>}
     </fieldset>
-    <label className="workspace-login-password">Contraseña<div><input type={showPass ? 'text' : 'password'} autoComplete="current-password" disabled={!selectedUsername || loading} aria-label="Contraseña" placeholder={selectedUsername ? `Contraseña de ${selectedUser?.full_name.split(' ')[0]}` : 'Elige tu usuario'} value={password} onChange={event => setPassword(event.target.value)} />
+    <label className="workspace-login-password">Contraseña<div><input ref={passwordInput} type={showPass ? 'text' : 'password'} autoComplete="current-password" disabled={!selectedUsername || loading} aria-label="Contraseña" placeholder={selectedUsername ? `Contraseña de ${selectedUser?.full_name.split(' ')[0]}` : 'Elige tu usuario'} value={password} onChange={event => setPassword(event.target.value)} />
       <button type="button" aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'} disabled={!selectedUsername || loading} onClick={() => setShowPass(!showPass)}>{showPass ? <EyeOff size={21} /> : <Eye size={21} />}</button>
       <button type="button" aria-label="Teclado para contraseña" aria-pressed={keyboard} disabled={!selectedUsername || loading} onClick={() => setKeyboard(!keyboard)}><Keyboard size={23} /></button>
     </div></label>

@@ -42,7 +42,7 @@ function stageDependencies(source, target) {
   }
 }
 stageDependencies(path.join(root, 'node_modules'), path.join(stage, 'node_modules'));
-const env = { ...process.env, POS_RELEASE_BUILD: '1', NEXT_TELEMETRY_DISABLED: '1',
+const env = { ...process.env, NEXT_PUBLIC_POS_PROFILE: 'cafe', POS_RELEASE_BUILD: '1', NEXT_TELEMETRY_DISABLED: '1',
   NEXT_PUBLIC_SUPABASE_URL: url.origin, NEXT_PUBLIC_SUPABASE_ANON_KEY: key };
 delete env.SUPABASE_SERVICE_ROLE_KEY; delete env.SUPABASE_ACCESS_TOKEN; delete env.POS_RECEIPT_ISSUER_FILE;
 for (const name of Object.keys(env)) if (name.startsWith('POS_CLIP_')) delete env[name];
