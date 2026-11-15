@@ -1,3 +1,4 @@
+import { packageVersion } from '../releases/version-info.mjs';
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -23,6 +24,7 @@ if (url.protocol === 'https:') {
   }
 }
 const files = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
+const versionMetadata = packageVersion('cafe', root);
 const stage = mkdtempSync(path.join(root, '.build-check-release-'));
 for (const file of files) {
   if (path.basename(file).startsWith('.env')) continue;
@@ -92,9 +94,7 @@ function recoveryDependency(name, parent = path.join(root, 'package.json')) {
   for (const dependency of Object.keys(manifest.dependencies || {})) recoveryDependency(dependency, path.join(directory, 'package.json'));
 }
 recoveryDependency('pg');
-writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: 1, builtAt: new Date().toISOString(),
-  sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
-  sourceDirty: !!execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(),
+writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: 1, ...versionMetadata,
   node: process.version, supabaseUrl: url.origin, publicKeySha256: createHash('sha256').update(key).digest('hex'),
   fixtureOnly: url.protocol === 'http:',
 }, null, 2));

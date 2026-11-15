@@ -1,3 +1,4 @@
+import { packageVersion } from '../releases/version-info.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -12,6 +13,7 @@ assert.equal(process.version, 'v24.22.2', 'Empaqueta con Node 24.22.2 x64.');
 assert.ok(output && path.isAbsolute(output) && !existsSync(output), 'Indica una carpeta de salida nueva y absoluta.');
 const nodeLicense = process.env.SMOOTHIES_NODE_LICENSE || path.join(path.dirname(process.execPath), 'LICENSE');
 assert.ok(existsSync(nodeLicense), 'Hace falta la licencia del runtime oficial de Node.');
+const versionMetadata = packageVersion('smoothies', source);
 const stage = mkdtempSync(path.join(source, '.build-check-smoothies-'));
 const runtimePath = path.join(output, 'app');
 
@@ -89,6 +91,6 @@ try {
     ...migrations.map(([file, folder]) => [file, readFileSync(path.join(runtimePath, 'supabase', folder, file), 'utf8')]),
   ])).digest('hex');
   const id = createHash('sha256').update(`${build}\n${databaseContract}`).digest('hex').slice(0, 16);
-  writeFileSync(path.join(output, 'release.json'), JSON.stringify({ version: 1, build, id, databaseContract }));
+  writeFileSync(path.join(output, 'release.json'), JSON.stringify({ version: 1, ...versionMetadata, build, id, databaseContract }));
   console.log(`POS Smoothies ${id}: ${output}`);
 } finally { rmSync(stage, { recursive: true, force: true }); }

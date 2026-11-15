@@ -18,3 +18,15 @@ Las pruebas con Supabase levantan una instancia desechable con datos sintéticos
 El ensayo de Papelería ejecuta el carrito y el generador de tickets compartidos con una base SQLite sintética. Cubre lectura de códigos con ceros iniciales, venta en MXN, reintento, cancelación y restauración. La prueba evita archivos del negocio y no es un instalador de Papelería.
 
     node --import tsx scripts/papeleria/trial.mts
+
+## Versiones de la familia POS
+
+Ejecuta **npm run versions** para ver las versiones registradas de Café, Smoothies y Papelería. El catálogo está en **config/pos-versions.json**. Cada producto lleva su propia secuencia de versión. Papelería registra la versión de su proyecto nativo mientras siga compilándose allí.
+
+Usa **X.Y.Z** para una versión estable y **X.Y.Z-rc.N** para una candidata. Incrementa Z para correcciones, Y para funciones compatibles y X cuando cambie la compatibilidad. Aumenta N para otra candidata de la misma versión. Actualiza la entrada del producto antes de preparar su próxima entrega. Las candidatas del catálogo indican el estado del código local.
+
+Los paquetes de Café y Smoothies escriben el nombre de producto, versión, etiqueta y commit completo en **release.json**. Los identificadores que usan los instaladores se conservan. En Café, **410ead4** es un commit abreviado. En Smoothies, el campo **id** identifica el paquete concreto. Para comprobar qué se copió a una caja, inspecciona su manifiesto y guarda el resultado con el registro de instalación de ese cliente.
+
+    npm run versions -- inspect "C:\ruta\al\paquete\release.json"
+
+Los paquetes anteriores siguen mostrando su identificador original y aparecen como **Legacy package**. El catálogo describe las versiones del proyecto. El manifiesto de la caja confirma la versión instalada.

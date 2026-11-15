@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "versions": "node scripts/releases/versions.mjs",
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "build:verify": "node scripts/verify-build.mjs",
