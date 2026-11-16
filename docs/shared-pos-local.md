@@ -21,12 +21,14 @@ El ensayo de Papelería ejecuta el carrito y el generador de tickets compartidos
 
 ## Versiones de la familia POS
 
-Ejecuta **npm run versions** para ver las versiones registradas de Café, Smoothies y Papelería. El catálogo está en **config/pos-versions.json**. Cada producto lleva su propia secuencia de versión. Papelería registra la versión de su proyecto nativo mientras siga compilándose allí.
+La familia POS tiene una sola versión en **config/pos-versions.json**. Ejecuta **npm run versions** para ver la versión actual y las etiquetas de Café, Smoothies y Papelería. Para una entrega, cambia la versión una vez y prepara los tres paquetes con ese mismo valor, incluso si la corrección es de un solo producto.
 
-Usa **X.Y.Z** para una versión estable y **X.Y.Z-rc.N** para una candidata. Incrementa Z para correcciones, Y para funciones compatibles y X cuando cambie la compatibilidad. Aumenta N para otra candidata de la misma versión. Actualiza la entrada del producto antes de preparar su próxima entrega. Las candidatas del catálogo indican el estado del código local.
+Usa **X.Y.Z** para una versión estable y **X.Y.Z-rc.N** para una candidata. Incrementa Z para correcciones, Y para funciones compatibles y X para cambios de compatibilidad. Incrementa N para otra candidata. La primera candidata sincronizada es **pos-v1.0.0-rc.2**.
 
-Los paquetes de Café y Smoothies escriben el nombre de producto, versión, etiqueta y commit completo en **release.json**. Los identificadores que usan los instaladores se conservan. En Café, **410ead4** es un commit abreviado. En Smoothies, el campo **id** identifica el paquete concreto. Para comprobar qué se copió a una caja, inspecciona su manifiesto y guarda el resultado con el registro de instalación de ese cliente.
+Cada paquete tiene su etiqueta de producto, su propio commit y el identificador de la entrega de la familia. Papelería compila desde su proyecto nativo con la versión del catálogo compartido. Usa un checkout de Papelería con soporte de la familia y ejecuta estos comandos desde el checkout compartido.
 
+    npm run release:papeleria -- "C:\ruta\papeleria-family" "C:\ruta\paquetes"
     npm run versions -- inspect "C:\ruta\al\paquete\release.json"
+    npm run versions -- verify "C:\ruta\cafe" "C:\ruta\smoothies" "C:\ruta\papeleria"
 
-Los paquetes anteriores siguen mostrando su identificador original y aparecen como **Legacy package**. El catálogo describe las versiones del proyecto. El manifiesto de la caja confirma la versión instalada.
+Agrega **--demos** al comando de Papelería para empaquetar los dos demos con la misma versión. El comando verify comprueba que los tres paquetes pertenecen a la versión y al mismo commit de la familia. Los paquetes anteriores conservan su versión o identificador original. El registro de instalación de cada cliente confirma qué paquete quedó activo.

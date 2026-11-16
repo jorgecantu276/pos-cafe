@@ -1,5 +1,8 @@
 {
-  "cafe": { "name": "POS Café", "version": "1.0.0-rc.1", "status": "Local candidate" },
-  "smoothies": { "name": "POS Smoothies", "version": "0.1.0-rc.1", "status": "Local candidate" },
-  "papeleria": { "name": "POS Papelería", "version": "0.9.10", "status": "Native project" }
+  "version": "1.0.0-rc.2",
+  "products": {
+    "cafe": "POS Café",
+    "smoothies": "POS Smoothies",
+    "papeleria": "POS Papelería"
+  }
 }
