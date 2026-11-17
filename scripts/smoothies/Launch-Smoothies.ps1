@@ -88,6 +88,8 @@ try {
                 WindowStyle = 'Hidden'; PassThru = $true
             }
             $child = Start-Process @processOptions
+            # PowerShell 5.1 loses ExitCode for a redirected process unless its handle is retained before it exits.
+            $null = $child.Handle
         }
         $until = [DateTime]::UtcNow.AddSeconds(280)
         while ((-not $instance -or $instance.packageId -ne $active.id) -and [DateTime]::UtcNow -lt $until -and (-not $child -or -not $child.HasExited)) {
