@@ -4,27 +4,27 @@
 
 Punto de venta para una cafetería con una sola caja física. Next.js 16.4.3, React 19, TypeScript, Supabase y Zustand. La interfaz táctil mantiene el menú a la izquierda, la orden a la derecha y el cobro visible, con textos en español.
 
-## Estado actual — 6 de noviembre de 2026
+## Última versión — 15 de noviembre de 2026
 
-Última versión publicada: [**pos-99d1675 — Tamaños y una etiqueta de postres**](https://github.com/jorgecantu276/pos-cafe/releases/tag/pos-99d1675), del 6 de noviembre. Incluye el ZIP de Windows y su actualizador. El código está integrado en `main` mediante el [PR #12](https://github.com/jorgecantu276/pos-cafe/pull/12).
+[**pos-91f282d — Etapa 1: menú y etiquetas**](https://github.com/jorgecantu276/pos-cafe/releases/tag/pos-91f282d) incluye el paquete de Windows, el actualizador de Caja, las instrucciones y el ajuste de catálogo para Supabase. El código se integró en `main` mediante el [PR #15](https://github.com/jorgecantu276/pos-cafe/pull/15).
 
-La [verificación de `main` en el commit `9a6bd80`](https://github.com/jorgecantu276/pos-cafe/actions/runs/42219574778) terminó correctamente: Windows, administración, pedidos por teléfono y restauración de respaldos. El ZIP publicado corresponde a `99d1675`; el cambio posterior de CI separa los ensayos de backend en máquinas independientes y no modifica ese paquete.
+Matcha ofrece **Cold foam extra por $15 MXN** y **Lala 100 sin recargo** después del ajuste de catálogo. Cada brownie con nieve recibe una etiqueta de barra por pieza. Los demás postres se agrupan en una sola etiqueta por orden. La actualización del catálogo y la comprobación de las impresoras se realizan durante la pausa de instalación en el café.
 
 | Área | Estado |
 | --- | --- |
 | Ventas, Caja, Catálogo y Clientes | Conectados al backend; pruebas con datos sintéticos y Auth/PostgREST local. |
-| Menú y tamaños | Una tarjeta por familia de bebida; Iced Coffee y Matcha permiten elegir **16 oz / 20 oz**, preparación y leche. Precios y excepciones en [tamaños y leches](docs/menu-sizes.md). |
-| Backend y migraciones | El repositorio conserva **22 migraciones: 001, 002 y 004–023**. El registro del 2 de noviembre confirma 017–021 desplegadas con respaldos y huellas conservadas; el PR #12 registra la aplicación de 023 y del catálogo actualizado. Verificar el historial del destino antes de instalar otra versión. |
+| Menú y tamaños | Una tarjeta por familia de bebida. Iced Coffee y Matcha permiten elegir **16 oz / 20 oz**, preparación y leche. El ajuste de noviembre actualiza los extras de las siete presentaciones de Matcha. Ver [tamaños y leches](docs/menu-sizes.md). |
+| Backend y migraciones | El repositorio conserva **22 migraciones: 001, 002 y 004–023**. El registro del 2 de noviembre confirma 017–021 desplegadas con respaldos y huellas conservadas; el PR #12 registra la aplicación de 023 y del catálogo de tamaños. La etapa 1 incluye un ajuste de datos separado que requiere el esquema de la 023. |
 | Receptor CLIP | `clip-webhook` v1 desplegado y verificado. Recibir un aviso no crea ni aprueba un cobro. |
 | Cobro automático CLIP | **Apagado. Token de ejemplo.** Pendiente de habilitación de PinPad, token real y aceptación con la terminal. |
 | Controles de entrega 1–30 | Obligatorios en mostrador. **Pedido por teléfono** permite guardar sin control y cobrar al recoger. |
 | Pedidos por teléfono | Pendientes compartidos entre turnos, precio acordado, preparación sin pagar y cobro único al recoger. Ver [flujo completo](docs/phone-orders.md). |
-| Distribución Windows | Versión actual disponible como ZIP y actualizador para Caja instalada; también existe un instalador inicial anterior. La publicación no acredita que una PC ya esté actualizada. |
-| Preparación de postres | Una etiqueta compacta por orden, en la misma Y813BT de bebidas. La comprobación física del formato nuevo sigue pendiente en la PC del café. |
+| Distribución Windows | El actualizador de la etapa 1 requiere una Caja instalada en `99d1675`. Confirmar la versión en la PC del café antes de instalar. |
+| Preparación de postres | Una etiqueta por brownie con nieve y una etiqueta compacta para los demás postres de la orden, ambas en la Y813BT. La aceptación física de la etapa 1 sigue pendiente en la PC del café. |
 | Inventario | Integrado en Catálogo; migración 017 desplegada y **apagado al inicio**. No se inventan existencias. |
 | Tipo de cambio del negocio | Último cambio documentado, el 2 de noviembre: **1 USD = 16 MXN** para nuevas aperturas. El turno que entonces estaba abierto conservó 18; cada turno mantiene su tasa y sus ventas no se recalculan. |
 
-La [revisión de integración y preparación](docs/integration-readiness.md) conserva las evidencias y condiciones del 2 de noviembre. Para los cambios posteriores, consultar el PR #12, la versión publicada y el CI enlazados arriba. Pasar pruebas locales no equivale a aceptar toda la operación del café.
+La [revisión de integración y preparación](docs/integration-readiness.md) conserva las evidencias y condiciones del 2 de noviembre. Los [PR #12](https://github.com/jorgecantu276/pos-cafe/pull/12) y [#15](https://github.com/jorgecantu276/pos-cafe/pull/15) documentan los cambios posteriores. Pasar pruebas locales no equivale a aceptar toda la operación del café.
 
 La [revisión de calidad](docs/quality-review.md) compara las comprobaciones funcionales, accesibilidad, pantalla touch y tickets con criterios verificables. No presenta una puntuación inventada ni confunde un navegador de desarrollo con la PC del café.
 
@@ -54,7 +54,11 @@ El borrador conserva cantidades, extras, notas, cliente, tipo de pedido y contro
 | Matcha Cold foam Fresa / Mango | No disponible | $140 MXN |
 | Matcha Ceremonial | $140 MXN | No disponible |
 
-Iced Coffee conserva **Tipo de Leche**: entera, deslactosada y deslactosada light sin recargo; almendra, avena, coco y Lala 100 suman $15. Matcha usa **Leche alternativa**: las seis leches existentes sin recargo y Lala 100 a $15. Son grupos independientes. La migración **023** exige una sola leche alternativa en venta manual, cotización CLIP y pedido telefónico. Ver [detalle del menú y compatibilidad](docs/menu-sizes.md).
+- **Iced Coffee** conserva el grupo **Tipo de Leche**. Entera, deslactosada y deslactosada light se ofrecen sin recargo. Almendra, avena, coco y Lala 100 suman $15 MXN.
+- **Matcha** usa el grupo **Leche alternativa**. Con el ajuste de noviembre, las seis leches existentes y Lala 100 quedan sin recargo. **Cold foam extra** sustituye a **Fruta extra** por $15 MXN en las siete presentaciones, con una sola sección de ese extra en Ceremonial. Cada presentación conserva su ID y precio base.
+- **Chai Latte** se ofrece en 16 oz, frío o caliente, por $95 MXN. Avena, almendra y coco suman $15 MXN.
+
+La migración **023** exige una sola leche alternativa en venta manual, cotización CLIP y pedido telefónico. Ver [detalle del menú y compatibilidad](docs/menu-sizes.md).
 
 ## CLIP y controles de entrega
 
@@ -72,9 +76,9 @@ Las ventas de mostrador generan trabajos independientes según su contenido: tic
 
 Los recibos nuevos conservan logo, importes, QR de Instagram y datos del emisor; omiten el nombre individual y las líneas de CFDI retiradas. Las etiquetas de bebidas usan el diseño negro `reference-v2`. Los documentos y diarios anteriores no se reescriben. La aceptación física anterior y las comprobaciones pendientes se distinguen en el [registro de impresoras](docs/printer-acceptance-2026-10-31.md).
 
-Desde `pos-99d1675`, los productos de **Postres** se agrupan en **una sola etiqueta de preparación de 57 × 32 mm**, con diseño `desserts-compact-v1`, cantidades, modificadores y notas, sin precios. Se envía a **Y813BT Sticker**; las bebidas conservan una etiqueta por vaso y su conteo excluye postres. Una orden mixta tiene trabajos independientes de cliente, bebidas y postres.
+Desde `pos-91f282d`, cada **brownie con nieve** lleva una etiqueta por pieza en el mismo trabajo de barra que las bebidas, con numeración propia **POSTRE**. Las bebidas conservan una etiqueta por vaso y su propio conteo. Los demás **Postres** se agrupan en **una sola etiqueta de 57 × 32 mm** con el diseño `desserts-compact-v1`, cantidades, modificadores y notas, sin precios. Ambos trabajos de preparación van a **Y813BT Sticker**. El ticket del cliente se procesa por separado.
 
-El diseño compacto ajusta Arial Bold entre 8.5 y 6.5 pt sin recortar texto ni generar continuaciones. Si el contenido completo no cabe, bloquea ese trabajo antes de enviarlo y remite al ticket de la orden; los otros trabajos conservan su estado. La muestra de seis postres cabe a 7.5 pt en la validación del paquete. **La legibilidad física del formato compacto sigue pendiente en el café.** Los documentos históricos mantienen su diseño, impresora e identidad originales. Ver [impresión y recuperación](docs/printing.md).
+El diseño compacto ajusta Arial Bold entre 8.5 y 6.5 pt para conservar todo el texto en una etiqueta. Si la preparación supera el espacio de su formato, el trabajo afectado queda pendiente de revisión antes de enviarse a la impresora. El ticket del cliente sigue disponible. **La comprobación en papel de la etapa 1 sigue pendiente en el café.** Los documentos históricos conservan su formato, impresora e identidad. Ver [impresión y recuperación](docs/printing.md).
 
 Ver [contrato del comprobante](docs/receipt-data-contract.md), [borradores](docs/cart-drafts.md), [caja única](docs/single-drawer.md) y [gastos/cortes](docs/shift-expenses.md).
 
@@ -110,9 +114,9 @@ El POS requiere conexión al backend. La PWA no habilita ventas offline: el serv
 | `npm run build:verify` | Compilación de producción aislada de la vista previa en ejecución. |
 | `npm audit` / `npm audit --omit=dev` | Dependencias completas y de ejecución. |
 
-La validación registrada para `pos-99d1675` incluye **285 pruebas**, **2,925 comprobaciones de PostgreSQL**, **10 comprobaciones HTTP de impresión** y **120 comprobaciones de teléfono en 23 vistas**, además de revisión del ZIP exacto y arranque Windows reubicado. Las cifras corresponden a esa versión; consultar el CI de cada commit para verificaciones posteriores.
+La validación local de `pos-91f282d` registró **287 pruebas de aplicación**, **2,924 comprobaciones de PostgreSQL**, pruebas de la API de impresión de producción con impresoras simuladas e instalación y arranque del ZIP exacto en Windows. Ver [PR #15](https://github.com/jorgecantu276/pos-cafe/pull/15).
 
-GitHub Actions repite lint, TypeScript, pruebas, auditorías, compilación, impresión simulada y empaquetado Windows. Los ensayos de administración, teléfono y restauración usan **tres máquinas independientes**, con puertos reservados para evitar conflictos. Los cuatro trabajos del [CI de `9a6bd80`](https://github.com/jorgecantu276/pos-cafe/actions/runs/42219574778) terminaron correctamente. El [plan de entrega](docs/delivery-readiness.md) conserva los límites de hardware y puesta en marcha.
+GitHub Actions repite lint, TypeScript, pruebas, auditorías, compilación, impresión simulada y empaquetado Windows. Los ensayos de administración, teléfono y restauración usan **tres máquinas independientes**, con puertos reservados para evitar conflictos. La [verificación de Windows y backend del PR #15](https://github.com/jorgecantu276/pos-cafe/actions/runs/43760554771) terminó correctamente. El [plan de entrega](docs/delivery-readiness.md) conserva los límites de hardware y puesta en marcha.
 
 Con `POS_BROWSER_QUALITY=1`, el ensayo HTTP también abre Chromium/Edge aislado y ejecuta axe WCAG 2.2 AA, navegación real, conteo cero por UI y revisión de desbordamiento sobre 82 productos de referencia. CI ejecuta este modo. Necesita un navegador Chromium instalado; no usa un perfil personal ni envía papel. Las mediciones locales de carga/eventos se registran como laboratorio, sin atribuirles cumplimiento de Core Web Vitals en campo.
 
@@ -126,21 +130,22 @@ La PC de desarrollo prepara el paquete; la del café recibe una versión revisad
 
 ### Actualizar una Caja instalada
 
-1. Abrir la [versión `pos-99d1675`](https://github.com/jorgecantu276/pos-cafe/releases/tag/pos-99d1675) y descargar **POS-Cafe-99d1675.zip** y **Actualizar-Caja-99d1675.ps1**.
-2. Cerrar Caja antes de ejecutar el actualizador y seguir sus indicaciones. El script verifica los archivos, conserva la versión anterior y utiliza la configuración privada y el diario actuales. No ejecuta migraciones, borra datos ni envía impresiones.
-3. Verificar inicio, acceso al backend y funcionamiento en la PC del café. La aceptación del nuevo formato compacto requiere comprobar el papel allí.
+1. Confirmar que la PC del café tiene la versión `99d1675` y que hay un respaldo válido. Terminar el turno y cerrar Caja.
+2. Descargar [`POS-Cafe-91f282d.zip`](https://github.com/jorgecantu276/pos-cafe/releases/download/pos-91f282d/POS-Cafe-91f282d.zip) y [`Actualizar-Caja-91f282d.ps1`](https://github.com/jorgecantu276/pos-cafe/releases/download/pos-91f282d/Actualizar-Caja-91f282d.ps1). Seguir [`Etapa-1-Caja.txt`](https://github.com/jorgecantu276/pos-cafe/releases/download/pos-91f282d/Etapa-1-Caja.txt). El actualizador verifica el paquete y conserva la instalación anterior, la configuración privada y el diario de impresión.
+3. Durante la misma pausa, guardar las filas de catálogo afectadas y aplicar por separado [`Menu-Matcha-Etapa-1.sql`](https://github.com/jorgecantu276/pos-cafe/releases/download/pos-91f282d/Menu-Matcha-Etapa-1.sql) en Supabase. El actualizador de Windows solo instala el paquete. Ver [SQL versionado](scripts/catalog/november-matcha-extras.sql).
+4. Abrir Caja, confirmar el acceso al backend, comprobar los extras de Matcha y revisar la primera impresión aplicable en el café antes de continuar con otra etapa.
 
 SHA-256 del ZIP publicado:
 
 ```text
-a0068efb39b6f6e63b2c94736b1c4495e70b58dc3e0d7591233dcb97fc14f672
+78fcc85c804980feafdaa4c742c0ce9e44849c3fab2fa90c276c40be9cf2bf9b
 ```
 
-El [instalador inicial `pos-8fe948b`](https://github.com/jorgecantu276/pos-cafe/releases/tag/pos-8fe948b) es anterior a esta actualización y requiere la configuración privada en `C:\POS-Cafe\private\pos-cafe-config.json`. No contiene los últimos cambios de menú y postres; una instalación nueva debe prepararse con la versión actual y su contrato de backend.
+Para una instalación nueva, preparar el paquete vigente con su contrato de backend y la configuración privada en `C:\POS-Cafe\private\pos-cafe-config.json`. El [instalador inicial `pos-8fe948b`](https://github.com/jorgecantu276/pos-cafe/releases/tag/pos-8fe948b) queda disponible como versión histórica.
 
 ### Datos y recuperación
 
-Conservar el POS anterior durante la aceptación, la configuración privada, los respaldos y **el diario actual con sus archivos WAL/SHM**. No restaurar un diario viejo para volver de versión. Después de crear órdenes nuevas, la versión usada para recuperación debe entender `desserts-compact-v1` y los trabajos `desserts`.
+Conservar el POS anterior durante la aceptación, la configuración privada, los respaldos y **el diario actual con sus archivos WAL/SHM**. No restaurar un diario viejo para volver de versión. Para recuperar trabajos pendientes tras volver de versión, usar una compilación compatible con los documentos guardados, incluido el formato `desserts-compact-v1` y los trabajos `desserts`.
 
 Las migraciones 013–021 y el receptor CLIP tienen despliegue documentado; el PR #12 registra además la migración 023 y el catálogo actualizado. La **022** agrega almacenamiento para fotos del catálogo. Para un destino nuevo, revisar la compatibilidad del esquema y las **22 migraciones retenidas (001, 002 y 004–023)**; para uno existente, comprobar su historial y aplicar solo las pendientes mediante un procedimiento con respaldo. El actualizador de Windows no sustituye ese proceso.
 
