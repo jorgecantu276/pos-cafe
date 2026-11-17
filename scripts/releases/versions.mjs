@@ -20,6 +20,8 @@ try {
     for (const entry of packages) {
       assert.equal(entry.familyRelease, familyRelease, entry.product + ' belongs to another family release.');
       assert.equal(entry.familyCommit, commit, entry.product + ' was built from another family commit.');
+      assert.equal(entry.sourceDirty, false, entry.product + ' was built with uncommitted source changes.');
+      assert.equal(entry.familySourceDirty, false, entry.product + ' was built with uncommitted family changes.');
     }
     console.log('Verified all three packages for ' + familyRelease + ' at ' + commit.slice(0, 7));
   } else {

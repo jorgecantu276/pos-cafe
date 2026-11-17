@@ -1,25 +1,20 @@
 import assert from 'node:assert/strict';
 import { constants } from 'node:fs';
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Client } from 'pg';
 import { decryptBusinessArchive, journalNames, sha256, validateBusinessArchive } from '../../lib/business-backup-format.mjs';
 import { localPhotoBucket, photoTypes, verifyJournal } from '../../lib/smoothies-backup-assets.mjs';
 import { restoreBusinessArchive, restoreTarget } from '../backups/restore-business.mjs';
+import { verifyRestoreContract } from './restore-contract.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 
 export async function restoreSmoothiesArchive(db, archive, { api, serviceKey, printDirectory, contractDirectory = path.join(root, 'supabase') }) {
   validateBusinessArchive(archive);
   assert.ok(archive.assets, 'Esta copia antigua contiene solo la base. Usa restore-business.mjs y conserva tus fotos y registro originales.');
-  const migrations = (await Promise.all(['migrations', 'smoothies'].map(folder => readdir(path.join(contractDirectory, folder))))).flat()
-    .filter(name => /^\d+_[a-zA-Z0-9_]+\.sql$/.test(name)).map(name => `migrations/${name}`);
-  assert.deepEqual(['schema.snapshot.json', ...migrations].sort(), Object.keys(archive.contract.files).sort(),
-    'La lista de migraciones de esta versión no coincide con la copia.');
-  for (const [name, file] of Object.entries(archive.contract.files)) {
-    assert.equal(sha256(await readFile(path.join(contractDirectory, name))), file.sha256, `La versión local no coincide con la copia: ${name}`);
-  }
+  await verifyRestoreContract(archive.contract, contractDirectory);
   assert.ok(path.isAbsolute(printDirectory) && !/^(?:\\\\|\/\/)/.test(printDirectory), 'Indica una carpeta en el disco local para el registro.');
   const storage = localPhotoBucket(api, serviceKey);
   const expected = archive.assets.files;
@@ -86,7 +81,7 @@ export async function restoreSmoothiesArchive(db, archive, { api, serviceKey, pr
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+async function main() {
   let db;
   try {
     const [archiveFile, keyFile, configFile, ...extra] = process.argv.slice(2);
@@ -106,3 +101,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     process.exitCode = 1;
   } finally { await db?.end(); }
 }
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) void main();

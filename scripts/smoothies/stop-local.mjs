@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Client } from 'pg';
 import { localTarget } from './prepare-local.mjs';
@@ -26,6 +26,8 @@ try {
       and not exists(select 1 from cafe_private.clip_payments where state not in ('failed','completed')) as idle
   `)).rows[0];
   assert.ok(idle, 'Cierra el turno y confirma las entregas antes de detener la caja.');
+  await mkdir(path.join(directory, 'actualizaciones'), { recursive: true });
+  await writeFile(path.join(directory, 'actualizaciones/stop-requested'), identity.instanceToken);
   await writeFile(path.join(directory, 'detener-caja'), identity.instanceToken);
   for (let attempt = 0; attempt < 20; attempt++) {
     if (!await instance().catch(() => null)) {

@@ -75,7 +75,8 @@ try {
     'scripts/printing/windows-print.ps1', 'scripts/printing/DesktopPrinter.cs', 'scripts/staging/safety.mjs',
     'scripts/backups/restore-business.mjs', 'lib/business-backup-format.mjs', 'lib/smoothies-backup-assets.mjs',
     ...['Install-Smoothies.ps1','Launch-Smoothies.ps1','install-local.mjs','prepare-local.mjs',
-      'provision-supabase.mjs','restore-local.mjs','start-local.mjs','stop-local.mjs','supabase']
+      'provision-supabase.mjs','restore-local.mjs','restore-contract.mjs','start-local.mjs','stop-local.mjs','auto-update.mjs',
+      'Extract-Smoothies-Update.ps1','supabase']
       .map(name => `scripts/smoothies/${name}`)]);
   recoveryDependency('pg');
   recoveryDependency('@supabase/supabase-js');
@@ -83,6 +84,14 @@ try {
   cpSync(nodeLicense, path.join(output, 'Node-LICENSE.txt'));
   copy(source, output, ['Instalar POS Smoothies.cmd']);
   cpSync(path.join(source, 'docs/smoothies-local.md'), path.join(output, 'Guia PC e iPad.md'));
+  const policyFile = process.env.SMOOTHIES_UPDATE_POLICY_FILE || path.join(source, 'config/smoothies-update-policy.json');
+  const publicKeyFile = process.env.SMOOTHIES_UPDATE_PUBLIC_KEY_FILE || path.join(source, 'config/smoothies-update-public-key.pem');
+  assert.ok(existsSync(policyFile) && existsSync(publicKeyFile), 'Faltan la politica y la clave publica de actualizaciones.');
+  const policy = JSON.parse(readFileSync(policyFile, 'utf8'));
+  assert.ok(policy.protocol === 1 && policy.product === 'smoothies' && policy.publicKeyFile === 'update-public-key.pem');
+  assert.equal(new URL(policy.manifestUrl).protocol, 'https:');
+  cpSync(policyFile, path.join(output, 'update-policy.json'));
+  cpSync(publicKeyFile, path.join(output, 'update-public-key.pem'));
   const build = readFileSync(path.join(runtimePath, '.next/BUILD_ID'), 'utf8').trim();
   const migrations = ['migrations', 'smoothies'].flatMap(folder => readdirSync(path.join(runtimePath, 'supabase', folder))
     .filter(file => file.endsWith('.sql')).map(file => [file, folder])).sort(([left], [right]) => left.localeCompare(right));
@@ -92,5 +101,20 @@ try {
   ])).digest('hex');
   const id = createHash('sha256').update(`${build}\n${databaseContract}`).digest('hex').slice(0, 16);
   writeFileSync(path.join(output, 'release.json'), JSON.stringify({ version: 1, ...versionMetadata, build, id, databaseContract }));
+  const files = [];
+  function index(directory) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) index(full);
+      else {
+        assert.ok(entry.isFile(), 'El paquete no admite enlaces.');
+        files.push({ file: path.relative(output, full).replaceAll('\\', '/'),
+          sha256: createHash('sha256').update(readFileSync(full)).digest('hex') });
+      }
+    }
+  }
+  index(output);
+  files.sort((left, right) => left.file.localeCompare(right.file));
+  writeFileSync(path.join(output, 'SHA256.json'), JSON.stringify(files));
   console.log(`POS Smoothies ${id}: ${output}`);
 } finally { rmSync(stage, { recursive: true, force: true }); }

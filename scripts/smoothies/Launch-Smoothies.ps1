@@ -72,6 +72,7 @@ try {
         $instance = Read-Instance
         if ($instance -and $instance.packageId -ne $active.id) { throw 'El puerto esta ocupado por otra aplicacion.' }
         if ($held -and -not $instance) {
+            Remove-Item -LiteralPath (Join-Path $root 'actualizaciones\stop-requested') -Force -ErrorAction SilentlyContinue
             $env:SMOOTHIES_PACKAGE_ID = $active.id
             $env:SMOOTHIES_DATA_HOME = $root
             $stdout = Join-Path $logs 'servidor.log'
@@ -80,15 +81,18 @@ try {
                 if (Test-Path -LiteralPath $file -PathType Leaf) { Move-Item -LiteralPath $file -Destination "$file.anterior" -Force }
             }
             $processOptions = @{
-                FilePath = $node; ArgumentList = ('"--env-file={0}" "{1}" start' -f $settings, $launcher)
+                FilePath = $node; ArgumentList = ('"--env-file={0}" "--env-file={1}" "{2}" "{3}"' -f
+                    $(if ($active.settingsPath) { $active.settingsPath } else { Join-Path $root 'instalacion.env' }),
+                    $settings, (Join-Path $app 'scripts\smoothies\auto-update.mjs'), $root)
                 WorkingDirectory = $app; RedirectStandardOutput = $stdout; RedirectStandardError = $stderr
                 WindowStyle = 'Hidden'; PassThru = $true
             }
             $child = Start-Process @processOptions
         }
-        $until = [DateTime]::UtcNow.AddSeconds(150)
-        while (-not $instance -and [DateTime]::UtcNow -lt $until -and (-not $child -or -not $child.HasExited)) {
+        $until = [DateTime]::UtcNow.AddSeconds(280)
+        while ((-not $instance -or $instance.packageId -ne $active.id) -and [DateTime]::UtcNow -lt $until -and (-not $child -or -not $child.HasExited)) {
             Start-Sleep -Milliseconds 500
+            $active = Get-Content -LiteralPath (Join-Path $root 'release.json') -Raw | ConvertFrom-Json
             $instance = Read-Instance
         }
         if (-not $instance -or $instance.packageId -ne $active.id) { throw "POS Smoothies no pudo abrir. Consulta el registro en $logs." }

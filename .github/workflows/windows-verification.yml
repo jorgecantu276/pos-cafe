@@ -2,7 +2,7 @@ name: Windows verification
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/pos-family-*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -130,3 +130,22 @@ jobs:
           }
           node scripts/smoothies/smoke-portable-config.mjs $release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  smoothies-backend:
+    name: Smoothies import and cash recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      POS_PRINT_MODE: disabled
+      POS_CLIP_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.2
+          cache: npm
+      - run: npm ci
+      - name: Reserve isolated backend test ports
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55540-55569
+      - run: node --import tsx scripts/smoothies/import-drill.mjs
+      - run: node --import tsx scripts/smoothies/local-sale-drill.mjs

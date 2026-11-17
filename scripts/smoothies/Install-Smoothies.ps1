@@ -25,7 +25,22 @@ function Invoke-Checked([string]$Executable, [string[]]$Arguments, [string]$Mess
 $lockPath = Join-Path $DataDirectory 'instalacion.lock'
 try { $lock = [IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') }
 catch { throw 'Ya hay otra instalacion abierta.' }
+$launchLock = $null
 try {
+    $identifier = [Security.Cryptography.SHA256]::Create()
+    try { $mutexId = [BitConverter]::ToString($identifier.ComputeHash([Text.Encoding]::UTF8.GetBytes($DataDirectory.ToLowerInvariant()))) }
+    finally { $identifier.Dispose() }
+    $launchLock = New-Object Threading.Mutex($false, ('Local\POS-Smoothies-' + $mutexId))
+    try { $launchHeld = $launchLock.WaitOne(0) } catch [Threading.AbandonedMutexException] { $launchHeld = $true }
+    if (-not $launchHeld) {
+        $runningState = Get-Content -LiteralPath (Join-Path $DataDirectory 'release.json') -Raw | ConvertFrom-Json
+        $runningInstance = Invoke-RestMethod -Uri 'http://127.0.0.1:3180/api/local-instance' -TimeoutSec 2
+        if ($runningState.id -eq $package.id -and $runningInstance.packageId -eq $package.id) {
+            Write-Host 'Esta version ya esta instalada y abierta. Cierra POS Smoothies para reparar accesos.'
+            return
+        }
+        throw 'Cierra POS Smoothies antes de instalar una version.'
+    }
     $statePath = Join-Path $DataDirectory 'release.json'
     $previous = if (Test-Path -LiteralPath $statePath -PathType Leaf) { Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json }
     $releaseRoot = Join-Path (Join-Path $DataDirectory 'versiones') $package.id
@@ -42,7 +57,8 @@ try {
     } else {
         $staging = Join-Path $DataDirectory ('preparar-' + [guid]::NewGuid())
         [void](New-Item -ItemType Directory -Path $staging)
-        foreach ($entry in @('app','node.exe','Node-LICENSE.txt','Guia PC e iPad.md')) {
+        foreach ($entry in @('app','node.exe','Node-LICENSE.txt','Guia PC e iPad.md','release.json','SHA256.json',
+            'update-policy.json','update-public-key.pem','Instalar POS Smoothies.cmd')) {
             Copy-Item -LiteralPath (Join-Path $source $entry) -Destination $staging -Recurse
         }
         [void](New-Item -ItemType Directory -Path (Split-Path -Parent $releaseRoot) -Force)
@@ -119,6 +135,17 @@ try {
 
     $stableLaunch = Join-Path $DataDirectory 'Launch-Smoothies.ps1'
     Copy-Item -LiteralPath (Join-Path $app 'scripts\smoothies\Launch-Smoothies.ps1') -Destination $stableLaunch -Force
+    $updates = Join-Path $DataDirectory 'actualizaciones'
+    [void](New-Item -ItemType Directory -Path $updates -Force)
+    $policyPath = Join-Path $updates 'policy.json'
+    $keyPath = Join-Path $updates 'public-key.pem'
+    if ((Test-Path -LiteralPath $policyPath) -xor (Test-Path -LiteralPath $keyPath)) {
+        throw 'La configuracion de actualizaciones esta incompleta. Contacta a soporte.'
+    }
+    if (-not (Test-Path -LiteralPath $policyPath)) {
+        Copy-Item -LiteralPath (Join-Path $source 'update-public-key.pem') -Destination $keyPath
+        Copy-Item -LiteralPath (Join-Path $source 'update-policy.json') -Destination $policyPath
+    }
     if (-not $NoShortcuts) {
         $shell = New-Object -ComObject WScript.Shell
         $powershell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -140,4 +167,7 @@ try {
     if ($previous) { [IO.File]::Replace($pendingState, $statePath, (Join-Path $DataDirectory 'release.previous.json')) }
     else { Move-Item -LiteralPath $pendingState -Destination $statePath }
     Write-Host 'Instalacion lista. Abre POS Smoothies desde el escritorio y entra como admin.'
-} finally { $lock.Dispose() }
+} finally {
+    if ($launchLock) { if ($launchHeld) { $launchLock.ReleaseMutex() }; $launchLock.Dispose() }
+    $lock.Dispose()
+}

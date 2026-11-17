@@ -1,0 +1,8 @@
+{
+  "protocol": 1,
+  "enabled": true,
+  "product": "smoothies",
+  "channel": "pilot",
+  "manifestUrl": "https://raw.githubusercontent.com/jorgecantu276/pos-cafe/pos-family-feed/smoothies/pilot.json",
+  "publicKeyFile": "update-public-key.pem"
+}
