@@ -1,23 +1,47 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 
-const folder = path.resolve(process.argv[2]);
+const source = path.resolve(process.argv[2]);
+const temporaryRoot = path.resolve(tmpdir());
+const scratch = mkdtempSync(path.join(temporaryRoot, 'smoothies-portable-smoke-'));
+const folder = path.join(scratch, 'release');
 const base = 'http://127.0.0.1:3187';
 const publicKey = 'smoke-public-key';
 const privateKey = 'smoke-private-key';
-const child = spawn(path.join(folder, 'node.exe'), [path.join(folder, 'app/server.js')], {
-  windowsHide: true,
-  cwd: path.join(folder, 'app'),
-  env: { ...process.env, NEXT_PUBLIC_POS_PROFILE: 'smoothies', HOSTNAME: '127.0.0.1', PORT: '3187', NEXT_TELEMETRY_DISABLED: '1',
-    SMOOTHIES_RUNTIME_ANON_KEY: publicKey, SUPABASE_SERVICE_ROLE_KEY: privateKey },
-  stdio: 'inherit',
-});
-const finished = once(child, 'exit');
-let browser;
+let child, finished, browser;
 try {
+  // Next writes route caches at runtime. Execute only a verified disposable copy,
+  // so inspecting a release can never change the package waiting to be archived.
+  const indexBytes = readFileSync(path.join(source, 'SHA256.json'));
+  const index = JSON.parse(indexBytes.toString('utf8'));
+  assert.ok(Array.isArray(index) && index.length > 0, 'The package file index is missing.');
+  for (const entry of index) {
+    assert.ok(typeof entry.file === 'string' && !path.isAbsolute(entry.file), 'The package index requires relative paths.');
+    const original = path.resolve(source, entry.file);
+    const relative = path.relative(source, original);
+    assert.ok(relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative),
+      'The package index cannot leave its release folder.');
+    const bytes = readFileSync(original);
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), entry.sha256, entry.file);
+    const target = path.join(folder, relative);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, bytes);
+  }
+  writeFileSync(path.join(folder, 'SHA256.json'), indexBytes);
+  child = spawn(path.join(folder, 'node.exe'), [path.join(folder, 'app/server.js')], {
+    windowsHide: true,
+    cwd: path.join(folder, 'app'),
+    env: { ...process.env, NEXT_PUBLIC_POS_PROFILE: 'smoothies', HOSTNAME: '127.0.0.1', PORT: '3187', NEXT_TELEMETRY_DISABLED: '1',
+      SMOOTHIES_RUNTIME_ANON_KEY: publicKey, SUPABASE_SERVICE_ROLE_KEY: privateKey },
+    stdio: 'inherit',
+  });
+  finished = once(child, 'exit');
   let config;
   for (let attempt = 0; attempt < 60 && child.exitCode === null; attempt++) {
     config = await fetch(`${base}/smoothies-config.js`, { signal: AbortSignal.timeout(1000) }).catch(() => null);
@@ -90,7 +114,16 @@ try {
   }
   console.log('PASS: packaged login waits for delayed runtime config; failed or stalled config retries without a reload or placeholder requests.');
 } finally {
-  await browser?.close();
-  child.kill();
-  await finished;
+  try {
+    await browser?.close();
+  } finally {
+    try {
+      if (child?.exitCode === null) child.kill();
+      if (finished) await finished;
+    } finally {
+      assert.equal(path.dirname(scratch), temporaryRoot);
+      assert.ok(path.basename(scratch).startsWith('smoothies-portable-smoke-'));
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }
 }
