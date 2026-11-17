@@ -1,0 +1,151 @@
+# Local-only subset of the Supabase Docker deployment. Images are pinned to the
+# versions tested together. A routine POS start resumes the existing services.
+x-smoothies: &managed
+  labels:
+    mx.pos-smoothies.instance: "__INSTANCE__"
+x-service: &service
+  <<: *managed
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  db:
+    <<: *service
+    image: public.ecr.aws/supabase/postgres:17.11.0.018
+    restart: unless-stopped
+    ports: ["127.0.0.1:__DB_PORT__:5432"]
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - db-config:/etc/postgresql-custom
+      - ./roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+    environment:
+      POSTGRES_PASSWORD: "__DB_PASSWORD__"
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: postgres
+      PGDATABASE: postgres
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "log_min_messages=warning"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "127.0.0.1"]
+      interval: 3s
+      timeout: 5s
+      retries: 35
+      start_period: 12s
+
+  auth:
+    <<: *service
+    image: public.ecr.aws/supabase/gotrue:v2.197.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: "0.0.0.0"
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: "http://127.0.0.1:__API_PORT__"
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: "postgres://supabase_auth_admin:__DB_PASSWORD__@db:5432/postgres"
+      GOTRUE_SITE_URL: "http://127.0.0.1:3180"
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      GOTRUE_JWT_SECRET: "__JWT_SECRET__"
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9999/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  rest:
+    <<: *service
+    image: public.ecr.aws/supabase/postgrest:v16.5
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: "postgres://authenticator:__DB_PASSWORD__@db:5432/postgres"
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_EXTRA_SEARCH_PATH: public,extensions
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_SERVER_PORT: 3000
+      PGRST_JWT_SECRET: "__JWT_SECRET__"
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+
+  storage:
+    <<: *service
+    image: public.ecr.aws/supabase/storage-api:v1.90.1
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+    volumes:
+      - photos:/var/lib/storage
+    environment:
+      ANON_KEY: "__ANON_KEY__"
+      SERVICE_KEY: "__SERVICE_KEY__"
+      POSTGREST_URL: http://rest:3000
+      AUTH_JWT_SECRET: "__JWT_SECRET__"
+      DATABASE_URL: "postgres://supabase_storage_admin:__DB_PASSWORD__@db:5432/postgres"
+      STORAGE_PUBLIC_URL: "http://127.0.0.1:__API_PORT__"
+      REQUEST_ALLOW_X_FORWARDED_PATH: "true"
+      FILE_SIZE_LIMIT: 5242880
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: smoothies
+      REGION: local
+      GLOBAL_S3_BUCKET: smoothies
+      ENABLE_IMAGE_TRANSFORMATION: "false"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5000/status"]
+      interval: 3s
+      timeout: 5s
+      retries: 35
+      start_period: 10s
+
+  gateway:
+    <<: *service
+    image: public.ecr.aws/supabase/kong:2.8.1
+    restart: unless-stopped
+    ports: ["127.0.0.1:__API_PORT__:8000"]
+    depends_on:
+      auth:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+      rest:
+        condition: service_started
+    volumes:
+      - ./gateway.yml:/home/kong/gateway.yml:ro
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /home/kong/gateway.yml
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_ADMIN_LISTEN: "off"
+      KONG_NGINX_WORKER_PROCESSES: 2
+      KONG_PLUGINS: cors,key-auth
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 3s
+      timeout: 8s
+      retries: 25
+      start_period: 5s
+
+volumes:
+  db-data:
+    <<: *managed
+  db-config:
+    <<: *managed
+  photos:
+    <<: *managed

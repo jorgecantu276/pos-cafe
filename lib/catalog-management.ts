@@ -5,7 +5,7 @@ import { loadRegisterShortcuts } from './register-shortcuts';
 
 export type CatalogChange = {
   kind: 'product' | 'extra'; action: 'save' | 'deactivate'|'reactivate'; id: string | null;revision?:number;
-  fields?: { name: string; price: number; category?: string; phase?: string; customizable?: boolean; image_url?: string; wizard_steps?: string[] };
+  fields?: { name: string; price: number; category?: string; phase?: string; customizable?: boolean; image_url?: string; wizard_steps?: string[]; applicable_product_ids?: string[] };
 };
 type Pending = { actor: string; request: string; payload: CatalogChange & { actor_id: string } };
 type Memory = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -24,7 +24,7 @@ export async function loadRegisterInventory(client: Client, signal: AbortSignal)
 export function catalogFingerprint(products: CatalogProduct[], extras: ExtraRow[], favorites: readonly string[]) {
   return JSON.stringify({ products: products.map(p => ({ id: p.id, name: p.name, price: Number(p.price), category: p.category,
     image: p.image_url || '', active: p.is_active, customizable: p.customizable, steps: p.wizard_steps ?? [] })).sort((a, b) => a.id.localeCompare(b.id)),
-    extras: extras.map(e => ({ id: e.id, name: e.name, price: Number(e.price), phase: e.phase, active: e.active })).sort((a, b) => a.id.localeCompare(b.id)), favorites });
+    extras: extras.map(e => ({ id: e.id, name: e.name, price: Number(e.price), phase: e.phase, active: e.active, products: e.applicable_product_ids ?? null })).sort((a, b) => a.id.localeCompare(b.id)), favorites });
 }
 
 export async function loadLiveCatalog(client: Pick<SupabaseClient, 'from' | 'rpc'>, signal: AbortSignal) {
@@ -59,7 +59,8 @@ export function readCatalogRequest(storage: Memory, actor: string): Pending | nu
 async function submit(client: Client, storage: Memory, pending: Pending) {
   const key = catalogRequestKey(pending.actor), raw = JSON.stringify(pending), controller = new AbortController();
   try {
-    const { data, error } = await withDeadline(() => client.rpc('pos_save_catalog', {
+    const routine = pending.payload.fields?.applicable_product_ids !== undefined ? 'pos_save_smoothies_extra' : 'pos_save_catalog';
+    const { data, error } = await withDeadline(() => client.rpc(routine, {
       p_request: pending.request, p_payload: pending.payload,
     }).abortSignal(controller.signal));
     if (error) {

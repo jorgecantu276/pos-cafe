@@ -313,3 +313,22 @@
 .settings-page .inventory-return{max-width:100%}
 .workspace-admin main .settings-surface .settings-rate-target input{border:0;background:transparent;font-size:22px;padding:10px 0}
 .settings-editor small{color:#59687c;font-size:13px;line-height:1.4}
+.smoothies-app .workspace-admin{--admin-muted:var(--ui-muted)}
+.smoothies-app .workspace-admin-mark,.smoothies-app .workspace-admin-menu-icon{color:var(--ui-accent);background:var(--smoothie-accent-soft);border-color:#efd8e3}
+.smoothies-app .workspace-admin :is(.workspace-admin-back,.workspace-admin-section-nav a,.workspace-admin-text-action,.workspace-admin-settings-link){color:var(--ui-accent)}
+.smoothies-app .workspace-admin-section-nav a[aria-current=page],.smoothies-app .workspace-admin main button[aria-pressed=true]{background:var(--smoothie-accent-soft);border-color:#d59bb5;color:var(--ui-accent);box-shadow:inset 0 0 0 1px #d59bb5}
+.smoothies-app .workspace-admin .admin-primary-button:hover:not(:disabled){background:#66233f;border-color:#66233f}
+.smoothies-app .workspace-admin main :is(a,button):focus-visible{outline-color:var(--ui-accent)}
+.smoothies-app #especial-semanal{scroll-margin-top:88px}
+.smoothie-today{display:grid;gap:12px;margin-bottom:20px;padding:16px;background:linear-gradient(115deg,#fff3e7,#fbe9f0);border:1px solid #f1ded7}
+.smoothie-today>header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.smoothie-today>nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.smoothie-today :is(.smoothie-today-sales,nav>a){min-width:0;display:flex;align-items:center;gap:12px;border:1px solid var(--ui-line);background:#fffdfb;color:var(--ui-ink);padding:11px 12px;border-radius:13px;text-decoration:none}
+.smoothie-today a:hover{border-color:#c987a4}
+.smoothie-today a>svg{flex:none;color:var(--ui-accent)}
+.smoothie-today a>svg:last-child{margin-left:auto}
+.smoothie-today a span{display:grid;gap:2px;min-width:0;overflow-wrap:anywhere}
+.smoothie-today a small{font-size:12px;color:var(--ui-muted)}
+.smoothie-today .smoothie-today-sales{flex-wrap:wrap;gap:10px 24px}
+.smoothie-today-sales strong{font-size:18px;font-variant-numeric:tabular-nums}
+@media(max-width:560px){.smoothie-today>nav{grid-template-columns:1fr}}

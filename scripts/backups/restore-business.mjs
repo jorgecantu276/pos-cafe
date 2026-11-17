@@ -103,6 +103,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1]
     const [archiveFile,keyFile,targetFile,...extra]=process.argv.slice(2);
     assert.ok(archiveFile&&keyFile&&targetFile&&!extra.length,'Uso: node restore-business.mjs ARCHIVO.posbackup CLAVE.key DESTINO_PRIVADO.json');
     const archive=decryptBusinessArchive(await readFile(archiveFile),await readFile(keyFile));
+    assert.ok(!archive.assets,'Esta copia incluye archivos locales. Usa scripts/smoothies/restore-local.mjs.');
     const config=JSON.parse((await readFile(targetFile,'utf8')).replace(/^\uFEFF/,''));
     db=new Client({connectionString:restoreTarget(config)});await db.connect();
     console.log(JSON.stringify(await restoreBusinessArchive(db,archive)));

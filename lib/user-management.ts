@@ -1,3 +1,4 @@
+import { posProfile } from './pos-profile';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { withDeadline } from './request-deadline';
 import { isStaffAvatarPath } from './staff-avatars';
@@ -36,7 +37,7 @@ export function userInput(value: unknown, create: boolean) {
 }
 
 export async function createStaff(client: SupabaseClient, input: ReturnType<typeof userInput>) {
-  const { data, error } = await client.auth.admin.createUser({ email: `${input.username}@carinitomio.local`, password: input.password, email_confirm: true });
+  const { data, error } = await client.auth.admin.createUser({ email: `${input.username}@${posProfile.staffDomain}`, password: input.password, email_confirm: true });
   if (error || !data.user) throw new AccessError('No se pudo crear el acceso. Revisa si el usuario ya existe.', error && error.status && error.status < 500 ? 409 : 502, !(error && error.status && error.status < 500));
   const profile = await client.from('profiles').insert({ id: data.user.id, full_name: input.full_name, username: input.username, role: input.role, avatar_url: input.avatar_url, is_active: true });
   if (profile.error) {

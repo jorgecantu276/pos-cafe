@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as ts from 'typescript';
 import { CheckoutRejected, checkoutPayload, executeCheckout, readCheckoutReview, type CheckoutReview } from '../lib/checkout';
-import { errorMessage, productAvailable, validPagerNumber } from '../lib/pos-types';
+import { errorMessage, extraAppliesToProduct, isSmoothie, productAvailable, validPagerNumber, type WizardStep } from '../lib/pos-types';
 import {withDeadline} from '../lib/request-deadline';
 import {isDefinitiveWriteRejection} from '../lib/write-outcome';
 import {savedShiftHtml} from '../lib/shift-printing';
@@ -137,7 +137,7 @@ function checkoutHarness(storage=new Map<string,string>(), online=true, retire=(
     localStorage:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)},
     navigator:{onLine:online},setIsProcessingCheckout:()=>{},getTotal:()=>60,items:[item],isPaymentInsufficient:false,activeCustomer:null,
     registerId:'register',paymentMethod:'Efectivo',parseAmount:Number,amountReceivedMXN:100,amountReceivedUSD:0,orderType:'En Local',orderNote:'',
-    CheckoutRejected,checkoutPayload,executeCheckout:(client:Parameters<typeof executeCheckout>[0],pending:CheckoutReview)=>executeCheckout(client,pending,timeoutMs),readCheckoutReview,rememberSalePrint,setCheckoutReview:()=>{},setSavedSale:()=>{},setLastOrderId:()=>{},setShowCheckoutModal:()=>{},setShowPostSaleModal:(v:boolean)=>successful=v,
+    smoothies:false,CheckoutRejected,checkoutPayload,executeCheckout:(client:Parameters<typeof executeCheckout>[0],pending:CheckoutReview)=>executeCheckout(client,pending,timeoutMs),readCheckoutReview,rememberSalePrint,setCheckoutReview:()=>{},setSavedSale:()=>{},setLastOrderId:()=>{},setShowCheckoutModal:()=>{},setShowPostSaleModal:(v:boolean)=>successful=v,
     clearCart:()=>{},
     alert:(message:string)=>alerts.push(message),
     supabase:{rpc:(name:string,args:unknown)=>{assert.equal(name,'pos_checkout');calls++;requests.push(args);return laterResponse===undefined?response:Promise.resolve(laterResponse);}},
@@ -213,8 +213,13 @@ test('a checkout response arriving after cashier switch only retires its origina
   assert.equal(retiredA,1);assert.equal(retiredB,0);assert.equal(h.storage.has('test-user'),false);
   assert.equal(h.storage.get('cashier-b'),'B pending request'); assert.equal(h.successful,false);assert.equal(h.alerts.length,0);
 });
-test('offline before submission leaves the order unsent',async()=>{
-  const h=checkoutHarness(undefined,false);await h.fn();assert.equal(h.calls,0);assert.equal(h.storage.size,0);assert.ok(h.alerts[0].includes('La venta no se envió'));
+test('a browser reporting offline can still save a sale when the local database responds', async () => {
+  const h = checkoutHarness(undefined, false);
+  h.reply({ data: { id: 'local-sale', ticket_number: 1, total: 60, items: [], status: 'completed', pager_number: 1 }, error: null });
+  await h.fn();
+  assert.equal(h.calls, 1);
+  assert.equal(h.successful, true);
+  assert.equal(h.storage.has('test-user'), false);
 });
 
 test('the actual checkout handler rejects a new sale without a valid control before persisting or sending it',async()=>{
@@ -317,7 +322,8 @@ test('opening a customization edit leaves the original line intact until confirm
   useCartStore.getState().clearCart();
   useCartStore.getState().addItem(customizeProduct({id:'coffee',name:'Coffee',price:50,category:'Bebidas'},[{name:'Vainilla',price:10}],''));
   const original=useCartStore.getState().items[0];
-  handler('handleEditItem',{
+  handler('handleEditItem',{smoothies:true,
+    isSmoothie,
     products:[],cards:[],setSelectedFamilyId:()=>{},buildWizardSteps:()=>[{}],setSelectedProduct:()=>{},setActiveExtras:()=>{},setProductNote:()=>{},setEditingItemId:()=>{},setEditingQuantity:(quantity:number)=>assert.equal(quantity,original.quantity),setDynamicSteps:()=>{},setCustomizationStep:()=>{},
   })(original);
   assert.deepEqual(useCartStore.getState().items,[original]);
@@ -329,7 +335,7 @@ test('actual size-change handler keeps compatible milk and notes while using the
   const milk={id:'oat',name:'avena',phase:'Tipo de Leche',price:15};
   let chosen:typeof small|null=small,selected=[milk];
   const note='Sin hielo';let quantity=2;
-  const buildWizardSteps=handler('buildWizardSteps',{useCallback:(fn:unknown)=>fn,dbExtras:[{...milk,active:true}]});
+  const buildWizardSteps=handler('buildWizardSteps',{extraAppliesToProduct,useCallback:(fn:unknown)=>fn,dbExtras:[{...milk,active:true}]});
   handler('handleVariant',{
     selectedFamily:{variants:[{product:small},{product:large}]},selectedProduct:small,productAvailable,buildWizardSteps,
     setSelectedProduct:(value:typeof chosen)=>{chosen=value;},setDynamicSteps:()=>{},setActiveExtras:(update:(previous:typeof selected)=>typeof selected)=>{selected=update(selected);},setCustomizationStep:()=>{},
@@ -341,6 +347,26 @@ test('actual size-change handler keeps compatible milk and notes while using the
   assert.equal(prepared.price*quantity,280);
 });
 
+test('Matcha milk is a single choice and uses only the Matcha prices',()=>{
+  const matchaMilk='Leche alternativa Matcha';
+  const sharedLala={id:'shared-lala',name:'Lala 100',phase:'Leche alternativa',price:15,active:true};
+  const matchaLala={...sharedLala,id:'matcha-lala',phase:matchaMilk,price:0};
+  const almond={...matchaLala,id:'matcha-almond',name:'Leche de almendra'};
+  const foam={id:'matcha-foam',name:'Cold foam extra',phase:'Cold foam Matcha',price:15,active:true};
+  const dbExtras=[sharedLala,matchaLala,almond,foam];
+  const buildWizardSteps=handler('buildWizardSteps',{extraAppliesToProduct,useCallback:(fn:unknown)=>fn,dbExtras});
+  const dynamicSteps=buildWizardSteps({customizable:true,wizard_steps:[matchaMilk,foam.phase]}) as WizardStep[];
+  assert.deepEqual(dynamicSteps.slice(0,2).map(({title,options,exclusive})=>[title,options,exclusive]),[
+    ['Seleccionar Leche alternativa',['Lala 100','Leche de almendra'],true],
+    ['Seleccionar Cold foam',['Cold foam extra'],false],
+  ]);
+  let selected=[{id:almond.id,phase:almond.phase,name:almond.name,price:almond.price}];
+  handler('chooseExtra',{customizationStep:0,dynamicSteps,activeExtras:selected,dbExtras,appearance:'workspace',extraAppliesToProduct,selectedProduct:{id:'matcha'},
+    setActiveExtras:(extras:typeof selected)=>{selected=extras;},
+  })('Lala 100');
+  assert.deepEqual(selected,[{id:matchaLala.id,phase:matchaMilk,name:'Lala 100',price:0}]);
+});
+
 test('editing an old draft uses current milk options while preserving the original line and price until saved',()=>{
   useCartStore.getState().clearCart();
   const extras=[{id:'almond',name:'Almendra',price:15,phase:'Tipo de Leche',active:true}];
@@ -349,8 +375,8 @@ test('editing an old draft uses current milk options while preserving the origin
   const original=useCartStore.getState().items[0],snapshot=JSON.stringify(original);
   const products=[{...original.product,price:100,customizable:true,wizard_steps:['Tipo de Leche']}];
   let selected=original.product,steps:Array<{id:string}>=[];
-  const buildWizardSteps=handler('buildWizardSteps',{useCallback:(fn:unknown)=>fn,dbExtras:extras});
-  handler('handleEditItem',{products,cards:[],setSelectedFamilyId:()=>{},buildWizardSteps,setSelectedProduct:(value:typeof selected)=>selected=value,
+  const buildWizardSteps=handler('buildWizardSteps',{extraAppliesToProduct,useCallback:(fn:unknown)=>fn,dbExtras:extras});
+  handler('handleEditItem',{smoothies:false,isSmoothie,products,cards:[],setSelectedFamilyId:()=>{},buildWizardSteps,setSelectedProduct:(value:typeof selected)=>selected=value,
     setActiveExtras:(value:unknown)=>assert.deepEqual(value,extras),setProductNote:(value:string)=>assert.equal(value,'sin hielo'),
     setEditingItemId:(value:string)=>assert.equal(value,original.id),setEditingQuantity:(value:number)=>assert.equal(value,2),
     setDynamicSteps:(value:typeof steps)=>steps=value,setCustomizationStep:()=>{},})(original);
@@ -366,7 +392,7 @@ test('editing an old draft uses current milk options while preserving the origin
 test('catalog name/price editing cannot reset stock consumed since the editor loaded',async()=>{
   let payload:Record<string,unknown>={};
   await handler('handleSave',{
-    activeTab:'items',editingId:'product',editingRevision:0,formData:{name:'Café',price:'55',category:'Bebidas',customizable:true,image_url:'',wizard_steps:[]},
+    smoothies:false,activeTab:'items',editingId:'product',editingRevision:0,formData:{name:'Café',price:'55',category:'Bebidas',customizable:true,image_url:'',wizard_steps:[]},
     saving:{current:false},pending:false,commitChange:async(change:{fields:Record<string,unknown>})=>{payload=change.fields;},setMessage:(message:string)=>assert.fail(message),
     setShowForm:()=>{},setEditingId:()=>{},setFormData:()=>{},initialFormState:{},fetchData:()=>{},alert:(message:string)=>assert.fail(message),
   },'../app/admin/productos/page.tsx')({preventDefault:()=>{}});

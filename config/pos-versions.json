@@ -1,0 +1,8 @@
+{
+  "version": "1.0.0-rc.3",
+  "products": {
+    "cafe": "POS Café",
+    "smoothies": "POS Smoothies",
+    "papeleria": "POS Papelería"
+  }
+}

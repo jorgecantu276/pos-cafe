@@ -1,4 +1,5 @@
 'use client';
+import { posProfile } from '@/lib/pos-profile';
 
 import Image from 'next/image';
 import ProductPhoto from '@/components/ProductPhoto';
@@ -13,7 +14,7 @@ import { loadRegisterShortcuts } from '@/lib/register-shortcuts';
 import { catalogChangeKey, catalogFingerprint, loadLiveCatalog, loadRegisterInventory } from '@/lib/catalog-management';
 import './workspace.css';
 
-import { catalogProduct, productAvailable, productStockLabel, validPagerNumber, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
+import { catalogProduct, extraAppliesToProduct, isSmoothie, productAvailable, productStockLabel, validPagerNumber, type CatalogProduct, type Customer, type ExtraRow, type WizardStep, errorMessage } from '@/lib/pos-types';
 
 import { matchesMenuCard, menuCardAvailable, menuCardPrice, menuCards, type MenuCard } from '@/lib/menu-cards';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -46,7 +47,7 @@ import {
 // DENOMINACIONES DE DINERO
 const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.50];
 
-export default function POSPage({appearance='workspace',clipEnabled=false}:{appearance?:'owner'|'prototype'|'workspace';clipEnabled?:boolean}={}) {
+export default function POSPage({appearance='workspace',clipEnabled=false,smoothies=false}:{appearance?:'owner'|'prototype'|'workspace';clipEnabled?:boolean;smoothies?:boolean}={}) {
   const { items, addItem, removeItem, replaceItem, updateQuantity, getTotal, clearCart,
     orderType, orderNote, pagerNumber, phoneOrder,phoneName,phoneContact,setPhoneOrder,setPhoneName,setPhoneContact,customerId, setOrderType, setOrderNote, setPagerNumber, setCustomerId } = useCartStore();
   const router = useRouter();
@@ -78,6 +79,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
 
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>([]);
+  const [weeklySpecialId, setWeeklySpecialId] = useState<string | null>(null);
   const [favoritesError, setFavoritesError] = useState('');
   const [favoritesLoading, setFavoritesLoading] = useState(true);
   const [favoritesAttempt, setFavoritesAttempt] = useState(0);
@@ -104,6 +106,30 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     }).finally(() => { if (!controller.signal.aborted) setFavoritesLoading(false); });
     return () => controller.abort();
   }, [drawerActor, sessionActor, favoritesAttempt]);
+
+  useEffect(() => {
+    if (!smoothies || !drawerActor || (sessionActor && sessionActor !== drawerActor)) return;
+    let current: AbortController | undefined;
+    const refresh = async () => {
+      current?.abort();
+      const controller = new AbortController();
+      current = controller;
+      const { data, error } = await supabase.rpc('pos_smoothies_special')
+        .abortSignal(AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]));
+      if (!controller.signal.aborted && !error) setWeeklySpecialId(data?.product_id ?? null);
+    };
+    const changed = (event: StorageEvent) => { if (event.key === catalogChangeKey) void refresh(); };
+    void refresh();
+    window.addEventListener('focus', refresh);
+    window.addEventListener(catalogChangeKey, refresh);
+    window.addEventListener('storage', changed);
+    return () => {
+      current?.abort();
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener(catalogChangeKey, refresh);
+      window.removeEventListener('storage', changed);
+    };
+  }, [drawerActor, sessionActor, smoothies]);
 
   // ESTADOS DE TURNO
   const [registerId, setRegisterId] = useState('');
@@ -284,8 +310,8 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       setExchangeRate(String(shift.exchange_rate));
       setExpenses(data.summary!.expenses); setCashSales(data.summary!.cash_sales);
       setShowApertura(false);
-    } else { setRegisterId(''); setExpenses([]); setCashSales(0); setExchangeRate(data.drawer.rate ? String(data.drawer.rate) : ''); setShowApertura(true); }
-  }, [router]);
+    } else { setRegisterId(''); setExpenses([]); setCashSales(0); setExchangeRate(data.drawer.rate ? String(data.drawer.rate) : smoothies ? '1' : ''); setShowApertura(true); }
+  }, [router, smoothies]);
   const { loading, error: loadError, reload: fetchData } = useResource(loadPOS, null, applyPOS);
 
   useEffect(() => {
@@ -610,12 +636,14 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
        return [];
     }
     const steps = product.wizard_steps.map((phaseName: string) => {
-       const phaseOptions = dbExtras.filter(e => e.phase === phaseName && e.active).map(e => e.name);
+       const phaseOptions = dbExtras.filter(e => e.phase === phaseName && e.active && extraAppliesToProduct(e, product.id)).map(e => e.name);
+       const phaseLabel = phaseName === 'Leche alternativa Matcha' ? 'Leche alternativa'
+          : phaseName === 'Cold foam Matcha' ? 'Cold foam' : phaseName;
        return {
           id: phaseName,
-          title: `Seleccionar ${phaseName}`,
+          title: `Seleccionar ${phaseLabel}`,
           options: phaseOptions,
-          exclusive: ['Tamaño', 'Tipo de Leche', 'Leche alternativa', 'Creamer', 'Helado gourmet', 'Temperatura'].includes(phaseName),
+          exclusive: ['Tamaño', 'Tipo de Leche', 'Leche alternativa', 'Leche alternativa Matcha', 'Creamer', 'Helado gourmet', 'Temperatura'].includes(phaseName),
           required: ['Helado gourmet', 'Temperatura'].includes(phaseName)
        };
     }).filter((step) => step.options.length > 0);
@@ -630,7 +658,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     setEditingItemId(null);
     const steps = buildWizardSteps(product);
 
-    if (steps.length === 0) {
+    if (steps.length === 0 && !(smoothies && appearance === 'workspace' && isSmoothie(product))) {
       addItem({ ...product, price: Number(product.price), basePrice: Number(product.price), displayExtras: [], note: '' });
     } else {
       setSelectedProduct(product);
@@ -639,7 +667,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
       setDynamicSteps(steps);
       setCustomizationStep(0);
     }
-  }, [draftError, loading, loadError, addItem, buildWizardSteps]);
+  }, [appearance, smoothies, draftError, loading, loadError, addItem, buildWizardSteps]);
 
   const handleMenuCardClick = useCallback((card: MenuCard) => {
     if (!cartDraft.current || draftError || loading || loadError || !menuCardAvailable(card)) return;
@@ -681,7 +709,9 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     setSelectedProduct(editable);
     setSelectedFamilyId(cards.find(card => (card.variants?.length ?? 0) > 1 &&
       card.variants?.some(variant => variant.product.id === item.product.id))?.id ?? null);
-    setActiveExtras(item.product.displayExtras || []);
+    const previousExtras = item.product.displayExtras || [];
+    setActiveExtras(smoothies && isSmoothie(editable) ? previousExtras.filter(extra => configured.some(step =>
+      (!extra.phase || extra.phase === step.id) && step.options.includes(extra.name))) : previousExtras);
     setProductNote(item.product.note || '');
     setEditingItemId(item.id);
     setEditingQuantity(item.quantity);
@@ -714,7 +744,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     const step = dynamicSteps[index];
     const matches = (extra: CartExtra) => extra.name === name && (!extra.phase || extra.phase === step.id);
     const selected = activeExtras.some(matches);
-    const extra = dbExtras.find(e => e.phase === step.id && e.name === name && e.active);
+    const extra = dbExtras.find(e => e.phase === step.id && e.name === name && e.active && selectedProduct && extraAppliesToProduct(e, selectedProduct.id));
     if (!extra) return;
     setActiveExtras(selected ? activeExtras.filter(e => !matches(e)) : [
       ...activeExtras.filter(e => !step.exclusive || e.phase !== step.id),
@@ -737,7 +767,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
     if (items.length === 0) return;
     if(phonePending||phoneBusy||phoneError){alert('Comprueba el pedido sin confirmar antes de continuar.');return;}
     if(phoneOrder){setShowPhoneContact(true);return;}
-    if (!validPagerNumber(pagerNumber)) { alert('Elige un control del 1 al 30 antes de cobrar.'); return; }
+    if (!smoothies && !validPagerNumber(pagerNumber)) { alert('Elige un control del 1 al 30 antes de cobrar.'); return; }
     setSelectedPhoneOrder(null);
     setPaymentMethod('Efectivo');
     setAmountReceivedMXN('');
@@ -843,12 +873,11 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
         const existing = readCheckoutReview(localStorage.getItem(checkoutKey));
         if(selectedPhoneOrder&&existing&&existing.payload?.phone_order_id!==selectedPhoneOrder.id){setCheckoutReview(existing);setSelectedPhoneOrder(null);throw new Error('Hay otra venta sin confirmar. Compruébala antes de cobrar este pedido.');}
         wasRecovery = Boolean(existing);
-        if (!navigator.onLine) throw new Error('Sin conexión. La venta no se envió; conserva la orden e intenta cuando vuelva internet.');
         setIsProcessingCheckout(true);
 
         let review = existing;
         if (!review) {
-          if(!selectedPhoneOrder&&!validPagerNumber(pagerNumber)) throw new Error('Elige un control del 1 al 30 antes de cobrar.');
+          if(!smoothies&&!selectedPhoneOrder&&!validPagerNumber(pagerNumber)) throw new Error('Elige un control del 1 al 30 antes de cobrar.');
           if (!selectedPhoneOrder&&catalogStale) throw new Error('El menú cambió. Cierra el cobro, actualiza y revisa el pedido.');
           if (!selectedPhoneOrder&&(!binding || draftError || customerRestoring || (activeCustomer?.id ?? null) !== customerId))
             throw new Error('Revisa el pedido y el cliente antes de cobrar.');
@@ -862,9 +891,9 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
             payload: checkoutPayload(orderItems, {
               register_id: registerId, expected_total: orderTotal, payment_method: paymentMethod.toLowerCase(),
               tender_mxn: cash ? parseAmount(amountReceivedMXN) : 0, tender_usd: cash ? parseAmount(amountReceivedUSD) : 0,
-              customer_id: selectedPhoneOrder?selectedPhoneOrder.customer_id??null:customerId, order_type: selectedPhoneOrder?.snapshot.order_type??orderType, order_note: selectedPhoneOrder?.snapshot.order_note??orderNote, pager_number:selectedPhoneOrder?null:pagerNumber,
+              customer_id: selectedPhoneOrder?selectedPhoneOrder.customer_id??null:customerId, order_type: selectedPhoneOrder?.snapshot.order_type??orderType, order_note: selectedPhoneOrder?.snapshot.order_note??orderNote, pager_number:selectedPhoneOrder||smoothies?null:pagerNumber,
               ...(selectedPhoneOrder?{phone_order_id:selectedPhoneOrder.id,phone_order_revision:selectedPhoneOrder.revision}:{}),
-            }),
+            }, !smoothies),
           };
           // Persist the exact identity and payload before the first request.
           writtenReview = JSON.stringify(review);
@@ -968,11 +997,12 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
   const CheckoutView = appearance === 'workspace' ? WorkspaceCheckout : PrototypeCheckout;
   const PaymentView=selectedPhoneOrder?WorkspaceCheckout:CheckoutView;
   const customizationProps = {
-    steps: dynamicSteps, index: customizationStep, extras: activeExtras, dbExtras,
+    steps: dynamicSteps, index: customizationStep, extras: activeExtras,
+    dbExtras: selectedProduct ? dbExtras.filter(e => e.active && extraAppliesToProduct(e, selectedProduct.id)) : [],
     note: productNote, onNote: setProductNote, onStep: setCustomizationStep,
     onOption: chooseExtra, onConfirm: handleConfirmAdd, onClose: closeCustomization,
   };
-  const drawerBlocked = Boolean(showApertura && drawer && (drawer.handoff || (drawer.active && drawer.active.cashier_id !== drawerActor) || drawer.rate === null));
+  const drawerBlocked = Boolean(showApertura && drawer && (drawer.handoff || (drawer.active && drawer.active.cashier_id !== drawerActor) || (!smoothies && drawer.rate === null)));
   const phoneNotice=<>{(phonePending||phoneError)&&<div role="alert" className="phone-order-notice"><div><strong>{phonePending?'Pedido sin confirmar':'Revisa el pedido'}</strong><span>{phoneError||'Comprueba si se guardó antes de volver a enviarlo.'}</span></div>{phonePending&&<button type="button" disabled={phoneBusy||isProcessingCheckout} onClick={()=>void handlePhoneRequest(true)}>Comprobar pedido</button>}{!phonePending&&<button type="button" onClick={()=>void fetchData()}>Revisar pedido</button>}</div>}{savedPhone&&<div role="status" className="phone-order-notice"><span>{phonePrintNotice||(savedPhone.status==='paid'?`Pedido #${savedPhone.folio} pagado`:savedPhone.status==='cancelled'?`Pedido #${savedPhone.folio} cancelado. Avisa a barra.`:`Pedido #${savedPhone.folio} guardado · Sin pagar`)}</span><button type="button" onClick={()=>{setSavedPhone(null);setShowPhoneOrders(true);}}>Ver pedidos</button><button type="button" aria-label="Cerrar aviso de pedido guardado" onClick={()=>setSavedPhone(null)}>×</button></div>}</>;
 
   return (
@@ -982,7 +1012,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
 
       {/* MODAL: APERTURA DE TURNO */}
       {drawerBlocked && drawer && <DrawerGate client={supabase} status={drawer} actor={drawerActor} isAdmin={isAdmin} reload={fetchData} logout={()=>void handleLogout()}/>}
-      {showApertura && !drawerBlocked && appearance==='workspace' && <WorkspaceOpening userName={userName} isAdmin={isAdmin} denominations={DENOMINATIONS} counts={breakdown} onCounts={setBreakdown}
+      {showApertura && !drawerBlocked && appearance==='workspace' && <WorkspaceOpening pesosOnly={smoothies} userName={userName} isAdmin={isAdmin} denominations={DENOMINATIONS} counts={breakdown} onCounts={setBreakdown}
         rate={exchangeRate} onRate={setExchangeRate} dollars={dollarsInBox} onDollars={setDollarsInBox} total={calculateTotalCash()} busy={openingShift}
         disabled={loading||!!loadError} onOpen={()=>void handleStartShift()} onLogout={()=>void handleLogout()} />}
       {showApertura && !drawerBlocked && appearance!=='workspace' && (
@@ -1001,7 +1031,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
               {appearance==='prototype'?<div className="flex flex-col gap-3">
                 {isAdmin&&<a href="/admin" className="text-white underline">Administrar sin abrir caja</a>}
                 <button onClick={()=>void handleLogout()} className="text-white border border-white/40">Cambiar usuario</button>
-              </div>:<div className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">Cariñito Mío</div>}
+              </div>:<div className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">{posProfile.brand}</div>}
             </div>
 
             <div className="flex-1 p-8 flex flex-col justify-between max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -1123,7 +1153,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
                 </div>
 
                 <div className="space-y-4">
-                   <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">1 USD = <span className="text-white">{exchangeRate} MXN</span></p>
+                   {!smoothies && <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">1 USD = <span className="text-white">{exchangeRate} MXN</span></p>}
                    <button onClick={handleLogout} disabled={savingExpense || isClosingShift} className="flex items-center gap-2 text-red-400 font-bold hover:text-red-300 transition-colors text-sm">
                      <LogOut size={18}/> Salir y dejar mi turno abierto
                    </button>
@@ -1195,7 +1225,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
 
                 {/* TOTALES */}
                 <div className="p-4 bg-[#f5f5f7] rounded-[24px] border border-slate-100 mb-5 mt-auto">
-                   <div className="flex justify-between items-center mb-3">
+                   {!smoothies && <div className="flex justify-between items-center mb-3">
                       <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dólares en caja</span>
                       <div className="relative w-32">
                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
@@ -1210,7 +1240,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
                           onChange={(e) => { setDollarsInBox(e.target.value === '' ? '' : Number(e.target.value)); setCountConfirmed(false); }}
                         />
                       </div>
-                   </div>
+                   </div>}
 
                    <div className="flex justify-between items-center border-t border-slate-200 pt-3">
                       <span className="text-[11px] font-black tracking-widest uppercase text-[#86868b]">Total contado</span>
@@ -1243,12 +1273,12 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
         favoriteProductIds={favoriteProductIds} favoritesError={favoritesError} favoritesLoading={favoritesLoading} onRetryFavorites={()=>{setFavoritesLoading(true);setFavoritesError('');setFavoritesAttempt(value=>value+1);}}
         recentTicketsContent={<RecentTickets key={drawerActor} onReprint={ticket=>void reprintHistoricalTicket(ticket)} disabled={isProcessingCheckout || isClosingShift}/>}
         userName={userName} isAdmin={isAdmin} disabled={loading||!!loadError||!!draftError||!!customerError||customerRestoring||!!checkoutReview||isClosingShift||isProcessingCheckout||phoneBusy||!!phonePending||!!phoneError}
-        {...(appearance === 'workspace' ? { catalogLoading: loading } : {})}
+        {...(appearance === 'workspace' ? { catalogLoading: loading, weeklySpecialId, smoothies } : {})}
         onProduct={handleMenuCardClick} onEdit={handleEditItem} onQuantity={changeQuantity} onRemove={removeItem} onClear={handleClearOrder} onCheckout={handleOpenCheckout} onCloseShift={()=>void handleOpenCierre()}
         onHandoff={()=>void handleOpenCierre('handoff')}
         customerSearchError={customerSearchError} customerSearching={customerSearching} onRetryCustomerSearch={()=>void handleCustomerSearchInput(customerSearch)} customer={activeCustomer} customerSearch={customerSearch} onCustomerSearch={handleCustomerSearchInput} suggestions={customerSuggestions} onCustomer={selectCustomer}
         onNewCustomer={handleOpenCustomerModal} onRemoveCustomer={()=>{setCustomerId(null);setActiveCustomer(null);setCustomerRestoring(false);setCustomerError(null);}}
-        orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} pagerNumber={pagerNumber} onPagerNumber={setPagerNumber} phoneOrder={phoneOrder} onPhoneOrder={()=>{setPhoneOrder(true);if(items.length)setShowPhoneContact(true);}} onPhoneOrders={()=>setShowPhoneOrders(true)} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
+        orderType={orderType} onOrderType={setOrderType} orderNote={orderNote} onOrderNote={setOrderNote} pagerNumber={pagerNumber} onPagerNumber={smoothies?undefined:setPagerNumber} phoneOrder={phoneOrder} onPhoneOrder={()=>{setPhoneOrder(true);if(items.length)setShowPhoneContact(true);}} onPhoneOrders={smoothies?undefined:()=>setShowPhoneOrders(true)} onReprint={ticket=>void reprintHistoricalTicket(ticket)} notices={<>
         {phoneNotice}
         {catalogNotice}
         {!showPostSaleModal && printStatus}
@@ -1365,11 +1395,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
         )}
         <header className="mb-8 flex justify-between items-center">
           <div>
-            <Image unoptimized width={512} height={512}
-              src="https://actv.mx/wp-content/uploads/2026/05/Logo-Carinito-Mio.jpg"
-              alt="Cariñito Mío"
-              className="h-16 w-auto object-contain rounded-xl shadow-sm"
-            />
+            <Image src="/receipt-branding/carinito-logo-v1.jpg" width={40} height={40} unoptimized alt={posProfile.brand} className="h-10 w-10 rounded-full object-cover" />
           </div>
 
           <div className="flex items-center gap-4">
@@ -1544,11 +1570,13 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
 
       </>}
       {showCheckoutModal&&(appearance!=='owner'||selectedPhoneOrder)&&<PaymentView total={checkoutTotal} method={paymentMethod} mxn={amountReceivedMXN} usd={amountReceivedUSD} exchangeRate={parseAmount(exchangeRate)}
-        pagerNumber={selectedPhoneOrder?null:pagerNumber} onPagerNumber={selectedPhoneOrder?undefined:setPagerNumber} clipEnabled={clipEnabled} phoneOrderLabel={selectedPhoneOrder?`Pedido por teléfono #${selectedPhoneOrder.folio} · ${selectedPhoneOrder.contact_name}`:undefined}
+        pagerNumber={selectedPhoneOrder?null:pagerNumber} onPagerNumber={selectedPhoneOrder||smoothies?undefined:setPagerNumber} smoothies={smoothies} clipEnabled={clipEnabled} phoneOrderLabel={selectedPhoneOrder?`Pedido por teléfono #${selectedPhoneOrder.folio} · ${selectedPhoneOrder.contact_name}`:undefined}
         orderType={selectedPhoneOrder?.snapshot.order_type??orderType} note={selectedPhoneOrder?.snapshot.order_note??orderNote} busy={isProcessingCheckout} insufficient={isPaymentInsufficient} onMethod={method=>{if(method===paymentMethod)return;setPaymentMethod(method);setAmountReceivedMXN('');setAmountReceivedUSD('');}}
         onMXN={setAmountReceivedMXN} onUSD={setAmountReceivedUSD} onOrderType={selectedPhoneOrder?()=>{}:setOrderType} onNote={selectedPhoneOrder?()=>{}:setOrderNote} onConfirm={()=>void processCheckout()} onClose={()=>{setShowCheckoutModal(false);setSelectedPhoneOrder(null);}}/>}
       {(selectedFamily || (appearance === 'workspace' && selectedProduct)) && <WorkspaceCustomization
         {...customizationProps} product={selectedProduct} family={selectedFamily} onVariant={handleVariant}
+        smoothies={smoothies && !editingItemId && selectedProduct && isSmoothie(selectedProduct) ? cards.filter(isSmoothie) : undefined}
+        onSmoothie={id => { const card = cards.find(product => product.id === id && isSmoothie(product)); if (card) handleMenuCardClick(card); }}
         quantity={editingItemId ? editingQuantity : undefined} onQuantity={setEditingQuantity}
         onRemove={editingItemId ? () => { removeItem(editingItemId); closeCustomization(); } : undefined} />}
       {!selectedFamily && selectedProduct && appearance === 'prototype' && <PrototypeCustomization
@@ -1676,8 +1704,9 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
         </div>
       )}
 
-      {showPostSaleModal && appearance==='workspace' && <WorkspaceDialog title="Venta guardada" onClose={handleNextOrder} className="workspace-sale">
-        <div className="workspace-dialog-content"><p className="workspace-caption">Folio #{savedSale?.ticket_number ?? lastOrderId}</p><p className="workspace-sale-total">${(savedSale?.total ?? getTotal()).toFixed(2)} MXN</p>
+      {showPostSaleModal && appearance==='workspace' && <WorkspaceDialog title="Venta guardada" onClose={handleNextOrder} className={`workspace-sale${smoothies ? ' smoothie-sale' : ''}`}>
+        <div className="workspace-dialog-content"><p className="workspace-caption">{smoothies?'Pedido':'Folio'} #{savedSale?.ticket_number ?? lastOrderId}</p><p className="workspace-sale-total">${(savedSale?.total ?? getTotal()).toFixed(2)} MXN</p>
+          {smoothies && savedSale && ['efectivo','mixto'].includes(savedSale.payment_method) && <p>Cambio: ${Number(savedSale.change_mxn).toFixed(2)} MXN</p>}
           {savedSale?.pager_number != null && <p className="font-bold">Entregar control #{savedSale.pager_number}</p>}
           <p>Consulta el estado en Impresión.</p>
           {printStatus}
@@ -1705,7 +1734,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
              </button>
 
              <div className="mt-8">
-               <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-[0.2em]">Cariñito Mío</span>
+               <span className="text-[10px] font-bold text-[#86868b] uppercase tracking-[0.2em]">{posProfile.brand}</span>
              </div>
           </div>
         </div>
@@ -1754,7 +1783,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false}:{appe
                     const stepConfig = dynamicSteps[customizationStep];
                     const matchesOption = (extra: CartExtra) => extra.name === optName && (!extra.phase || extra.phase === stepConfig.id);
                     const sel = activeExtras.some(matchesOption);
-                    const dbExtra = dbExtras.find(e => e.phase === dynamicSteps[customizationStep].id && e.name.toLowerCase() === optName.toLowerCase());
+                    const dbExtra = dbExtras.find(e => e.phase === dynamicSteps[customizationStep].id && e.name.toLowerCase() === optName.toLowerCase() && e.active && extraAppliesToProduct(e, selectedProduct.id));
                     const extraPrice = dbExtra ? Number(dbExtra.price) : 0;
 
                     return (

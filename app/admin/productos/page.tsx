@@ -1,4 +1,5 @@
 'use client';
+import { posProfile } from '@/lib/pos-profile';
 
 import ProductPhoto from '@/components/ProductPhoto';
 
@@ -10,7 +11,10 @@ import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
 import LoadFailure from '@/app/LoadFailure';
 import { PlusCircle, Trash2, Loader2 } from 'lucide-react';
-import CatalogEditor from './CatalogEditor';
+import CatalogEditor, { type CatalogForm } from './CatalogEditor';
+import SmoothiesImport from './SmoothiesImport';
+import WeeklySpecial from './WeeklySpecial';
+import OpeningCount from './OpeningCount';
 
 async function uploadCatalogPhoto(file: File, extension: string) {
   const bucket = supabase.storage.from('catalog-photos');
@@ -31,10 +35,12 @@ export default function ProductosPage() {
   const [groupFilter, setGroupFilter] = useState('');
   const [status,setStatus]=useState<'active'|'inactive'>('active');
   const [editingRevision,setEditingRevision]=useState<number|null>(null);
+  const [importRevision, setImportRevision] = useState(0);
   
   const [editingId, setEditingId] = useState<string | number | null>(null);
 
-  const initialFormState = { name: '', price: '', category: 'Bebidas', phase: 'Tamaño', customizable: true, image_url: '', wizard_steps: [] as string[] };
+  const smoothies = posProfile.id === 'smoothies';
+  const initialFormState: CatalogForm = { name: '', price: '', category: smoothies ? 'Smoothies' : 'Bebidas', phase: smoothies ? 'Extras' : 'Tamaño', customizable: !smoothies, image_url: '', wizard_steps: [], productIds: [] };
   const [formData, setFormData] = useState(initialFormState);
 
   const loadCatalog = useCallback(async (signal: AbortSignal) => {
@@ -67,7 +73,10 @@ export default function ProductosPage() {
       phase: 'phase' in item ? item.phase : 'Tamaño',
       customizable: 'customizable' in item && item.customizable === true,
       image_url: 'image_url' in item ? item.image_url || '' : '',
-      wizard_steps: 'wizard_steps' in item ? item.wizard_steps || [] : []
+      wizard_steps: 'wizard_steps' in item ? item.wizard_steps || [] : [],
+      productIds: 'phase' in item ? item.applicable_product_ids ?? products
+        .filter(product => product.customizable && product.wizard_steps?.includes(item.phase))
+        .map(product => product.id) : [],
     });
     setMessage('');
     setShowForm(true);
@@ -99,13 +108,15 @@ export default function ProductosPage() {
     e.preventDefault();
     if (saving.current || pending) return;
     const price = Number(formData.price);
-    if (!formData.name.trim() || !formData.price.trim() || !Number.isFinite(price) || price < 0 || price > 1000000 || Math.round(price * 100) / 100 !== price) {
-      setMessage('Revisa nombre y precio. Usa hasta dos decimales.'); return;
+    const minimum = smoothies && activeTab === 'items' ? 0.01 : 0;
+    if (!formData.name.trim() || !formData.price.trim() || !Number.isFinite(price) || price < minimum || price > 1000000 || Math.round(price * 100) / 100 !== price) {
+      setMessage(minimum ? 'Escribe un nombre y un precio mayor a cero, con hasta dos decimales.' : 'Revisa nombre y precio. Usa hasta dos decimales.'); return;
     }
     await commitChange({ kind: activeTab === 'items' ? 'product' : 'extra', action: 'save', id: editingId ? String(editingId) : null,...(editingId?{revision:editingRevision??0}:{}),
       fields: activeTab === 'items' ? { name: formData.name.trim(), price, category: formData.category.trim(), customizable: formData.customizable,
         image_url: formData.image_url.trim(), wizard_steps: formData.customizable ? formData.wizard_steps : [] }
-        : { name: formData.name.trim(), price, phase: formData.phase.trim() } });
+        : { name: formData.name.trim(), price, phase: formData.phase.trim(),
+          ...(smoothies ? { applicable_product_ids: formData.productIds ?? [] } : {}) } });
   };
   const deactivate = async (id: string, kind: CatalogChange['kind']) => {
     if (saving.current || pending) return;
@@ -115,10 +126,10 @@ export default function ProductosPage() {
   const reactivate=async(item:ProductRow|ExtraRow,kind:CatalogChange['kind'])=>{if(!saving.current&&!pending)await commitChange({kind,action:'reactivate',id:item.id,revision:item.catalog_revision??0});};
 
   // Las opciones habituales también se muestran cuando todavía no hay productos.
-  const defaultCategories = ['Bebidas', 'Postres', 'Varios'];
+  const defaultCategories = smoothies ? ['Smoothies', 'Varios'] : ['Bebidas', 'Postres', 'Varios'];
   const uniqueCategories = Array.from(new Set([...defaultCategories, ...products.map(p => p.category).filter((c): c is string => Boolean(c))]));
 
-  const defaultPhases = ['Tamaño', 'Tipo de Leche', 'Endulzante', 'Sabor'];
+  const defaultPhases = smoothies ? ['Extras', 'Leche alternativa'] : ['Tamaño', 'Tipo de Leche', 'Endulzante', 'Sabor'];
   const uniquePhases = Array.from(new Set([...defaultPhases, ...extras.map(e => e.phase)]));
 
   const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
@@ -136,6 +147,14 @@ export default function ProductosPage() {
   if (loading && !actor) return <Loader2 aria-label="Cargando catálogo" className="animate-spin text-blue-600 mx-auto mt-20" />;
 
   return <div className="workspace-catalog-admin">
+    {posProfile.id === 'smoothies' &&
+      <WeeklySpecial products={products} disabled={busy || pending || showForm} />}
+    {posProfile.id === 'smoothies' && <SmoothiesImport disabled={busy || pending || showForm} onImported={() => {
+      announceCatalogChange();
+      setImportRevision(revision => revision + 1);
+      fetchData();
+    }}/>}
+    {smoothies && <OpeningCount importRevision={importRevision} />}
     {!showForm && message && <p role="status" className="admin-form-message">{message}</p>}
     {pending && <div role="alert" className="admin-recovery"><p>Hay cambios sin confirmar. Comprueba el guardado antes de continuar.</p><button type="button" disabled={busy} onClick={() => void commitChange()}>{busy ? 'Confirmando…' : 'Comprobar guardado'}</button></div>}
     <fieldset disabled={busy || pending} className="catalog-workspace">
@@ -151,11 +170,15 @@ export default function ProductosPage() {
       <div className="catalog-list" aria-label={activeTab === 'items' ? 'Productos del catálogo' : 'Extras del catálogo'}>
         {activeTab === 'items' ? filteredProducts.map(p => <div key={p.id} className="catalog-row">
           <div className="catalog-item">{p.image_url && <ProductPhoto product={p} width={44} height={44} illustrativeFallback={false} className="catalog-product-photo"/>}<div className="catalog-copy"><h2>{p.name}</h2><p>{p.category || 'Otros'}{p.customizable && !!p.wizard_steps?.length && ` · ${p.wizard_steps.join(' · ')}`}</p></div></div>
-          <strong className="catalog-price">${Number(p.price).toFixed(2)}</strong><div className="catalog-actions">{p.is_active===false?<button type="button" className="admin-secondary-button" aria-label={`Reactivar ${p.name}`} onClick={()=>void reactivate(p,'product')}>Reactivar</button>:<><button type="button" className="admin-secondary-button" aria-label={`Editar ${p.name}`} title={`Editar ${p.name}`} onClick={() => handleEdit(p, 'items')}>Editar</button><button type="button" className="admin-icon-button admin-danger-icon" aria-label={`Desactivar ${p.name}`} title={`Desactivar ${p.name}`} onClick={() => void deactivate(p.id, 'product')}><Trash2 size={19}/></button></>}</div>
+          <strong className="catalog-price">${Number(p.price).toFixed(2)}</strong><div className="catalog-actions">
+            {(smoothies || p.is_active !== false) && <button type="button" className="admin-secondary-button" aria-label={`Editar ${p.name}`} title={`Editar ${p.name}`} onClick={() => handleEdit(p, 'items')}>Editar</button>}
+            {p.is_active===false ? <button type="button" className="admin-secondary-button" aria-label={`Reactivar ${p.name}`} onClick={()=>void reactivate(p,'product')}>Reactivar</button>
+              : <button type="button" className="admin-icon-button admin-danger-icon" aria-label={`Desactivar ${p.name}`} title={`Desactivar ${p.name}`} onClick={() => void deactivate(p.id, 'product')}><Trash2 size={19}/></button>}
+          </div>
         </div>) : filteredExtras.map(e => <div key={e.id} className="catalog-row"><div className="catalog-copy"><h2>{e.name}</h2><p>{e.phase}</p></div><strong className="catalog-price">+ ${Number(e.price).toFixed(2)}</strong><div className="catalog-actions">{e.active===false?<button type="button" className="admin-secondary-button" aria-label={`Reactivar ${e.name}`} onClick={()=>void reactivate(e,'extra')}>Reactivar</button>:<><button type="button" className="admin-secondary-button" aria-label={`Editar ${e.name}`} title={`Editar ${e.name}`} onClick={() => handleEdit(e, 'extras')}>Editar</button><button type="button" className="admin-icon-button admin-danger-icon" aria-label={`Desactivar ${e.name}`} title={`Desactivar ${e.name}`} onClick={() => void deactivate(e.id, 'extra')}><Trash2 size={19}/></button></>}</div></div>)}
         {!shown && <p className="catalog-empty">{total ? 'No hay resultados con esta búsqueda y filtro.' : `No hay ${activeTab === 'items' ? 'productos' : 'extras'} ${status==='active'?'activos':'inactivos'}.`}</p>}
       </div>
     </fieldset>
-    {showForm && <CatalogEditor type={activeTab} editing={editingId !== null} values={formData} onChange={setFormData} categories={uniqueCategories} phases={uniquePhases} busy={busy} pending={pending} message={message} onUploadPhoto={uploadCatalogPhoto} onSubmit={handleSave} onClose={closeForm}/>}
+    {showForm && <CatalogEditor assignmentProducts={smoothies ? products : undefined} minimumPrice={smoothies && activeTab === 'items' ? 0.01 : 0} type={activeTab} editing={editingId !== null} values={formData} onChange={setFormData} categories={uniqueCategories} phases={uniquePhases} busy={busy} pending={pending} message={message} onUploadPhoto={uploadCatalogPhoto} onSubmit={handleSave} onClose={closeForm}/>}
   </div>;
 }

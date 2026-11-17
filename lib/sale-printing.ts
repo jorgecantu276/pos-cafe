@@ -1,4 +1,5 @@
 import type { SavedOrder } from './checkout';
+import { posProfile } from './pos-profile';
 import receiptBranding from '../config/receipt-branding.json';
 
 export type PrintAudience = 'customer' | 'barista' | 'desserts';
@@ -39,7 +40,8 @@ export function printDocumentProfile(audience: PrintAudience, document: SalePrin
 // Print documents come from the immutable, server-confirmed sale. No catalog lookups.
 const text = (value: unknown) => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
 const money = (value: number) => `$${value.toFixed(2)} MXN`;
-export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): SalePrintDocuments {
+export function customerSaleDocument(order: SavedOrder, options: ReceiptOptions = {},
+  profile: { id: string; title: string; ticketPrefix: string } = posProfile): SalePrintDocument {
   if (order.status !== 'completed' || !order.id || !order.items?.length
     || !Number.isFinite(order.total) || order.total <= 0 || !Number.isFinite(Date.parse(order.created_at))
     || order.items.some(i => !Number.isInteger(i.quantity) || i.quantity < 1 || i.quantity > 1000
@@ -51,9 +53,13 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
   if (issuer && !issuerComplete) throw new Error('Revisa nombre fiscal, RFC, régimen y domicilio del emisor.');
   const receipt: string[] = [], receiptStyles: PrintLineStyle[] = [];
   const add = (line: string, style: PrintLineStyle = 'mono') => { receipt.push(line); receiptStyles.push(style); };
-  add('CARIÑITO MÍO', 'logo');
-  add('', 'separator');
-  add('Teléfono: +52 868 305 4668', 'phone');
+  if (profile.id === 'cafe') {
+    add('CARIÑITO MÍO', 'logo');
+    add('', 'separator');
+    add('Teléfono: +52 868 305 4668', 'phone');
+  } else {
+    add(profile.title.toUpperCase(), 'brand');
+  }
   add('', 'separator');
   add('TICKET DE VENTA', 'receipt-heading');
   if (options.testOnly) add('PRUEBA DE IMPRESIÓN · NO ES UNA VENTA', 'heading');
@@ -99,12 +105,18 @@ export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): 
     add('Régimen: [RÉGIMEN FISCAL]', 'issuer'); add('[DOMICILIO DEL ESTABLECIMIENTO]', 'issuer');
     add('[MUNICIPIO, ESTADO · C.P.]', 'issuer');
   }
-  add(receiptBranding.qrUrl, 'qr'); add('MENÚ E INSTAGRAM', 'meta');
-  add('', 'separator');
-  add('Para el postre y una sonrisa,', 'quote'); add('siempre hay espacio.', 'quote');
-  add('@_carinitomio', 'social');
-  return { customer: { title: `CM #${ticket} CLIENTE`, sections: [receipt], styles: [receiptStyles], receiptBranding, issuerComplete, testOnly: options.testOnly === true },
-    ...preparationDocuments(order,ticket) };
+  if (profile.id === 'cafe') {
+    add(receiptBranding.qrUrl, 'qr'); add('MENÚ E INSTAGRAM', 'meta');
+    add('', 'separator');
+    add('Para el postre y una sonrisa,', 'quote'); add('siempre hay espacio.', 'quote');
+    add('@_carinitomio', 'social');
+  }
+  return { title: `${profile.ticketPrefix} #${ticket} CLIENTE`, sections: [receipt], styles: [receiptStyles], ...(profile.id === 'cafe' ? { receiptBranding } : {}), issuerComplete, testOnly: options.testOnly === true };
+}
+
+export function saleDocuments(order: SavedOrder, options: ReceiptOptions = {}): SalePrintDocuments {
+  const customer = customerSaleDocument(order, options);
+  return { customer, ...preparationDocuments(order, text(order.ticket_number).padStart(4, '0')) };
 }
 
 const dessert = (item: SavedOrder['items'][number]) => text(item.product.category).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === 'postres';
@@ -130,7 +142,7 @@ function dessertDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_n
   const folio=phone?`TEL. ${ticket} · SIN PAGAR`:order.pager_number!=null?`CONTROL ${order.pager_number} · #${ticket}`:`#${ticket}`;
   const service=text(order.order_type),date=new Date(order.created_at);
   add(`${folio} · POSTRES · ${service}`,'footer');
-  return {title:`CM #${ticket} POSTRES`,sections:[lines],styles:[styles],labelLayout:'desserts-compact-v1',
+  return {title:`${posProfile.ticketPrefix} #${ticket} POSTRES`,sections:[lines],styles:[styles],labelLayout:'desserts-compact-v1',
     referenceLabels:[{folio:phone?ticket:folio,cup:phone?'SIN PAGAR':'ORDEN',service,
       date:date.toLocaleDateString('es-MX',{timeZone:'America/Matamoros',day:'2-digit',month:'2-digit',year:'2-digit'}),
       time:date.toLocaleTimeString('en-US',{timeZone:'America/Matamoros',hour:'2-digit',minute:'2-digit',hour12:true})}],
@@ -140,7 +152,7 @@ function dessertDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_n
 function preparationDocument(order: Pick<SavedOrder,'items'|'customer_name'|'order_note'|'order_type'|'created_at'|'pager_number'>,ticket:string,phone=false):SalePrintDocument {
   const units = order.items.reduce((sum, i) => sum + i.quantity, 0);
   if (units > 2000) return {
-    title: `CM #${ticket} BARRA`,
+    title: `${posProfile.ticketPrefix} #${ticket} BARRA`,
     sections: [],
     blockedReason: 'La orden requiere revisión por su cantidad de etiquetas. Usa el ticket para revisar la preparación.',
     ...(phone ? { kind: 'phone' as const } : {}),
@@ -165,7 +177,7 @@ function preparationDocument(order: Pick<SavedOrder,'items'|'customer_name'|'ord
     baristaStyles.push(styles);
     return lines;
   }));
-  return { title: `CM #${ticket} BARRA`, sections, styles: baristaStyles, labelLayout:'reference-v2',referenceLabels,...(phone?{kind:'phone' as const}:{}) };
+  return { title: `${posProfile.ticketPrefix} #${ticket} BARRA`, sections, styles: baristaStyles, labelLayout:'reference-v2',referenceLabels,...(phone?{kind:'phone' as const}:{}) };
 }
 
 export interface PhonePreparation {
@@ -179,7 +191,7 @@ export function phoneOrderDocuments(order:PhonePreparation):SalePrintDocuments {
     throw new Error('El pedido por teléfono no tiene una comanda completa.');
   const lines:string[]=[],styles:PrintLineStyle[]=[];
   const add=(line:string,style:PrintLineStyle='mono')=>{lines.push(line);styles.push(style);};
-  add('CARIÑITO MÍO','logo');add('','separator');add('PEDIDO POR TELÉFONO','receipt-heading');
+  add(posProfile.id === 'cafe' ? 'CARIÑITO MÍO' : posProfile.title.toUpperCase(), posProfile.id === 'cafe' ? 'logo' : 'brand');add('','separator');add('PEDIDO POR TELÉFONO','receipt-heading');
   add('PENDIENTE DE PAGO','receipt-heading');add('PAGA AL RECOGER','heading');
   add(`Pedido: ${ticket}`);add(new Date(snapshot.created_at).toLocaleString('es-MX',{timeZone:'America/Matamoros'}),'meta');
   add(`Cliente: ${text(order.contact_name)}`);add(`Teléfono: ${text(order.contact_phone)}`);add(text(snapshot.order_type),'heading');add('','separator');
@@ -191,7 +203,7 @@ export function phoneOrderDocuments(order:PhonePreparation):SalePrintDocuments {
   if(snapshot.order_note)add(`Nota: ${text(snapshot.order_note)}`);
   add('','separator');add(`POR COBRAR: ${money(snapshot.total)}`,'receipt-total');
   add('Este documento no acredita el pago.','meta');
-  return {customer:{kind:'phone',title:`CM ${ticket} POR COBRAR`,sections:[lines],styles:[styles],receiptBranding},
+  return {customer:{kind:'phone',title:`${posProfile.ticketPrefix} ${ticket} POR COBRAR`,sections:[lines],styles:[styles],...(posProfile.id === 'cafe' ? { receiptBranding } : {})},
     ...preparationDocuments({...snapshot,customer_name:order.contact_name,pager_number:null},ticket,true)};
 }
 

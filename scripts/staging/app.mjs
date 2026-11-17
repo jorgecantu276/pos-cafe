@@ -5,8 +5,8 @@ import path from 'node:path';
 import { createServer } from 'node:net';
 import { root, work, run } from './runtime.mjs';
 
-export async function startApp(config, { port = 3101, recoveryProbe = null, cashierFixture = null, printing = null } = {}) {
-  if (![3101, 3111, 3112].includes(port)) throw new Error('Only dedicated local preview/recovery ports are allowed');
+export async function startApp(config, { port = 3101, recoveryProbe = null, cashierFixture = null, printing = null, smoothies = false, backups = null } = {}) {
+  if (smoothies ? port !== 3180 : ![3101, 3111, 3112].includes(port)) throw new Error('Only dedicated local preview/recovery ports are allowed');
   await new Promise((resolve, reject) => {
     const probe = createServer();
     probe.once('error', () => reject(new Error(`Port ${port} is occupied; stop that local preview before testing`)));
@@ -35,18 +35,22 @@ export function GET() { return Response.json({release:${JSON.stringify(recoveryP
   }
   const require = createRequire(import.meta.url);
   const next = require.resolve('next/dist/bin/next');
-  const env = { ...process.env, NODE_ENV: 'production', NEXT_PUBLIC_SUPABASE_URL: config.api,
+  const env = { ...process.env, NEXT_PUBLIC_POS_PROFILE: (smoothies ? 'smoothies' : 'cafe'), NODE_ENV: 'production', NEXT_PUBLIC_SUPABASE_URL: config.api,
     POS_CLIP_ENABLED: '0', POS_CLIP_TOKEN: '', POS_CLIP_SERIAL: '', POS_CLIP_WEBHOOK_URL: '',
     POS_PRINT_MODE: printing ? 'mock' : 'disabled', POS_PRINT_DATA_DIR: printing?.directory || '', POS_PRINT_MOCK_FAULTS: printing?.faults || '',
     POS_RECEIPT_ISSUER_FILE: printing?.issuer || '',
     NEXT_PUBLIC_SUPABASE_ANON_KEY: config.anon, SUPABASE_SERVICE_ROLE_KEY: config.service };
+  const launcher = path.join(app, 'scripts/smoothies/start-local.mjs');
+  if (smoothies) Object.assign(env, { SMOOTHIES_API_URL: config.api, SMOOTHIES_ANON_KEY: config.anon,
+    SMOOTHIES_SERVICE_KEY: config.service, SMOOTHIES_PRINT_DIR: path.join(app, '.print-data'),
+    SMOOTHIES_BACKUP_DIR: backups?.directory || '', SMOOTHIES_BACKUP_KEY_FILE: backups?.keyFile || '' });
   console.log('Building an isolated production app against local Supabase…');
-  await run(process.execPath, [next, 'build', '--webpack'], { cwd: app, env });
+  await run(process.execPath, smoothies ? [launcher, 'build'] : [next, 'build', '--webpack'], { cwd: app, env });
   let child;
   let logs = '';
   const collect = data => { logs = (logs + data).slice(-20_000); };
   function launch() {
-    child = spawn(process.execPath, [next, 'start', '--hostname', '127.0.0.1', '--port', String(port)], {
+    child = spawn(process.execPath, smoothies ? [launcher, 'start'] : [next, 'start', '--hostname', '127.0.0.1', '--port', String(port)], {
       cwd: app, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env,
     });
     child.stdout.on('data', collect); child.stderr.on('data', collect);

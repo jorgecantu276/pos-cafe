@@ -76,53 +76,74 @@ async function novemberMatchaCases({ db, staff, payload, matcha16, matcha20, ice
     ($1,'Cold foam',15,'Cold foam',true),($2,'Fresa extra',15,'Fruta extra',true),($3,'Lala 100',15,'Tipo de Leche',true)`, [foam, fruit, standardLala]);
   const otherFruitDrink = randomUUID();
   await db.query("insert into products(id,name,price,category,is_active,customizable,wizard_steps) values($1,'Bebida de prueba con fruta',100,'Bebidas',true,true,array['Fruta extra'])", [otherFruitDrink]);
+  const chai = randomUUID();
+  await db.query("insert into products(id,name,price,category,is_active,customizable,wizard_steps) values($1,'Te chai frio',95,'Bebidas',true,true,array['Tipo de Leche','Cold foam','Tamaño','Leche alternativa'])", [chai]);
   const beforeRequest = randomUUID();
   const oldOrder = (await staff.query('select pos_checkout($1,$2) result', [beforeRequest, payload(matcha16, [alternativeLala, fruit], 135)])).rows[0].result;
-  const updateSql = await readFile(new URL('./november-matcha-extras.sql', import.meta.url), 'utf8');
+  const releasedSql = await readFile(new URL('./november-matcha-extras.sql', import.meta.url), 'utf8');
+  await assert.rejects(db.query(releasedSql), /Otro producto usa Leche alternativa o Cold foam/);
+  await db.query('rollback');
+  const updateSql = await readFile(new URL('./isolated-matcha-extras.sql', import.meta.url), 'utf8');
   await db.query('update extras set price=20 where id=$1', [foam]);
-  await assert.rejects(db.query(updateSql), /Revisa el grupo Cold foam/);
+  await assert.rejects(db.query(updateSql), /Revisa las opciones activas/);
   await db.query('rollback');
   assert.equal((await db.query('select price from extras where id=$1', [alternativeLala])).rows[0].price, '15.00');
   await db.query('update extras set price=15 where id=$1', [foam]);
 
   const catalog = async () => ({
-    products: (await db.query('select id, name, price, wizard_steps, catalog_revision from products where id=any($1::uuid[]) order by id', [[...ids, iced, otherFruitDrink]])).rows,
-    extras: (await db.query('select id, name, price, phase, active, catalog_revision from extras where id=any($1::uuid[]) order by id', [[foam, fruit, standardLala, alternativeLala]])).rows,
+    products: (await db.query('select id, name, price, wizard_steps, catalog_revision from products where id=any($1::uuid[]) order by id', [[...ids, iced, otherFruitDrink, chai]])).rows,
+    extras: (await db.query('select id, name, price, phase, active, orden_opcion, catalog_revision from extras where phase=any($1::text[]) order by id',
+      [['Leche alternativa', 'Cold foam', 'Tipo de Leche', 'Fruta extra', 'Leche alternativa Matcha', 'Cold foam Matcha']])).rows,
   });
   const before = await catalog();
   await db.query(updateSql);
   const after = await catalog();
-  await db.query(updateSql);
-  assert.deepEqual(await catalog(), after, 'already applied catalog produces no new revisions');
+  await assert.rejects(db.query(updateSql), /Ya existen grupos de Matcha/);
+  await db.query('rollback');
+  assert.deepEqual(await catalog(), after, 'a retry leaves the catalog alone');
   for (const previous of before.products) {
     if (!ids.includes(previous.id)) {
       assert.deepEqual(after.products.find(row => row.id === previous.id), previous);
       continue;
     }
-    const wizard_steps = previous.wizard_steps.includes('Cold foam')
+    const wizard_steps = (previous.wizard_steps.includes('Cold foam')
       ? previous.wizard_steps.filter(step => step !== 'Fruta extra')
-      : previous.wizard_steps.map(step => step === 'Fruta extra' ? 'Cold foam' : step);
+      : previous.wizard_steps.map(step => step === 'Fruta extra' ? 'Cold foam' : step))
+      .map(step => `${step} Matcha`);
     assert.deepEqual(after.products.find(row => row.id === previous.id), {
       ...previous, wizard_steps, catalog_revision: String(Number(previous.catalog_revision) + 1),
     });
   }
   for (const previous of before.extras) {
-    const expected = previous.id === foam ? { name: 'Cold foam extra' } : previous.id === alternativeLala ? { price: '0.00' } : null;
-    assert.deepEqual(after.extras.find(row => row.id === previous.id), expected
-      ? { ...previous, ...expected, catalog_revision: String(Number(previous.catalog_revision) + 1) } : previous);
+    assert.deepEqual(after.extras.find(row => row.id === previous.id), previous);
+    if (previous.phase === 'Leche alternativa' && previous.active) {
+      const copied = after.extras.find(row => row.phase === 'Leche alternativa Matcha' && row.name === previous.name);
+      assert.equal(copied.price, previous.id === alternativeLala ? '0.00' : previous.price);
+      assert.equal(copied.orden_opcion, previous.orden_opcion);
+      assert.equal(copied.active, true);
+    }
   }
 
+  const matchaMilks = after.extras.filter(row => row.phase === 'Leche alternativa Matcha');
+  const matchaLala = matchaMilks.find(row => row.name === 'Lala 100');
+  const matchaFoam = after.extras.find(row => row.phase === 'Cold foam Matcha');
+  assert.equal(matchaFoam.name, 'Cold foam extra');
+  assert.equal(matchaFoam.price, '15.00');
   for (const fn of ['cafe_private.clip_quote', 'cafe_private.phone_catalog_quote', 'pos_checkout']) {
     const client = fn === 'pos_checkout' ? staff : db;
-    const result = (await client.query(`select ${fn}($1,$2) result`, [randomUUID(), payload(matcha16, [alternativeLala, foam], 120)])).rows[0].result;
+    const result = (await client.query(`select ${fn}($1,$2) result`, [randomUUID(), payload(matcha16, [matchaLala.id, matchaFoam.id], 120)])).rows[0].result;
     assert.equal(Number(result.total), 120);
     assert.deepEqual(result.items[0].product.displayExtras.map(extra => [extra.name, Number(extra.price)]), [['Lala 100', 0], ['Cold foam extra', 15]]);
     await assert.rejects(client.query(`select ${fn}($1,$2)`, [randomUUID(), payload(matcha16, [fruit], 120)]), /Extra no permitido/);
+    await assert.rejects(client.query(`select ${fn}($1,$2)`, [randomUUID(), payload(matcha16, [matchaLala.id, matchaMilks.find(milk => milk.id !== matchaLala.id).id], 105)]), /una opción por fase/);
+    await assert.rejects(client.query(`select ${fn}($1,$2)`, [randomUUID(), payload(chai, [matchaLala.id], 95)]), /Extra no permitido/);
   }
+  const chaiSale = (await staff.query('select pos_checkout($1,$2) result', [randomUUID(), payload(chai, [alternativeLala, foam], 125)])).rows[0].result;
+  assert.deepEqual(chaiSale.items[0].product.displayExtras.map(extra => [extra.name, Number(extra.price)]), [['Lala 100', 15], ['Cold foam', 15]]);
   const regular = (await staff.query('select pos_checkout($1,$2) result', [randomUUID(), payload(iced, [standardLala], 110)])).rows[0].result;
   assert.equal(Number(regular.total), 110);
   assert.deepEqual((await staff.query('select pos_checkout($1,$2) result', [beforeRequest, payload(matcha16, [alternativeLala, fruit], 135)])).rows[0].result, oldOrder);
-  const checks = 27;
-  console.log(`PASS ${checks} November Matcha checks: seven variants, scoped prices, all checkout paths, durable replay and idempotency`);
+  const checks = 46;
+  console.log(`PASS ${checks} November Matcha checks: seven variants, shared chai extras, one milk per Matcha, all checkout paths, durable replay and safe retry`);
   return checks;
 }

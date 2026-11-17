@@ -1,4 +1,5 @@
 'use client';
+import { posProfile } from '@/lib/pos-profile';
 
 import { useCallback, useEffect, useState } from 'react';
 import type { BackupStatus } from '@/lib/business-backup-server';
@@ -37,6 +38,8 @@ export default function BackupsPage() {
         {status.enabled && <div className="settings-editor"><div><button type="button" className="is-primary" disabled={busy || status.running} onClick={() => void run()}>Crear respaldo</button></div></div>}
         <details className="settings-details"><summary>Información del respaldo</summary><div>
           <p>Las copias están cifradas. Guarda la clave de recuperación por separado.</p>
+          {posProfile.id === 'smoothies' &&
+            <p>La copia incluye los datos del POS, las fotos subidas al catálogo y el registro local de impresión.</p>}
           {status.lastSuccess && <p>Tamaño: {(status.lastSuccess.bytes / 1024 / 1024).toFixed(2)} MB</p>}
           {status.lastAttemptAt && <p>Último intento: {date(status.lastAttemptAt)}</p>}
           {status.message && <p>{status.message}</p>}

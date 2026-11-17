@@ -11,15 +11,19 @@ import { randomUUID } from 'node:crypto';
 
 // Separate fresh synthetic stack. Existing staging, archives and hosted data
 // are never read or reconciled. Each run owns a new project and test volumes.
-export async function freshLocalApi({ portBase = 55471 } = {}) {
-  assert.ok([55471,55481,55501,55521].includes(portBase), 'Only dedicated loopback test port families are allowed');
+export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false } = {}) {
+  assert.ok([55471,55481,55501,55521,55541,55561].includes(portBase), 'Only dedicated loopback test port families are allowed');
   const portPrefix=String(portBase).slice(0,-1);
   await dockerCheck();
   const project = `pos-cafe-admin-${randomUUID().slice(0, 8)}`, network = `supabase_network_${project}`;
   const directory = path.join(work, 'admin-api', project), bin = path.join(directory, 'docker-bin');
   await mkdir(path.join(directory, 'supabase'), { recursive: true }); await mkdir(bin, { recursive: true });
-  const configText = (await readFile(path.join(root, 'supabase/staging/config.toml'), 'utf8'))
+  let configText = (await readFile(path.join(root, 'supabase/staging/config.toml'), 'utf8'))
     .replaceAll('pos-cafe-staging-local', project).replaceAll('5545', portPrefix);
+  if (emptyWithStorage) {
+    configText = configText.replace(/(\[storage\]\r?\nenabled = )false/, '$1true');
+    assert.match(configText, /\[storage\]\r?\nenabled = true/);
+  }
   await writeFile(path.join(directory, 'supabase/config.toml'), configText);
   const require = createRequire(import.meta.url), pkg = require('supabase/package.json');
   const cli = path.join(path.dirname(require.resolve('supabase/package.json')), pkg.bin.supabase);
@@ -44,7 +48,9 @@ export async function freshLocalApi({ portBase = 55471 } = {}) {
   };
   let db;
   try {
-    await cliRun(['start', '--exclude', 'realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor,studio,inbucket']);
+    const excluded = ['realtime','imgproxy','edge-runtime','logflare','vector','supavisor','studio','inbucket'];
+    if (!emptyWithStorage) excluded.push('storage-api');
+    await cliRun(['start', '--exclude', excluded.join(',')]);
     const status = JSON.parse(await cliRun(['status', '-o', 'json']));
     assert.equal(status.API_URL, `http://127.0.0.1:${portBase}`);
     const dbUrl = new URL(status.DB_URL); assert.equal(dbUrl.hostname, '127.0.0.1'); assert.equal(dbUrl.port, String(portBase+1)); assert.equal(dbUrl.pathname, '/postgres');
@@ -58,7 +64,7 @@ export async function freshLocalApi({ portBase = 55471 } = {}) {
     assert.equal(Number((await db.query("select count(*) n from pg_tables where schemaname='public'")).rows[0].n), 0, 'Requires a fresh empty test database; retained test volumes are never reset automatically');
     assert.equal(Number((await db.query('select count(*) n from auth.users')).rows[0].n), 0);
     const source = await sourceFiles();
-    for (const statement of baselineStatements(JSON.parse(source.snapshot))) await db.query(statement);
+    if (!emptyWithStorage) for (const statement of baselineStatements(JSON.parse(source.snapshot))) await db.query(statement);
     const config = { api: status.API_URL, database: status.DB_URL, anon: status.ANON_KEY, service: status.SERVICE_ROLE_KEY };
     const service = createClient(config.api, config.service, { auth: { persistSession: false, autoRefreshToken: false } });
     return { config, db, service, install: () => db.query(source.migration), async cleanup() { await db.end(); await cliRun(['stop', '--no-backup']); await cleanupNetwork(); } };

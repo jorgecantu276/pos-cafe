@@ -1,3 +1,4 @@
+import { posProfile } from './pos-profile';
 import { createClient } from '@supabase/supabase-js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, unlink } from 'node:fs/promises';
@@ -6,8 +7,9 @@ import { backupFilename, decryptBusinessArchive, encryptBusinessArchive, maximum
 import { AccessError, isAuthUnavailable, requireAdministrator } from './user-management';
 import { withDeadline } from './request-deadline';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { collectSmoothiesAssets } from './smoothies-backup-assets.mjs';
 
-interface BackupConfig { directory: string; keyFile: string; contractDirectory: string; releaseCommit: string; url: string; serviceKey: string }
+interface BackupConfig { directory: string; keyFile: string; contractDirectory: string; releaseCommit: string; url: string; serviceKey: string; printDirectory?: string }
 export interface BackupSuccess { createdAt: string; filename: string; bytes: number; sha256: string }
 interface StoredStatus { version: 1; lastAttemptAt?: string; lastSuccess?: BackupSuccess; lastError?: string }
 export interface BackupStatus extends StoredStatus { enabled: boolean; running: boolean; message?: string; retainedCopies?: number; retainedBytes?: number }
@@ -34,7 +36,11 @@ export function businessBackupConfig(): BackupConfig | null {
   if (![directory, keyFile, contractDirectory].every(value => path.isAbsolute(value))
     || inside(resolved.keyFile, resolved.directory) || inside(resolved.directory, process.cwd()) || inside(resolved.keyFile, process.cwd()))
     throw new Error('Guarda los respaldos y su clave en carpetas externas a la versión, con la clave fuera de los respaldos.');
-  return { ...resolved, releaseCommit: process.env.POS_RELEASE_COMMIT || 'sin-identificador', url: process.env.NEXT_PUBLIC_SUPABASE_URL, serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY };
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const printDirectory = posProfile.id === 'smoothies' ? process.env.POS_PRINT_DATA_DIR : undefined;
+  if (posProfile.id === 'smoothies' && (!printDirectory || !path.isAbsolute(printDirectory)))
+    throw Error('Falta configurar la carpeta del registro de impresión.');
+  return { ...resolved, releaseCommit: process.env.POS_RELEASE_COMMIT || 'sin-identificador', url, serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY, printDirectory };
 }
 
 function validSuccess(value: unknown): value is BackupSuccess {
@@ -103,11 +109,14 @@ async function databaseContract(config: BackupConfig) {
   // a source-tree contract directory can instead contain migrations/.
   const nested = entries.includes('migrations');
   const migrationDirectory = nested ? path.join(config.contractDirectory, 'migrations') : config.contractDirectory;
-  const names = (await readdir(migrationDirectory)).filter(name => /^\d+_[a-zA-Z0-9_]+\.sql$/.test(name)).sort();
-  if (!names.some(name => name === '202610300012_business_backups.sql')) throw Error('Falta el contrato de respaldos de esta versión.');
+  const profileDirectory = path.join(config.contractDirectory, 'smoothies');
+  const directories = config.printDirectory ? [migrationDirectory, profileDirectory] : [migrationDirectory];
+  const migrations = (await Promise.all(directories.map(async directory => (await readdir(directory))
+    .filter(name => /^\d+_[a-zA-Z0-9_]+\.sql$/.test(name)).map(name => [name, directory] as const)))).flat();
+  if (!migrations.some(([name]) => name === '202610300012_business_backups.sql')) throw Error('Falta el contrato de respaldos de esta versión.');
   const files: Record<string, { content: string; sha256: string }> = {};
   for (const [name, file] of [['schema.snapshot.json', path.join(config.contractDirectory, 'schema.snapshot.json')],
-    ...names.map(name => [`migrations/${name}`, path.join(migrationDirectory, name)])]) {
+    ...migrations.map(([name, directory]) => [`migrations/${name}`, path.join(directory, name)])]) {
     const info = await lstat(file);
     if (!info.isFile() || info.isSymbolicLink() || info.size > 16 * 1024 * 1024) throw Error('Contrato de base de datos inválido.');
     const content = await readFile(file, 'utf8'); files[name] = { content, sha256: sha256(Buffer.from(content)) };
@@ -177,8 +186,11 @@ export async function runBusinessBackup(force = false, dependencies: BackupDepen
       if (previous.lastSuccess) decryptBusinessArchive((await downloadBusinessBackup({ config: () => config })).bytes, key);
       const contract = await databaseContract(config);
       const snapshotJson = await (dependencies.snapshot ?? readSnapshot)(config);
+      const assets = config.printDirectory ? await collectSmoothiesAssets({ ...config, printDirectory: config.printDirectory }, snapshotJson) : undefined;
       const archive = { format: 'pos-cafe-business-backup', version: 1, createdAt: lastAttemptAt, releaseCommit: config.releaseCommit,
-        sourceHost: new URL(config.url).hostname, snapshotJson, contract, excluded: ['local-print-journal', 'supabase-storage-files', 'supabase-platform-configuration'] };
+        sourceHost: new URL(config.url).hostname, snapshotJson, contract, assets, excluded: assets
+          ? ['external-photo-links', 'supabase-platform-configuration']
+          : ['local-print-journal', 'supabase-storage-files', 'supabase-platform-configuration'] };
       const bytes = encryptBusinessArchive(archive, key);
       decryptBusinessArchive(bytes, key); // Read-back verification before publication.
       const filename = `backup-${lastAttemptAt.replace(/[-:.]/g, '')}-${randomUUID()}.posbackup`;
@@ -236,6 +248,12 @@ async function requireBackupStaff(caller: SupabaseClient) {
 async function checkpointBusinessBackup() {
   const config = businessBackupConfig();
   if (!config) return;
+  if (config.printDirectory) {
+    // A start-of-day backup in progress when the cut was saved can predate
+    // that cut, so wait for it before scheduling a new snapshot.
+    if (state.running) await state.running.catch(() => {});
+    return runBusinessBackup(true);
+  }
   const success = (await readStatus(config)).lastSuccess;
   if (success && Date.now() - Date.parse(success.createdAt) < 60_000) return;
   return runBusinessBackup(true);

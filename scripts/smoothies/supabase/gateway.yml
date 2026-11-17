@@ -1,0 +1,50 @@
+_format_version: "2.1"
+_transform: true
+
+consumers:
+  - username: anon
+    keyauth_credentials:
+      - key: "__ANON_KEY__"
+  - username: service_role
+    keyauth_credentials:
+      - key: "__SERVICE_KEY__"
+
+plugins:
+  - name: cors
+    config:
+      origins: ["http://127.0.0.1:3180"]
+      max_age: 300
+
+services:
+  - name: auth
+    url: http://auth:9999
+    routes:
+      - name: auth
+        paths: ["/auth/v1/"]
+        strip_path: true
+    plugins:
+      - name: key-auth
+        config:
+          key_names: [apikey]
+          key_in_query: false
+          hide_credentials: false
+  - name: rest
+    url: http://rest:3000
+    routes:
+      - name: rest
+        paths: ["/rest/v1/"]
+        strip_path: true
+    plugins:
+      - name: key-auth
+        config:
+          key_names: [apikey]
+          key_in_query: false
+          hide_credentials: false
+  # Storage authorizes private API operations itself. Saved catalogue photos
+  # are public on this loopback gateway and browser <img> sends no API key.
+  - name: storage
+    url: http://storage:5000
+    routes:
+      - name: storage
+        paths: ["/storage/v1/"]
+        strip_path: true
