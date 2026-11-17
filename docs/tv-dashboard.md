@@ -4,7 +4,7 @@ Open `/tv` on the local app after signing in as an active administrator. Access 
 
 When a TV session expires, select **Iniciar sesión**. After a successful sign-in the app returns automatically to `/tv` and resumes updates. Opening `/tv` without a session also preserves this destination. A failed sign-in keeps the destination for the next attempt. Ordinary sign-in still opens the POS; only the exact `/tv` return target is accepted, and administrator access is still required.
 
-Choose **Extend these displays** in Windows, move a separate browser window onto the TV, then select **Pantalla completa** (or press F11 in Chrome/Edge). Keep the cashier window on the PC. The dashboard uses the existing blue/white visual identity and adapts to 1080p and smaller screens. The HDMI device currently advertises 1080p/60 Hz; physical wireless transmission and extended display behavior still require acceptance testing with the paired hardware.
+Choose **Extend these displays** in Windows, move a separate browser window onto the TV, then select **Pantalla completa** (or press F11 in Chrome/Edge). Keep the cashier window on the PC. The dashboard emphasizes the daily sales total and adapts its layout to 1080p and smaller screens. The HDMI device currently advertises 1080p/60 Hz; physical wireless transmission and extended display behavior still require acceptance testing with the paired hardware.
 
 ## Data and refresh
 
