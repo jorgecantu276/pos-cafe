@@ -7,7 +7,7 @@ import { get } from 'node:http';
 import { gunzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { parseEnv } from 'node:util';
 import { freshLocalApi } from '../testing/local-api.mjs';
 
@@ -30,7 +30,24 @@ const installedApp = path.join(portableHome,'versiones',release.id,'app');
 const {decryptBusinessArchive,sha256} = await import(pathToFileURL(path.join(installedApp,'lib/business-backup-format.mjs')));
 const {restoreSmoothiesArchive} = await import(pathToFileURL(path.join(installedApp,'scripts/smoothies/restore-local.mjs')));
 const {prepareLocal} = await import(pathToFileURL(path.join(installedApp,'scripts/smoothies/prepare-local.mjs')));
-let stack, browser;
+let stack, browser, diagnosticPage;
+const browserEvents = [];
+const redactions = [];
+function sanitize(value) {
+  let text = String(value);
+  for (const secret of redactions) if (secret) text = text.replaceAll(secret, '[redacted]');
+  return text.replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[redacted token]')
+    .replace(/sb_(?:secret|publishable)_[A-Za-z0-9_-]+/g, '[redacted key]')
+    .replace(/postgres(?:ql)?:\/\/\S+/gi, '[redacted database URL]');
+}
+function diagnosticUrl(value) {
+  try { const url = new URL(value); return url.origin + url.pathname; }
+  catch { return '[unavailable URL]'; }
+}
+function record(event) {
+  browserEvents.push({ at: new Date().toISOString(), ...event });
+  if (browserEvents.length > 60) browserEvents.shift();
+}
 function ok({data,error}) {if(error) throw Error(error.message); return data;}
 async function raw(url,encoding) {
   return new Promise((resolve,reject)=>{
@@ -47,6 +64,7 @@ try {
   const settings = parseEnv(await readFile(path.join(portableHome,'instalacion.env'),'utf8'));
   const config = {api:localApi,database:settings.SMOOTHIES_DATABASE_URL,anon:settings.SMOOTHIES_ANON_KEY,
     service:settings.SMOOTHIES_SERVICE_KEY,password:process.env.SMOOTHIES_ADMIN_PASSWORD};
+  redactions.push(config.anon, config.service, config.password, new URL(config.database).password);
   const db=new Client({connectionString:config.database});
   await db.connect();
   stack={db,cleanup:()=>db.end()};
@@ -89,6 +107,24 @@ try {
   browser = await chromium.launch({ channel: 'msedge', headless: audit || process.argv.includes('--headless'), args: ['--window-size=1420,860'] });
 
   const page = await browser.newPage({ viewport });
+  diagnosticPage = page;
+  page.on('pageerror', error => record({ kind: 'page-error', message: sanitize(error.message).slice(0, 1500) }));
+  page.on('console', message => {
+    if (message.type() === 'error' || message.type() === 'warning')
+      record({ kind: 'console-' + message.type(), message: sanitize(message.text()).slice(0, 1500) });
+  });
+  page.on('response', response => {
+    const url = new URL(response.url());
+    if (url.origin === localApi && url.pathname.startsWith('/rest/v1/rpc/'))
+      record({ kind: 'local-rpc', method: response.request().method(), url: diagnosticUrl(response.url()),
+        status: response.status(), publicKeyMatches: response.request().headers().apikey === config.anon });
+  });
+  page.on('requestfailed', request => {
+    const url = new URL(request.url());
+    if (url.origin === localApi && url.pathname.startsWith('/rest/v1/rpc/'))
+      record({ kind: 'local-rpc-failed', method: request.method(), url: diagnosticUrl(request.url()),
+        message: sanitize(request.failure()?.errorText || 'Request failed') });
+  });
   await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false }));
   const localOrigins = new Set([base, localApi]);
   await page.route('**/*', route => localOrigins.has(new URL(route.request().url()).origin) ? route.continue() : route.abort());
@@ -371,6 +407,17 @@ try {
     await page.getByLabel('Smoothie destacado').waitFor();
     console.log('PASS: exact installed package completed import, catalog, recipe, sale, closing, and full backup restoration with external browser requests blocked.');
   }
+} catch (error) {
+  const report = { result: 'fail', url: diagnosticPage ? diagnosticUrl(diagnosticPage.url()) : null,
+    error: sanitize(error instanceof Error ? error.stack || error.message : error), events: browserEvents,
+    body: diagnosticPage ? sanitize(await diagnosticPage.locator('body').innerText({ timeout: 1500 })
+      .catch(() => '[unavailable body]')).slice(0, 12_000) : '[page not opened]' };
+  await writeFile(path.join(artifacts, 'failure-diagnostics.json'), JSON.stringify(report, null, 2));
+  if (diagnosticPage && !diagnosticPage.isClosed())
+    await diagnosticPage.screenshot({ path: path.join(artifacts, 'failure.png'),
+      mask: diagnosticPage.locator('input,textarea') }).catch(() => {});
+  console.error('Acceptance browser failure diagnostics saved in ' + artifacts);
+  throw error;
 } finally {
   await browser?.close();
   await stack?.cleanup();

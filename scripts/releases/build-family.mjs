@@ -12,6 +12,9 @@ assert.ok([cafeTarget, nativeCheckout, outputDirectory].every(value => value && 
   'Use node build-family.mjs <cafe-target-json> <papeleria-native-checkout> <new-output-directory>.');
 assert.ok(!existsSync(outputDirectory), 'Never overwrite an earlier release.');
 assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(), '', 'Commit the reviewed source first.');
+assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: nativeCheckout, encoding: 'utf8' }).trim(), '', 'Commit the native source first.');
+// Check the native SDK before spending time building either web application.
+execFileSync('dotnet', ['--version'], { cwd: nativeCheckout, stdio: 'inherit', windowsHide: true });
 const { version, familyRelease } = posVersions();
 const run = args => execFileSync(process.execPath, args, { cwd: root, stdio: 'inherit', windowsHide: true });
 const archive = (mode, source, destination) => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',

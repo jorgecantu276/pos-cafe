@@ -8,5 +8,5 @@ export function GET() {
   if (posProfile.id !== 'smoothies' || process.env.NEXT_PUBLIC_SMOOTHIES_PORTABLE !== '1' || !key) {
     return new Response(null, { status: 404, headers });
   }
-  return new Response(`window.smoothiesPublicKey=${JSON.stringify(key)};`, { headers });
+  return new Response(`window.smoothiesPublicKey=${JSON.stringify(key)};window.dispatchEvent(new Event("smoothies-runtime-ready"));`, { headers });
 }

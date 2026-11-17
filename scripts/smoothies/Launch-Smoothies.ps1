@@ -41,7 +41,7 @@ try {
         $key = if ($keyFile -and (Test-Path -LiteralPath $keyFile -PathType Leaf)) { 'presente' } else { 'pendiente' }
         $report = @(
             'POS Smoothies'
-            "Version $($active.id)"
+            $(if ($active.appVersion) { "Version $($active.appVersion) ($($active.id))" } else { "Version $($active.id)" })
             ('Estado: ' + $(if ($online) { 'Servidor abierto' } else { 'Servidor detenido o iniciando' }))
             ('Espacio libre: {0:N1} GB' -f ($drive.AvailableFreeSpace / 1GB))
             "Ultimo respaldo local: $lastSuccess"

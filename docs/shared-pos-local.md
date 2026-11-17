@@ -37,6 +37,8 @@ Agrega **--demos** al comando de Papelería para empaquetar los dos demos con la
 
 ## Publicación de Smoothies
 
+El equipo de compilación necesita Node 24.22.2 x64 con su licencia y el SDK .NET 10.0.403 en PATH. `build-family.mjs <destino-cafe.json> <checkout-papeleria> <salida-nueva>` comprueba ambos árboles limpios y el SDK antes de preparar los tres paquetes.
+
 La descarga automática de Smoothies usa paquetes genéricos firmados. No se incluyen el menú de la clienta, sus cuentas, las claves de Supabase ni datos de operación. Papelería y los paquetes de un destino específico no se adjuntan a la descarga pública de Smoothies.
 
 El responsable conserva la clave Ed25519 fuera del repositorio. `scripts/releases/provision-update-signing.mjs` crea la clave una vez y comprueba que su parte pública coincida en las siguientes ejecuciones. Nunca cambies esa clave para preparar una versión nueva: las instalaciones conservan su confianza inicial.
