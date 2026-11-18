@@ -25,7 +25,10 @@
     "test:reports-http": "node scripts/reports/http-drill.mjs",
     "test:admin-http": "node scripts/admin/http-drill.mjs",
     "test:phone-http": "node scripts/phone-orders/http-drill.mjs",
-    "test:restore-business": "node --import tsx scripts/backups/restore-drill.mjs"
+    "test:restore-business": "node --import tsx scripts/backups/restore-drill.mjs",
+    "demo": "node scripts/demo/start.mjs",
+    "demo:verify": "node --import tsx scripts/demo/start.mjs --verify",
+    "demo:test": "node --import tsx scripts/demo/test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",
