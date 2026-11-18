@@ -24,16 +24,15 @@ export default function TvDashboard() {
         const response = await fetch('/api/tv', { cache: 'no-store', signal: current.signal, redirect: 'error' });
         if (response.status === 401 || response.status === 403) {
           denied = true;
-          if (!stopped) { setSnapshot(null); setAccessLost(true); setFailure('Inicia sesión con una cuenta de administrador para ver las ventas.'); }
+          if (!stopped) { setSnapshot(null); setAccessLost(true); setFailure('Inicia sesión con una cuenta de administrador para ver las órdenes.'); }
           return;
         }
         if (!response.ok) throw new Error('No se pudo actualizar');
         const next = await response.json() as TvSnapshot;
-        if (!next || !Number.isFinite(Date.parse(next.capturedAt)) || !Array.isArray(next.recent)
-          || !Array.isArray(next.hourly) || next.hourly.length !== 24) throw new Error('Respuesta inválida');
+        if (!next || !Number.isFinite(Date.parse(next.capturedAt)) || !Array.isArray(next.orders)) throw new Error('Respuesta inválida');
         if (!stopped) { setSnapshot(next); setFailure(null); setNow(new Date()); }
       } catch {
-        if (!stopped) setFailure('No se pudieron cargar las ventas. Se intentará de nuevo.');
+        if (!stopped) setFailure('No se pudieron cargar las órdenes. Se intentará de nuevo.');
       } finally {
         clearTimeout(timeout);
         busy = false;
