@@ -43,11 +43,17 @@ $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 if ($config.RequireExistingPrintJournal -ne $true -or $config.PrintMode -cne 'windows') { throw 'La configuracion debe conservar RequireExistingPrintJournal=true y PrintMode=windows.' }
 $data = Get-ExternalPath ([string]$config.PrintDataDirectory) 'PrintDataDirectory'
 if (!(Test-Path -LiteralPath (Join-Path $data 'windows-jobs.sqlite') -PathType Leaf)) { throw 'No se encontro el diario anterior de impresion. No se ha movido Caja.' }
-foreach ($field in @('ReceiptIssuerFile','BackupRecoveryKeyFile')) {
+foreach ($field in @('ReceiptIssuerFile')) {
     $externalFile = Get-ExternalPath ([string]$config.$field) $field
     if (!(Test-Path -LiteralPath $externalFile -PathType Leaf)) { throw "Falta el archivo externo $field. No se ha movido Caja." }
 }
-$backup = Get-ExternalPath ([string]$config.BackupDirectory) 'BackupDirectory'
+$backupValue = [string]$config.BackupDirectory
+if (!$backupValue) { $backupValue = Join-Path (Split-Path -Parent $ConfigPath) 'pos-cafe-backups' }
+$backup = Get-ExternalPath $backupValue 'BackupDirectory'
+$backupKeyValue = [string]$config.BackupRecoveryKeyFile
+if (!$backupKeyValue) { $backupKeyValue = Join-Path (Split-Path -Parent $ConfigPath) 'pos-cafe-backup-recovery.key' }
+$backupKey = Get-ExternalPath $backupKeyValue 'BackupRecoveryKeyFile'
+if (!(Test-Path -LiteralPath $backupKey -PathType Leaf)) { throw 'Falta la clave externa de respaldos. No se ha movido Caja.' }
 if (!(Test-Path -LiteralPath $backup -PathType Container)) { throw 'Falta la carpeta externa de respaldos. No se ha movido Caja.' }
 $oldRelease = Join-Path $app 'release.json'
 $oldNode = Join-Path $app 'node.exe'
