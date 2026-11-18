@@ -13,13 +13,9 @@ test('actual TV UI automatically refreshes, survives a network failure, recovers
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://127.0.0.1/' });
   const saved = new Map<string, PropertyDescriptor | undefined>();
   const now = new Date('2026-10-27T22:00:00Z');
-  const rows: dashboard.TvOrder[] = Array.from({ length: 24 }, (_, i) => ({
-    id: `fixture-${i}`, ticket_number: 1040 + i, created_at: new Date(+now - i * 1_200_000).toISOString(),
-    total: [85, 145, 65, 210, 120, 55][i % 6], status: i === 1 ? 'pending' : i === 3 ? 'cancelled' : 'completed',
-    payment_method: i % 3 === 0 ? 'efectivo' : 'tarjeta',
-  }));
-  let mode: 'ok' | 'offline' | 'denied' | 'hanging' = 'ok', calls = 0, amount = 0;
-  const snapshot = () => dashboard.summarizeTvOrders(rows.map((o, i) => i ? o : { ...o, total: o.total + amount }), new Date());
+  const rows: dashboard.TvOrder[] = Array.from({length:4},(_,i)=>({id:'fixture-'+i,ticket_number:1234+i,created_at:new Date(+now-[840000,540000,300000,60000][i]).toISOString(),status:'completed',receipt_snapshot:{pager_number:[12,8,21,4][i],order_type:i%2?'takeaway':'dine_in',order_note:i===2?'Entregar juntos':'',items:[{quantity:1,product:{name:'Iced coffee',category:'Bebidas'}},{quantity:i===0?2:1,product:{name:['Brownie con nieve','Cheesecake original','Cheese danish fresa','Brownie cheesecake'][i],category:'Postres',note:i===0?'Sin nuez':'',displayExtras:i===0?[{name:'Helado de vainilla'}]:[]}},...(i===1?[{quantity:2,product:{name:'Galleta de chocolate',category:'Postres'}}]:[])]}}));
+  let mode: 'ok' | 'offline' | 'denied' | 'hanging' = 'ok', calls = 0;
+  const snapshot = () => dashboard.summarizeTvOrders(rows, new Date());
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document,
     IS_REACT_ACT_ENVIRONMENT: true, fetch: async (url: string, options: RequestInit) => {
       assert.equal(url, '/api/tv'); assert.equal(options.cache, 'no-store'); calls++;
@@ -42,22 +38,26 @@ test('actual TV UI automatically refreshes, survives a network failure, recovers
   };
   const View = compile('../app/tv/TvDashboardView.tsx', { '@/lib/tv-dashboard': dashboard, '@/lib/login-return': loginReturn });
   const Screen = compile('../app/tv/TvDashboard.tsx', { '@/lib/tv-dashboard': dashboard, './TvDashboardView': { __esModule: true, default: View } });
+  const scrolls: number[] = [];
+  Object.defineProperty(dom.window.document.documentElement, 'scrollHeight', { configurable: true, value: 1526 });
+  Object.defineProperty(dom.window, 'innerHeight', { configurable: true, value: 768 });
+  dom.window.scrollTo = (options: ScrollToOptions | number = {}) => { scrolls.push(typeof options === 'number' ? options : options.top ?? 0); };
   const root = createRoot(dom.window.document.getElementById('root')!);
   const text = () => dom.window.document.body.textContent!;
   try {
     await act(async () => root.render(createElement(Screen)));
-    assert.equal(calls, 1); assert.match(text(), /Actualizado/); assert.match(text(), /#1040/);
-    assert.match(text(), /Revisar pago/); assert.match(text(), /Cancelada/);
+    assert.equal(calls, 1); assert.match(text(), /Actualizado/); assert.match(text(), /#1234/);
+    assert.doesNotMatch(text(), /Iced coffee/); assert.match(text(), /Brownie con nieve/);
     if (process.env.TV_UI_PREVIEW) {
       const css = readFileSync(new URL('../app/tv/tv.css', import.meta.url), 'utf8');
       writeFileSync(process.env.TV_UI_PREVIEW, `<!doctype html><html lang="es-MX"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>TV · Datos sintéticos</title><style>*{box-sizing:border-box;margin:0}body{margin:0}button,a{font:inherit;color:inherit}button{border:0;background:none}a{color:inherit}${css}</style>${dom.window.document.getElementById('root')!.innerHTML}</html>`);
     }
     mode = 'offline';
     await act(async () => t.mock.timers.tick(5_000));
-    assert.equal(calls, 2); assert.match(text(), /Datos sin actualizar/); assert.match(text(), /#1040/);
-    mode = 'ok'; amount = 100;
+    assert.equal(calls, 2); assert.match(text(), /Datos sin actualizar/); assert.match(text(), /#1234/);
+    mode = 'ok';
     await act(async () => t.mock.timers.tick(5_000));
-    assert.equal(calls, 3); assert.match(text(), /Actualizado/); assert.match(text(), /\$185\.00/);
+    assert.equal(calls, 3); assert.match(text(), /Actualizado/); assert.match(text(), /Cheesecake original/);
     mode = 'hanging';
     await act(async () => t.mock.timers.tick(5_000));
     const before = calls;
@@ -68,9 +68,12 @@ test('actual TV UI automatically refreshes, survives a network failure, recovers
     mode = 'ok';
     await act(async () => t.mock.timers.tick(5_000));
     assert.match(text(), /Actualizado/);
+    mode = 'offline';
+    await act(async () => t.mock.timers.tick(60_000));
+    assert.doesNotMatch(text(), /#1234/, 'expired order disappears without refresh or successful fetch');
     mode = 'denied';
     await act(async () => t.mock.timers.tick(5_000));
-    assert.match(text(), /Acceso requerido/); assert.doesNotMatch(text(), /#1040/);
+    assert.match(text(), /Acceso requerido/); assert.doesNotMatch(text(), /#1234/);
     assert.equal(dom.window.document.querySelector('a[href^="/login"]')?.getAttribute('href'), loginReturn.TV_LOGIN_URL);
     const deniedCalls = calls;
     await act(async () => t.mock.timers.tick(60_000));

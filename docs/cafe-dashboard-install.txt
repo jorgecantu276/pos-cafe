@@ -1,0 +1,24 @@
+CAJA - PANTALLA DE PREPARACION
+
+Esta actualizacion parte de la version 410ead4 del cafe. Si encuentra otra version, se detiene sin sustituirla.
+Incluye Next.js 16.4.6 y el tablero /tv: solo articulos que no son bebidas, de ventas pagadas; cada orden sale de pantalla a los 15 minutos de la venta. No cambia el estado del pago ni imprime por vencer el tiempo.
+No requiere migraciones SQL. No instala el actualizador automatico ni el monitor diario de Etapa 2. CLIP conserva su configuracion existente.
+
+ANTES DE INSTALAR
+1. Descargar y extraer TODO el ZIP en una carpeta nueva en la PC del cafe. No ejecutarlo dentro del ZIP.
+2. Verificar un respaldo reciente con su clave disponible por separado. Resolver pagos o impresiones inciertos y cerrar el turno de forma normal. Cerrar TODAS las ventanas de Caja.
+3. Conservar la configuracion privada C:\POS-Cafe\private\pos-cafe-config.json y sus rutas externas del diario de impresion, emisor, respaldos y clave. No reemplazarla con el ejemplo incluido.
+
+INSTALAR
+4. Abrir Actualizar-Caja.cmd. Verifica archivos, version, destino del negocio y diario existente. Si Caja sigue ejecutandose o algo no coincide, se detiene. La instalacion anterior se conserva en una carpeta hermana CarinitoMioPOS-anterior-...; no borrarla.
+5. Abrir Caja desde su acceso habitual. Iniciar sesion y comprobar que carga el menu del cafe.
+
+PANTALLA DE COCINA
+6. Abrir una ventana de Edge en un perfil independiente del de Caja e iniciar sesion como administrador del cafe. Abrir http://localhost:3000/tv (usar el puerto configurado si es diferente).
+7. Windows: Extender estas pantallas. Mover esa ventana al receptor HDMI inalambrico y presionar F11. Caja permanece en la pantalla de la PC. Mantener PC y conexion a internet activas.
+8. Comprobar con la siguiente venta normal que un ticket mixto muestre solo sus alimentos; confirmar cantidades, notas/control y salida automatica a los 15 minutos. No es necesario actualizar ni presionar Listo. Con mas ordenes, las paginas y el desplazamiento cambian solos. No generar cargos o papel ficticio sin autorizacion del responsable.
+
+SI FALLA
+Cerrar Caja. Conservar el diario de impresion ACTUAL y los archivos privados. Renombrar la carpeta nueva y devolver a la carpeta anterior el nombre original de la instalacion. No restaurar un diario viejo, no retroceder SQL y no reenviar impresiones inciertas. Abrir el acceso habitual. Pedir asistencia si el mensaje no coincide con estos pasos.
+
+La preparacion local del paquete no prueba la instalacion ni la legibilidad en la TV fisica. Registrar la version instalada, responsable y resultado de esta comprobacion en el cafe.
