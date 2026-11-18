@@ -56,6 +56,7 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
       return Object.assign(response, { abortSignal: () => response });
     } };
   const imports: Record<string, unknown> = { '@/components/ProductPhoto': { default: () => null, __esModule: true }, '@/lib/catalog-management': management, '@/lib/pos-types': types, '@/lib/use-resource': resource,
+    './smoothies-catalog.css': {}, 'next/navigation': { useSearchParams: () => new URLSearchParams(dom.window.location.search) },
     '@/lib/supabase': { supabase: client }, './CatalogEditor': { default: CatalogEditor, __esModule: true },
     './SmoothiesImport': { default: () => null, __esModule: true }, './WeeklySpecial': { default: () => null, __esModule: true },
     './OpeningCount': { default: () => null, __esModule: true },
