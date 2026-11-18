@@ -6,7 +6,7 @@ Local environment: Windows x64, pinned Node 24.22.2, baseline Next 16.4.3, npm-i
 
 | Check | Result |
 | --- | --- |
-| Full test suite | 288 passed; no failures/skips. |
+| Full test suite | 289 passed; no failures/skips. |
 | Baseline database suite | 2,897 assertions passed on disposable PostgreSQL. |
 | Original demo database checks | 142 passed, including real RPC seeding/replay, active products in all three price paths, invalid requests with rollback, stock/availability, phase choices, invalid catalog amounts and frozen phone payment after a price edit. |
 | TypeScript / lint / whitespace | Passed. |
@@ -17,6 +17,6 @@ Local environment: Windows x64, pinned Node 24.22.2, baseline Next 16.4.3, npm-i
 | Browser | Real login, populated register and cashier identity, 16/20 oz grouped-drink selection; external requests blocked. Screenshots captured only after catalog loaded. |
 | Visual review | Populated generic register, size dialog and narrow generic customer ticket were visually inspected and independently approved. Ticket preview uses the unchanged baseline reprint renderer. |
 
-The committed `demo-verification.yml` repeats the checks in GitHub Actions. Remote CI results are separate from the successful local results above.
+The committed `demo-verification.yml` repeats the checks in GitHub Actions. Its first Linux run caught LF/CRLF differences in two example configuration hashes. The guard now normalizes every allowlisted text configuration while preserving binary bytes; a regression covers both line endings. Remote CI results are separate from the successful local results above.
 
 No real payment, physical print, hosted migration, production data write or café-PC deployment occurred. This is a disposable demonstration, not a production release. See [run guide and exact feature limits](generic-demo.md), including absent native bundles, timed pricing/availability, ingredient inventory and loyalty redemption.

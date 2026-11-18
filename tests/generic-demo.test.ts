@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { menu } from '../scripts/demo/menu.mjs';
-import { verifyBaseline } from '../scripts/demo/fidelity.mjs';
+import { verifyBaseline, canonicalBaselineBytes } from '../scripts/demo/fidelity.mjs';
 import { menuCards, menuCardAvailable, favoriteMenuCards } from '../lib/menu-cards';
 import { catalogProduct } from '../lib/pos-types';
 import { mkdir, mkdtemp, readFile, readdir } from 'node:fs/promises';
@@ -10,6 +10,14 @@ import { prepareDemoApp, root } from '../scripts/demo/app.mjs';
 
 test('generic demo remains pinned to the exact pre-dashboard application', async()=>{
   assert.ok(await verifyBaseline()>150);
+});
+
+test('baseline fingerprints normalize all text configurations across Windows and Linux',()=>{
+  for(const file of ['config/clip-token.example.txt','config/clip.env.example','app/layout.tsx']) {
+    assert.equal(canonicalBaselineBytes(file,Buffer.from('example\r\nvalue\r\n')),canonicalBaselineBytes(file,Buffer.from('example\nvalue\n')));
+  }
+  const binary=Buffer.from([0,13,10,255]);
+  assert.deepEqual(canonicalBaselineBytes('image.jpg',binary),binary);
 });
 test('original demo menu exercises all five existing grouped drink families and sizes',()=>{
   const products=menu.products.map(p=>({...catalogProduct(p),inventory:p.inventory}));

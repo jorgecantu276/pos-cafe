@@ -5,12 +5,16 @@ import path from 'node:path';
 import { root } from './app.mjs';
 import { baseline } from './menu.mjs';
 
+export function canonicalBaselineBytes(file,bytes) {
+  return /\.(png|jpe?g|webp|ico|gif|woff2?|ttf)$/i.test(file)?bytes:bytes.toString('utf8').replaceAll('\r\n','\n');
+}
+
 export async function verifyBaseline() {
   const manifest=JSON.parse(await readFile(new URL('./baseline-files.json',import.meta.url),'utf8'));
   assert.equal(manifest.commit,baseline);
   for(const [file,hash] of Object.entries(manifest.files)) {
     const bytes=await readFile(path.join(root,file));
-    const canonical=/\.(tsx?|js|mjs|json|css|sql|svg)$/.test(file)?bytes.toString('utf8').replaceAll('\r\n','\n'):bytes;
+    const canonical=canonicalBaselineBytes(file,bytes);
     assert.equal(createHash('sha256').update(canonical).digest('hex'),hash,`Pre-dashboard source changed: ${file}`);
   }
   async function walk(directory) {
