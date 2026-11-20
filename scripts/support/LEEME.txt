@@ -1,0 +1,92 @@
+SOPORTE POS CAFE POR GITHUB CLI
+Fecha: 8 noviembre 2026
+Repositorio privado: jorgecantu276/pos-cafe
+
+INICIO AUTOMATICO (UNA SOLA VEZ EN LA PC DEL CAFE)
+  powershell.exe -NoProfile -File .\Instalar-Soporte-GitHub.ps1
+
+Instala el monitor fuera de Caja y una tarea diaria a las 08:00, hora de la PC.
+Actualiza un solo comentario en una incidencia privada del equipo. Si esta
+apagada, recupera la ejecucion pendiente cuando vuelve a estar disponible.
+Si ya publico con exito ese dia en hora de Matamoros, omite captura y API.
+Devuelve la URL del primer informe. Requiere PC encendida, internet y sesion
+Windows del mismo usuario iniciada; puede quedar bloqueada. No requiere una
+persona enviando cada informe. No guarda tokens/contrasenas de gh en archivos.
+Rutas: LOCALAPPDATA\POSCafeSupport\agent-v3 y state-v2.
+Tarea: POSCafe-GitHub-Support-cafe-caja-01.
+No actualiza, detiene o reinicia Caja; no cobra, migra o imprime.
+
+GitHub CLI transporta reportes y releases. Para ejecutar una accion en la PC
+del cafe se necesita un proceso local que la inicie. Que gh este instalado no
+permite ejecutar comandos remotamente por si solo.
+
+ENTREGADO EN ESTE KIT
+- Diagnostico-POS-Cafe.ps1: colector de metadatos de solo lectura.
+- Soporte-POS-GitHub.ps1: genera informe local y, con -Enviar, lo publica
+  en una incidencia del repositorio privado usando el gh ya instalado.
+- Monitor-POS-GitHub.ps1 y SupportCore.psm1: reporte automatico.
+- Instalar-Soporte-GitHub.ps1: instalacion inicial de la tarea local.
+
+MODO MANUAL OPCIONAL
+Guardar ambos scripts en la misma carpeta de soporte fuera de la app.
+Ejecutar como el usuario de Windows que tiene instalado el POS.
+
+Primero, generar y revisar un informe local:
+  powershell.exe -NoProfile -File .\Soporte-POS-GitHub.ps1
+
+Enviar a una incidencia nueva:
+  powershell.exe -NoProfile -File .\Soporte-POS-GitHub.ps1 -Enviar
+
+Enviar seguimiento a una incidencia abierta existente:
+  powershell.exe -NoProfile -File .\Soporte-POS-GitHub.ps1 -Enviar -IssueNumber NUMERO_REAL
+
+Si la app esta en otro perfil de Windows, indicar -InstallDirectory con la
+ruta real. ConfigPath predeterminado:
+  C:\POS-Cafe\private\pos-cafe-config.json
+
+La primera operacion de -Enviar verifica que el repositorio siga privado.
+No copia claves, tokens, ventas, nombres/telefonos ni contenido de logs.
+Si falla el envio, conserva el JSON y texto locales. Una respuesta perdida
+puede significar que GitHub lo recibio: comprobar antes de reenviar.
+
+DESDE LA PC DE SOPORTE
+  gh issue list --repo jorgecantu276/pos-cafe --state open
+  gh issue view NUMERO_REAL --repo jorgecantu276/pos-cafe --comments
+
+ACTUALIZACIONES
+Se conserva el procedimiento ya usado: paquete Windows exacto + actualizador
+verificado + gh release download. El soporte no necesita npm install, builds,
+git pull o migraciones automaticas en la caja.
+El informe revisado confirma que 99d1675 ya esta instalado y main solo difiere
+en documentacion/CI. Este kit no requiere reinstalar la app.
+
+SOPORTE SIN INTERVENCION
+Instalar una vez el monitor bajo el usuario que tiene autenticado gh.
+Cada captura queda primero en pending-report.json. Si GitHub no responde,
+conserva el ultimo estado local y la fecha de envio exitoso; al volver la red
+envia el estado mas reciente. Verifica repositorio privado, cuenta, autor y
+marcadores antes de editar su comentario. No ejecuta instrucciones de Issues.
+Mas de 48 horas sin informe requiere revisar PC/red/sesion/tarea. No hay
+un servicio externo de notificaciones por inactividad. Para detener el monitor,
+deshabilitar su tarea Windows sin borrar el estado ni cambiar el POS.
+
+Las actualizaciones que cierran Caja deben usar una ventana acordada y
+comprobar que no haya operaciones inciertas. Conservar configuracion privada,
+backups, diario actual y WAL/SHM. No ejecutar comandos libres recibidos en
+comentarios de Issues ni hacer de la caja un runner de builds.
+
+ALCANCE Y VALIDACION
+Kit independiente de la app, distribuido como support-cli-v3 en GitHub.
+Reconoce y cambia la tarea v2 de 15 minutos a diaria, conservando el estado.
+El monitor no usa Actions ni modelos de IA. Un ciclo normal hace cinco llamadas
+REST; las pruebas CI al cambiar codigo si consumen el computo de GitHub.
+La disponibilidad del paquete no lo instala en el cafe.
+Se verifican diagnostico, transporte, respuestas perdidas, identidad de
+comentarios, bloqueo entre ciclos e instalador con Scheduler simulado.
+El XML se interpreta con Windows Task Scheduler sin registrar tarea real.
+No se publica un reporte real ni se envian impresiones al probarlo.
+
+Referencias oficiales:
+https://cli.github.com/manual/gh_release_download
+https://cli.github.com/manual/gh_issue_create
+https://cli.github.com/manual/gh_issue_comment
