@@ -151,7 +151,12 @@ export async function phoneQualityReview({url,actors,db,appDirectory,printDirect
     check('Pickup service stays fixed',await checkout.getByRole('combobox',{name:'Tipo de pedido',exact:true}).isDisabled(),true);
     check('Pickup service matches accepted order',await checkout.getByRole('combobox',{name:'Tipo de pedido',exact:true}).inputValue(),'Para Llevar');
     await checkout.getByRole('button',{name:'MXN + USD',exact:true}).click();await checkout.getByRole('textbox',{name:'Recibido USD',exact:true}).fill('10');
-    await checkout.getByText('1 USD = 16 MXN',{exact:true}).waitFor();check('Pickup uses saved price and current rate',await checkout.locator('.workspace-change strong').textContent(),'$50.00');
+    check('Pickup keeps accepted peso quote',await checkout.locator('.workspace-checkout-summary strong').textContent(),'$110.00');
+    check('Pickup integrates whole-dollar total',await checkout.locator('.workspace-checkout-usd b').textContent(),'$7');
+    check('Pickup hides internal rate',await checkout.getByText('1 USD = 16 MXN',{exact:true}).count(),0);
+    assert.doesNotMatch(await checkout.locator('.workspace-checkout-summary').textContent(),/Cambio/);
+    check('Pickup uses saved price and current rate',await checkout.locator('.workspace-change strong').textContent(),'$50.00');
+    check('Pickup labels actual peso change',await checkout.locator('.workspace-change span').textContent(),'Cambio');
     await twoSizes(pageB,'phone-pickup-payment');
     let lostPayment=false;await pageB.route('**/rest/v1/rpc/pos_checkout',async route=>{if(!lostPayment){lostPayment=true;await route.fetch();return route.abort('failed');}return route.continue();});
     await checkout.getByRole('button',{name:'Confirmar pago',exact:true}).evaluate(button=>{button.click();button.click();});

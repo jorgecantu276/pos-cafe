@@ -6,9 +6,11 @@ Cada pieza recibe una etiqueta individual de preparación con nombre, notas,
 folio y control de entrega. Comparten la numeración POSTRE; los vasos mantienen
 su propio conteo. Los demás postres conservan la comanda agrupada.
 
-Cobrar muestra Total MXN, Total USD y el tipo de cambio del turno abierto en
-efectivo, MXN + USD y tarjeta. El importe USD se redondea hacia arriba al dólar
-entero: $130 MXN a 16 MXN/USD pide $9 USD y cotiza $14 MXN de cambio.
+Cobrar integra Total MXN y Total USD en el mismo encabezado en efectivo,
+MXN + USD y tarjeta. La pantalla visible al cliente no muestra la tasa ni un
+cambio anticipado. El importe USD se redondea hacia arriba al dólar entero:
+$130 MXN a 16 MXN/USD pide $9 USD. El resultado inferior muestra solo «Cambio»
+cuando el efectivo recibido cubre la venta; con $9 USD recibidos son $14 MXN.
 **Recibir $9 USD** registra esos dólares y calcula el cambio real en pesos; no
 aumenta el precio de la venta. Se reciben dólares enteros, sin monedas de USD.
 Los pagos mixtos y billetes mayores calculan el cambio con todo el efectivo
