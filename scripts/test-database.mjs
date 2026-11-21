@@ -26,6 +26,7 @@ import { deliveryReadinessDatabaseCases } from './delivery-readiness/database-ca
 import { deliveryProjectionCases } from './delivery-readiness/projection-cases.mjs';
 import { milkChoiceCases } from './catalog/milk-choice-cases.mjs';
 import { menuUpdateCases } from './catalog/menu-update-cases.mjs';
+import { wholeUsdDatabaseCases } from './receipts/whole-usd-database-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
 // User-owned TEMP survives PostgreSQL's restricted Windows token; a hosted
@@ -237,6 +238,7 @@ try {
   assertions+=await deliveryProjectionCases(db,connection,ids,await readFile(resolve(root,'supabase/migrations/202611020021_staff_revision_read.sql'),'utf8'));
   await db.query(await readFile(resolve(root,'supabase/migrations/202611050023_alternative_milk_choice.sql'),'utf8'));
   assertions+=await milkChoiceCases(db,connection);
+  assertions+=await wholeUsdDatabaseCases(db,connection);
   if(process.env.POS_MENU_BASELINE&&process.env.POS_MENU_UPDATE_SQL)assertions+=await menuUpdateCases(db,connection,process.env.POS_MENU_BASELINE,process.env.POS_MENU_UPDATE_SQL);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {

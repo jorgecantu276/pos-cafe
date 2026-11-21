@@ -11,8 +11,10 @@ import {PrintJournal} from '../lib/print-journal-server';
 import {handlePrintRequest} from '../lib/print-dispatch-server';
 import {handlePhonePrintRequest} from '../lib/phone-print-dispatch-server';
 import {printConfig,printerAdapter,windowsPrintInput} from '../lib/windows-print-server';
+import realMenu from './fixtures/real-menu.json';
 
 const queues={customer:'POS80 Printer',barista:'Y813BT Sticker'};
+const cheesecakeProducts=realMenu.products.filter(product=>/^Rebanada cheesecake\b/.test(product.name));
 const pastryNames=['Brownie tradicional','Galleta de pistache','Crookie nutella','Muffin de plátano','Cheesecake Oreo','Pastel de zanahoria'];
 function order(drinks=0):SavedOrder {
   const items=pastryNames.map((name,index)=>({id:randomUUID(),quantity:index===0?2:1,
@@ -43,6 +45,53 @@ test('mixed orders number only drink cups and retain other categories on their o
   const unknown=order();unknown.items=[{...unknown.items[0],product:{...unknown.items[0].product,category:'Xile Chile'}}];
   assert.equal(saleDocuments(unknown).barista.sections.length,2);
   assert.equal(saleDocuments(unknown).desserts,undefined);
+});
+
+test('all six cheesecake slices get a label per piece beside brownies, with separate drink numbering for sales and phone orders',()=>{
+  assert.equal(cheesecakeProducts.length,6);
+  const sale=order(2);
+  sale.items.push(...cheesecakeProducts.map((product,index)=>({id:randomUUID(),quantity:index===0?2:1,
+    product:{id:product.reference,name:product.name,price:product.price_mxn,category:'Postres',note:'Salsa aparte',displayExtras:[{name:'Sin nuez',price:0}]}})),
+    {id:randomUUID(),quantity:2,product:{id:'brownie-nieve',name:'Brownie cheesecake nieve',price:110,category:'Postres'}});
+  sale.total=sale.items.reduce((sum,item)=>sum+item.quantity*item.product.price,0);
+  const before=JSON.stringify(sale);
+  const phone=phoneOrderDocuments({id:randomUUID(),folio:42,contact_name:sale.customer_name,contact_phone:'8682345678',snapshot:sale});
+  for(const docs of [saleDocuments(sale),phone]){
+    assert.equal(docs.barista.sections.length,11);
+    assert.deepEqual(docs.barista.referenceLabels?.map(label=>label.cup),['1/2','2/2',...Array.from({length:9},(_,i)=>`POSTRE ${i+1}/9`)]);
+    for(const product of cheesecakeProducts){
+      const labels=docs.barista.sections.filter(section=>section[1]===product.name);
+      assert.equal(labels.length,product===cheesecakeProducts[0]?2:1);
+      for(const label of labels){
+        assert.ok(label.includes('Salsa aparte'));assert.ok(label.includes('Sin nuez'));assert.ok(label.includes('ORDEN: Entregar juntos'));
+        assert.match(label.join(' '),docs===phone?/TELÉFONO T0042 · SIN PAGAR/:/CONTROL: 12/);
+      }
+    }
+    assert.doesNotMatch(docs.desserts!.sections.flat().join(' '),/Rebanada cheesecake|Brownie cheesecake nieve/);
+    assert.match(docs.desserts!.sections.flat().join(' '),/Brownie tradicional|Cheesecake Oreo/);
+  }
+  assert.equal(JSON.stringify(sale),before);
+  const onlySlices={...sale,items:sale.items.filter(item=>/^Rebanada cheesecake\b/.test(item.product.name))};
+  assert.equal(saleDocuments(onlySlices).desserts,undefined);
+});
+
+test('a cheesecake sale already saved as grouped keeps its document and queue across retry and restart',async()=>{
+  const directory=mkdtempSync(path.join(tmpdir(),'pos-cheesecake-history-')),sale=order();
+  sale.items=[{id:randomUUID(),quantity:2,product:{id:'slice',name:'Rebanada cheesecake frutos rojos',price:130,category:'Postres'}}];sale.total=260;
+  const original:SalePrintDocument={title:'CM #0123 POSTRES',sections:[['Ana de prueba','POSTRES','2 × Rebanada cheesecake frutos rojos','Nota original']],labelLayout:'desserts-compact-v1'};
+  const sent:SalePrintDocument[]=[];
+  const adapter={async prepare(_job:unknown,document:SalePrintDocument){return{async submit(){sent.push(document);},dispose(){}};}};
+  let journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);
+  try{
+    journal.ensureDocuments('cashier',sale,queues,{customer:saleDocuments(sale).customer,barista:{title:'Sin bebidas',sections:[]},desserts:original});
+    journal.close();journal=new PrintJournal(path.join(directory,'jobs.sqlite'),adapter);
+    journal.ensure('cashier',sale,{customer:'New receipt queue',barista:'New label queue'});
+    const jobs=await journal.dispatch('cashier',sale.id);
+    assert.deepEqual(jobs.map(job=>job.audience),['customer','desserts']);
+    assert.equal(jobs.find(job=>job.audience==='desserts')?.queue,queues.barista);
+    assert.deepEqual(sent[1],original);
+    await journal.dispatch('cashier',sale.id);assert.equal(sent.length,2);
+  }finally{journal.close();rmSync(directory,{recursive:true,force:true});}
 });
 
 test('sticker profile follows the frozen layout marker while historic receipt-shaped desserts keep the receipt driver and form',()=>{

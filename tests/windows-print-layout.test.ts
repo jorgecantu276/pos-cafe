@@ -5,12 +5,46 @@ import path from 'node:path';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { phoneOrderDocuments,saleDocuments } from '../lib/sale-printing';
+import realMenu from './fixtures/real-menu.json';
 
-const dessertNames=['Brownie tradicional','Galleta de pistache y chocolate blanco','Crookie nutella','Muffin cajeta con queso','Rebanada cheesecake','Cheese danish'];
+const dessertNames=['Brownie tradicional','Galleta de pistache y chocolate blanco','Crookie nutella','Muffin cajeta con queso','Rebanada panque','Cheese danish'];
 const dessertItems=()=>dessertNames.map((name,index)=>({id:String(index),quantity:index===0?2:1,product:{id:String(index),name,price:50,category:'Postres',note:index===2?'Calentar por separado':''}}));
 const labelLayout=(document:object,previewDirectory?:string)=>spawnSync(path.join(process.env.SystemRoot!,'System32/WindowsPowerShell/v1.0/powershell.exe'),
   ['-NoLogo','-NoProfile','-NonInteractive','-File','scripts/printing/windows-print.ps1','-LayoutOnly'],
   {input:JSON.stringify({...document,verticalLabel:true,fontPoints:9,widthMm:56.9,heightMm:32,previewDirectory})+'\n',encoding:'utf8',windowsHide:true,timeout:30000});
+
+test('all six cheesecake slice names fit their own stickers with notes and delivery control', {skip:process.platform!=='win32'},()=>{
+  const products=realMenu.products.filter(product=>/^Rebanada cheesecake\b/.test(product.name));
+  const items=products.map((product,index)=>({id:product.reference,quantity:index===0?2:1,
+    product:{id:product.reference,name:product.name,price:product.price_mxn,category:'Postres',note:'Salsa aparte'}}));
+  const docs=saleDocuments({id:'cheesecake-layout',ticket_number:4321,status:'completed',total:items.reduce((sum,item)=>sum+item.quantity*item.product.price,0),items,
+    customer_name:'Ana López',order_type:'Para Llevar',order_note:'Entregar juntos',created_at:'2026-11-21T18:00:00Z',pager_number:12,
+    payment_method:'tarjeta',tender_mxn:0,tender_usd:0,exchange_rate:16,change_mxn:0});
+  assert.equal(docs.desserts,undefined);
+  const result=labelLayout(docs.barista);assert.equal(result.status,0,result.stderr||result.stdout);
+  const pages:{lines:string[]}[]=JSON.parse(result.stdout);assert.equal(pages.length,7);
+  const names=items.flatMap(item=>Array.from({length:item.quantity},()=>item.product.name));
+  pages.forEach((page,index)=>{
+    const text=page.lines.join(' ').toLowerCase();
+    assert.ok(text.includes(names[index].toLowerCase()),names[index]);
+    for(const value of ['salsa aparte','entregar juntos','control 12','#4321',`postre ${index+1}/7`])assert.ok(text.includes(value),value);
+    assert.doesNotMatch(text,/\$|total|recibido/);
+  });
+});
+
+test('twelve phone cheesecake slices retain unpaid identity and both notes on every continuation', {skip:process.platform!=='win32'},()=>{
+  const document=phoneOrderDocuments({id:'phone-cheesecake-layout',folio:42,contact_name:'Ana López',contact_phone:'8682345678',
+    snapshot:{items:[{id:'slice',quantity:12,product:{id:'slice',name:'Rebanada cheesecake frutos rojos',price:130,category:'Postres',note:'Salsa aparte'}}],
+      total:1560,customer_name:'Ana López',order_type:'Para Llevar',order_note:'Entregar juntos',created_at:'2026-11-21T18:00:00Z'}}).barista;
+  const result=labelLayout(document);assert.equal(result.status,0,result.stderr||result.stdout);
+  const pages:{lines:string[]}[]=JSON.parse(result.stdout);assert.ok(pages.length>=12);
+  for(let piece=1;piece<=12;piece++){
+    const labels=pages.filter(page=>new RegExp(`POSTRE ${piece}/12(?:\\s|$)`).test(page.lines.join(' ')));
+    assert.ok(labels.length>0,`Postre ${piece}`);
+    for(const label of labels){const text=label.lines.join(' ');assert.match(text,/T0042/);assert.match(text,/SIN PAGAR/);assert.match(text,/Rebanada cheesecake frutos rojos/i);}
+    const text=labels.flatMap(label=>label.lines).join(' ');assert.match(text,/Salsa aparte/i);assert.match(text,/Entregar[\s\S]*juntos/i);
+  }
+});
 
 test('the six real-catalog desserts, two brownies and preparation note fit one physical drink-stock sticker', {skip:process.platform!=='win32'},()=>{
   const document=saleDocuments({id:'dessert-layout',ticket_number:4321,status:'completed',total:350,

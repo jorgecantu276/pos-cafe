@@ -243,10 +243,14 @@
 .workspace-drawer-gate>footer{flex-wrap:wrap}
 .workspace-checkout{width:760px}
 .workspace-checkout-summary{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px;background:#f4f7fb;padding:18px;border-radius:18px}
-.workspace-checkout-summary>div{display:flex;align-items:baseline;gap:16px}
+.workspace-checkout-summary>div{display:flex;align-items:baseline;gap:16px;min-width:0;flex:1}
 .workspace-checkout-summary>div>span{font-size:14px;color:#626d7e}
 .workspace-checkout-summary strong{font-size:36px;font-weight:700;letter-spacing:-1px;font-variant-numeric:tabular-nums}
-.workspace-checkout-summary select{font:inherit;min-height:52px;padding:10px 12px;border:1px solid #e2e7ee;border-radius:12px;background:#fff;width:auto}
+.workspace-checkout-usd{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:14px;color:#52627a}
+.workspace-checkout-usd b{font-size:20px;font-variant-numeric:tabular-nums;color:#17243b}
+.workspace-checkout-usd small{flex-basis:100%;font-size:12px}
+.workspace-checkout>footer .workspace-change{margin-right:auto;flex:1;max-width:430px}
+.workspace-checkout-summary select{font:inherit;min-height:52px;padding:10px 12px;border:1px solid #e2e7ee;border-radius:12px;background:#fff;width:auto;flex-shrink:0}
 .workspace-payment-methods{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-bottom:18px;background:#eef1f6;padding:5px;border-radius:15px}
 .workspace-payment-methods button{min-height:52px;border-color:transparent;background:transparent;border-radius:11px;font-size:15px;color:#52627a}
 .workspace-payment-methods button[aria-pressed=true]{background:#fff;color:#0069dd;border-color:#e4e9f1;box-shadow:0 2px 5px #2335520d}

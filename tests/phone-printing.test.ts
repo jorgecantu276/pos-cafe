@@ -22,7 +22,7 @@ test('phone preparation is an unpaid document with its own folio on every cup, n
   assert.doesNotMatch(JSON.stringify(documents),/TICKET DE VENTA|Recibido MXN|Pago:|CONTROL:/);
   assert.equal(documents.barista.sections.length,2);
   for(const section of documents.barista.sections)assert.match(section.join('\n'),/TELÉFONO T0042 · SIN PAGAR/);
-  assert.ok(documents.barista.referenceLabels?.every(label=>label.folio==='TELÉFONO T0042 · SIN PAGAR'));
+  assert.ok(documents.barista.referenceLabels?.every(label=>label.folio==='T0042 · SIN PAGAR'));
   const paid={...phone.snapshot,id:randomUUID(),ticket_number:99,status:'completed',payment_method:'efectivo',tender_mxn:250,tender_usd:0,exchange_rate:16,change_mxn:30,phone_order_id:phone.id,phone_folio:phone.folio};
   assert.match(saleDocuments(paid).customer.sections.flat().join('\n'),/Pedido por teléfono: T0042/);
   assert.equal(JSON.stringify(documents),before);

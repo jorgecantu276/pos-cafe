@@ -219,26 +219,26 @@ try {
   pass('Mixed orders send cup labels plus one compact dessert sticker on the same queue; dessert-only orders create one compact sticker job and restart repeats no copies');
   const brownies = newSale(4007), brownieSale = orders.get(brownies).receipt_snapshot;
   brownieSale.items.push(dessertItems[1], ...[
-    ['Brownie cheesecake nieve', 2], ['Brownie oreo nieve', 1],
+    ['Brownie cheesecake nieve', 2], ['Brownie oreo nieve', 1], ['Rebanada cheesecake frutos rojos', 2],
   ].map(([name, quantity], index) => ({
     id: 'brownie-' + index, quantity, product: { id: 'synthetic-brownie-' + index, name, category: 'Postres', price: 100 },
   })));
-  Object.assign(brownieSale, { total: 570, tender_mxn: 600, change_mxn: 30 });
+  Object.assign(brownieSale, { total: 770, tender_mxn: 800, change_mxn: 30 });
   const countBeforeBrownies = (await spool()).length;
   await Promise.all(Array.from({ length: 4 }, () => post({ orderId: brownies })));
   const brownieJobs = (await spool()).filter(job => job.orderId === brownies);
   assert.equal(brownieJobs.length, 3);
   const brownieLabels = brownieJobs.find(job => job.audience === 'barista').document;
   assert.deepEqual(brownieLabels.sections.map(section => section[1]), [
-    'Iced coffee caramelo', 'Iced coffee caramelo', 'Brownie cheesecake nieve', 'Brownie cheesecake nieve', 'Brownie oreo nieve',
+    'Iced coffee caramelo', 'Iced coffee caramelo', 'Brownie cheesecake nieve', 'Brownie cheesecake nieve', 'Brownie oreo nieve', 'Rebanada cheesecake frutos rojos', 'Rebanada cheesecake frutos rojos',
   ]);
   assert.deepEqual(brownieLabels.referenceLabels.map(label => label.cup), [
-    '1/2', '2/2', 'POSTRE 1/3', 'POSTRE 2/3', 'POSTRE 3/3',
+    '1/2', '2/2', 'POSTRE 1/5', 'POSTRE 2/5', 'POSTRE 3/5', 'POSTRE 4/5', 'POSTRE 5/5',
   ]);
   const groupedLabel = brownieJobs.find(job => job.audience === 'desserts').document;
   assert.equal(groupedLabel.sections.length, 1);
   assert.match(groupedLabel.sections[0].join(' '), /Galleta de pistache/);
-  assert.doesNotMatch(groupedLabel.sections[0].join(' '), /Brownie/);
+  assert.doesNotMatch(groupedLabel.sections[0].join(' '), /Brownie|Rebanada cheesecake/);
   await app.restart();
   await post({ orderId: brownies });
   assert.equal((await spool()).length, countBeforeBrownies + 3);

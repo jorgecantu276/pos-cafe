@@ -4,11 +4,18 @@
 
 Punto de venta para una cafetería con una sola caja física. Next.js 16.4.3, React 19, TypeScript, Supabase y Zustand. La interfaz táctil mantiene el menú a la izquierda, la orden a la derecha y el cobro visible, con textos en español.
 
-## Última versión — 15 de noviembre de 2026
+## Corrección de Café — 21 de noviembre de 2026
+
+**Café rc.5:** cada rebanada de cheesecake recibe una etiqueta por pieza, igual
+que brownie con nieve. Cobrar muestra el total en USD y el tipo de cambio del
+turno junto al total MXN. Parte de la base de Café rc.4 con el tablero de
+preparación automático. Ver [cambios y despliegue](docs/cafe-cheesecake-usd.md).
+
+## Primera etapa publicada — 15 de noviembre de 2026
 
 [**pos-91f282d — Etapa 1: menú y etiquetas**](https://github.com/jorgecantu276/pos-cafe/releases/tag/pos-91f282d) incluye el paquete de Windows, el actualizador de Caja, las instrucciones y el ajuste de catálogo para Supabase. El código se integró en `main` mediante el [PR #15](https://github.com/jorgecantu276/pos-cafe/pull/15).
 
-Matcha ofrece **Cold foam extra por $15 MXN** y **Lala 100 sin recargo** después del ajuste de catálogo. Cada brownie con nieve recibe una etiqueta de barra por pieza. Los demás postres se agrupan en una sola etiqueta por orden. La actualización del catálogo y la comprobación de las impresoras se realizan durante la pausa de instalación en el café.
+Matcha ofrece **Cold foam extra por $15 MXN** y **Lala 100 sin recargo** después del ajuste de catálogo. Cada brownie con nieve y, desde rc.5, cada rebanada de cheesecake recibe una etiqueta de barra por pieza. Los demás postres se agrupan en una sola etiqueta por orden.
 
 | Área | Estado |
 | --- | --- |
