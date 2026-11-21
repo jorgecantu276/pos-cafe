@@ -50,7 +50,7 @@ test('permission uncertainty retains a pending write; storage failure never reac
   }finally{h.restore();}
 });
 
-test('drawer receipt asks for USD on demand and a reason only for a valid difference',async()=>{
+for(const [rate,dollarsReceived,total] of [[16,1,116],[15.075,9,235.68]])test(`drawer receipt at rate ${rate} preserves exact peso count and recovery`,async()=>{
   const dom = new JSDOM('<div id="root"></div>', {url:'http://localhost'});
   const h = harness(), saved = new Map<string,PropertyDescriptor|undefined>();
   Object.defineProperty(dom.window.navigator,'locks',{value:navigator.locks});
@@ -75,7 +75,7 @@ test('drawer receipt asks for USD on demand and a reason only for a valid differ
     return {error:null,data:{request_id:p_request,register:{id:'next',opened_by:'b',initial_balance:p_payload.counted}}};
   });
   try {
-    await act(async()=>root.render(createElement(DrawerGate,{client,status:{active:null,rate:16,cashiers:[],handoff:{id:'h',from_name:'Ana',to_id:'b',to_name:'Bea',delivered:100,rate:16}},actor:'b',isAdmin:false,reload:async()=>{},logout:()=>{}})));
+    await act(async()=>root.render(createElement(DrawerGate,{client,status:{active:null,rate,cashiers:[],handoff:{id:'h',from_name:'Ana',to_id:'b',to_name:'Bea',delivered:100,rate}},actor:'b',isAdmin:false,reload:async()=>{},logout:()=>{}})));
     assert.equal(dom.window.document.querySelectorAll('input').length,1);
     assert.equal(button('Recibir caja').disabled,true);
     assert.equal(button('Recibir caja').parentElement?.tagName,'FOOTER');
@@ -86,12 +86,12 @@ test('drawer receipt asks for USD on demand and a reason only for a valid differ
     await act(async()=>button('Agregar USD').click());
     const dollars = [...dom.window.document.querySelectorAll('label')].find(label=>label.textContent==='Dólares recibidos')?.querySelector('input');
     assert.ok(dollars);
-    await fill(dollars,'1');
+    await fill(dollars,String(dollarsReceived));
     assert.equal(button('Recibir caja').disabled,true);
     await fill(find('Motivo de diferencia')!,'Dólar de más');
     assert.equal(button('Recibir caja').disabled,false);
     await act(async()=>button('Recibir caja').click());
-    assert.deepEqual((submitted[0] as {p_payload:unknown}).p_payload,{handoff:'h',counted:116,note:'Dólar de más',actor_id:'b'});
+    assert.deepEqual((submitted[0] as {p_payload:unknown}).p_payload,{handoff:'h',counted:total,note:'Dólar de más',actor_id:'b'});
     assert.equal(button('Recibir caja'),undefined);
     assert.equal(find('Efectivo recibido MXN')?.disabled,true);
     await act(async()=>button('Comprobar recepción').click());

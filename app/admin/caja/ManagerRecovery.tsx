@@ -5,13 +5,14 @@ import { drawerWrite, recoverDrawerRequest, hasDrawerRequest, type DrawerStatus 
 import { loadShiftSummary, type ShiftSummary } from '@/lib/shift-state';
 import { errorMessage } from '@/lib/pos-types';
 import { SettingsGroup, SettingsRow, SettingsNotice } from '../Settings';
+import { receivedCashMXN } from '@/lib/usd-cash';
 
 export default function ManagerRecovery({actor,status,reload}:{actor:string;status:DrawerStatus;reload:()=>Promise<unknown>}) {
   const [summary,setSummary]=useState<ShiftSummary|null>(null),[count,setCount]=useState(''),[usd,setUSD]=useState(''),[reason,setReason]=useState('');
   const [confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[pending,setPending]=useState(false),[storageError,setStorageError]=useState(false);
   const checkPending=useCallback(()=>{try{setPending(hasDrawerRequest(localStorage,actor,'manager_close'));setStorageError(false);}catch{setPending(true);setStorageError(true);}},[actor]);
   useEffect(()=>{void Promise.resolve().then(checkPending);},[checkPending]);
-  const total=Math.round((Number(count)+Number(usd||0)*(summary?.exchange_rate??0))*100)/100;
+  const total=receivedCashMXN(Number(count),Number(usd||0),summary?.exchange_rate??0);
   const inspect=async()=>{if(!status.active)return;setBusy(true);setMessage('');try{setSummary(await loadShiftSummary(supabase,status.active.id));setConfirmed(false);}catch(error){setMessage(errorMessage(error));}finally{setBusy(false);}};
   const save=async(recover=false)=>{
     if(busy)return;setBusy(true);setMessage('');
