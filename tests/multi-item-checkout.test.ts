@@ -31,8 +31,16 @@ import PagerPicker from '../app/register/PagerPicker';
 import PhoneOrders,{PhoneOrderContact} from '../app/register/PhoneOrders';
 import * as phoneOrders from '../lib/phone-orders';
 
-for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed drinks, distinct milk/notes and repeated cups produce one checkout and per-cup documents`,async()=>{
-  const fixture=JSON.parse(readFileSync(new URL('./fixtures/multi-item-order.json',import.meta.url),'utf8'));
+for(const {role,cash} of [
+  {role:'cashier',cash:null},{role:'admin',cash:null},
+  {role:'cashier',cash:{total:130,rate:16,usd:9,change:14}},
+  {role:'cashier',cash:{total:30.60,rate:10.20,usd:3,change:0}},
+  {role:'cashier',cash:{total:128.16,rate:16,usd:9,change:15.84}},
+  {role:'cashier',cash:{total:130,rate:15.075,usd:9,change:5.68}},
+]) test(cash?`actual register: ${cash.total} MXN at ${cash.rate} accepts ${cash.usd} whole USD and returns ${cash.change} MXN`:`actual workspace ${role}: mixed drinks, distinct milk/notes and repeated cups produce one checkout and per-cup documents`,async()=>{
+  const rate=cash?.rate??20;
+  const fixture=cash?{products:[{id:'cash-slice',name:'Rebanada cheesecake',price:cash.total,category:'Postres',is_active:true,customizable:false,wizard_steps:[]}],extras:[],expectedTotal:cash.total,
+    expectedLines:[{product_id:'cash-slice',quantity:1,extra_ids:[],note:''}]}:JSON.parse(readFileSync(new URL('./fixtures/multi-item-order.json',import.meta.url),'utf8'));
   const dom=new JSDOM('<div id="root"></div>',{url:'http://127.0.0.1'});
   Object.defineProperty(dom.window.navigator,'locks',{value:{request:async(_key:string,_options:unknown,action:(lock:object)=>Promise<unknown>)=>action({})}});
   const saved=new Map<string,PropertyDescriptor|undefined>(),alerts:string[]=[];
@@ -52,7 +60,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     saved.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{configurable:true,value});
   }
   const fixtures:Record<string,unknown>={profiles:{full_name:'Prueba local',role,is_active:true},products:fixture.products,extras:fixture.extras,
-    cash_registers:{id:'local-shift',opened_at:'2026-10-30T12:00:00Z',initial_balance:100,exchange_rate:20},customers:[]};
+    cash_registers:{id:'local-shift',opened_at:'2026-10-30T12:00:00Z',initial_balance:100,exchange_rate:rate},customers:[]};
   const client={auth:{getUser:async()=>({data:{user:{id:'mixed-user'}},error:null}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},
     from:(table:string)=>{
       assert.ok(table in fixtures,`Unexpected table ${table}`);
@@ -60,10 +68,10 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     },rpc:(name:string,args:{p_payload:checkout.CheckoutPayload})=>{
       if(name==='pos_inventory_register'){const result=Promise.resolve({error:null,data:{enabled:false,items:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='get_register_shortcuts'){const result=Promise.resolve({error:null,data:{product_ids:[],revision:0}});return Object.assign(result,{abortSignal:()=>result});}
-      if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate:20,active:{id:'local-shift',cashier_id:'mixed-user',cashier_name:'Prueba'},handoff:null,cashiers:[]}});return Object.assign(result,{abortSignal:()=>result});}
+      if(name==='pos_drawer_status'){const result=Promise.resolve({error:null,data:{rate,active:{id:'local-shift',cashier_id:'mixed-user',cashier_name:'Prueba'},handoff:null,cashiers:[]}});return Object.assign(result,{abortSignal:()=>result});}
       if(name==='pos_shift_summary'){
         const result=Promise.resolve({error:null,data:{register_id:'local-shift',status:'open',opened_at:'2026-10-30T12:00:00Z',starting_cash:100,
-          exchange_rate:20,total_sales:0,cash_sales:0,expected_cash:100,expenses:[],expenses_revision:0,payments:{}}});return Object.assign(result,{abortSignal:()=>result});
+          exchange_rate:rate,total_sales:0,cash_sales:0,expected_cash:100,expenses:[],expenses_revision:0,payments:{}}});return Object.assign(result,{abortSignal:()=>result});
       }
       assert.equal(name,'pos_checkout');calls++;payload=args.p_payload;
       receipt={id:'f0000000-0000-4000-8000-000000000001',ticket_number:4321,status:'completed',total:fixture.expectedTotal,
@@ -73,7 +81,7 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
           return{id:String(index),quantity:line.quantity,product:{...product,basePrice:product.price,
             price:product.price+extras.reduce((sum:number,e:{price:number})=>sum+e.price,0),displayExtras:extras,note:line.note}};
         }),customer_name:'Invitado',created_at:'2026-10-30T17:00:00Z',order_type:payload.order_type,order_note:payload.order_note,
-        payment_method:payload.payment_method,tender_mxn:payload.tender_mxn,tender_usd:payload.tender_usd,exchange_rate:20,change_mxn:0,pager_number:payload.pager_number};
+        payment_method:payload.payment_method,tender_mxn:payload.tender_mxn,tender_usd:payload.tender_usd,exchange_rate:rate,change_mxn:cash?.change??0,pager_number:payload.pager_number};
       return{error:null,data:receipt};
     }};
   const router={replace(){},refresh(){}};
@@ -120,6 +128,16 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
   cart.useCartStore.getState().clearCart();
   try{
     await act(async()=>root.render(createElement(exports.default!,{appearance:'workspace'})));
+    if(cash){
+      await click(dom.window.document.querySelector('.workspace-product')!);
+      await click(button('Control de entrega: Elegir control'));await click(button('Control 1'));
+      await click(button('Cobrar'));await click(button('MXN + USD'));
+      await click(button(`Recibir $${cash.usd} USD`));
+      assert.equal(dom.window.document.querySelector('.workspace-change')?.textContent,`Cambio MXN$${cash.change.toFixed(2)}`);
+      await click(button('Confirmar pago'));
+      assert.equal(payload?.tender_usd,cash.usd);assert.equal(payload?.tender_mxn,0);
+      assert.equal(cart.useCartStore.getState().items.length,0);assert.deepEqual(alerts,[]);
+    }else{
     await add('Caramelo','Leche de avena+$15.00','sin hielo');
     await add('Caramelo','Entera','extra hielo');
     await add('Caramelo','Leche de avena+$15.00','sin hielo');
@@ -146,7 +164,9 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     const confirmation=dom.window.document.querySelector<HTMLInputElement>('.workspace-card-confirm input')!;assert.ok(confirmation);await click(confirmation);
     await click(button('Tarjeta'));assert.equal(confirmation.checked,true);
     await click(button('Confirmar pago'));
-    assert.equal(calls,1);assert.ok(payload);assert.equal(payload.expected_total,425);assert.deepEqual(payload.items,fixture.expectedLines);
+    }
+    assert.equal(calls,1);assert.ok(payload);assert.equal(payload.expected_total,fixture.expectedTotal);assert.deepEqual(payload.items,fixture.expectedLines);
+    if(!cash){
     assert.equal(payload.order_type,'Para Llevar');assert.equal(payload.order_note,'entregar juntos');
     assert.equal(payload.pager_number,1);
     assert.ok(receipt);const documents=salePrinting.saleDocuments(receipt,{testOnly:true});
@@ -155,6 +175,13 @@ for(const role of ['cashier','admin']) test(`actual workspace ${role}: mixed dri
     assert.deepEqual(documents.barista.sections.map(lines=>lines.find(line=>['sin hielo','extra hielo','sin tapa'].includes(line))),['sin hielo','sin hielo','extra hielo','sin tapa']);
     assert.equal(jobs.length,2);assert.ok(dispatches>=1);assert.equal(cart.useCartStore.getState().items.length,0);assert.deepEqual(alerts,[]);
     if(role==='cashier'&&process.env.POS_MULTI_ITEM_EVIDENCE)writeFileSync(process.env.POS_MULTI_ITEM_EVIDENCE,JSON.stringify({scope:'Actual register UI with synthetic local catalog and mocked services',payload,receipt,documents},null,2));
+    }else{
+      assert.equal(receipt!.total,cash.total);
+      const text=salePrinting.saleDocuments(receipt!).customer.sections[0].join('\n');
+      assert.ok(text.includes(`TOTAL: $${cash.total.toFixed(2)} MXN`));
+      assert.ok(text.includes(`Recibido USD: $${cash.usd.toFixed(2)}`));
+      assert.ok(text.includes(`Cambio: $${cash.change.toFixed(2)}`));
+    }
   }finally{
     await act(async()=>root.unmount());cart.useCartStore.getState().clearCart();dom.window.close();
     for(const[key,descriptor]of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}

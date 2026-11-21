@@ -1,5 +1,6 @@
 'use client';
 import { posProfile } from '@/lib/pos-profile';
+import { receivedCashMXN, usdCashQuote } from '@/lib/usd-cash';
 
 import Image from 'next/image';
 import ProductPhoto from '@/components/ProductPhoto';
@@ -886,6 +887,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
           const orderTotal = selectedPhoneOrder?.snapshot.total??getTotal(),orderItems=selectedPhoneOrder?.snapshot.items??items;
           if (!registerId || !orderItems.length || !Number.isFinite(orderTotal) || orderTotal <= 0 || isPaymentInsufficient) throw new Error('Revisa la orden, el turno y el importe recibido.');
           const cash = ['Efectivo','Mixto'].includes(paymentMethod);
+          if (cash && !smoothies && !Number.isInteger(parseAmount(amountReceivedUSD))) throw new Error('Recibe dólares enteros. El cambio se entrega en pesos.');
           review = { startedAt: new Date().toISOString(), total: orderTotal, requestId: selectedPhoneOrder?crypto.randomUUID():binding!.requestId(),
             ...(clipEnabled && paymentMethod==='Tarjeta' ? {provider:'clip' as const} : {}),
             payload: checkoutPayload(orderItems, {
@@ -987,9 +989,9 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
   }, {});
 
   // 🟢 LA MATEMÁTICA PROTEGIDA DEL CAMBIO
-  const totalReceivedCombinedMXN = parseAmount(amountReceivedMXN) + (parseAmount(amountReceivedUSD) * parseAmount(exchangeRate));
+  const totalReceivedCombinedMXN = receivedCashMXN(parseAmount(amountReceivedMXN),parseAmount(amountReceivedUSD),parseAmount(exchangeRate));
   const checkoutTotal=selectedPhoneOrder?.snapshot.total??getTotal();
-  const isPaymentInsufficient = (paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && totalReceivedCombinedMXN < checkoutTotal;
+  const isPaymentInsufficient = (paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && (totalReceivedCombinedMXN < checkoutTotal || (!smoothies && !Number.isInteger(parseAmount(amountReceivedUSD))));
 
   const catalogNotice = (catalogStale || catalogCheckError) && <div role="status" className="relative z-10 flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950"><span>{catalogStale ? 'El menú cambió. Actualiza y revisa el pedido antes de cobrar.' : catalogCheckError} {(selectedFamily || selectedProduct || showCheckoutModal) && 'Cierra la ventana actual para actualizar.'}{checkoutReview && 'Primero resuelve la venta pendiente.'}</span><button type="button" className="rounded-xl border bg-white px-4 py-2 font-semibold disabled:opacity-50" disabled={loading || !!selectedFamily || !!selectedProduct || showCheckoutModal || !!checkoutReview || isProcessingCheckout || isClosingShift || savingExpense || openingShift} onClick={refreshCatalog}>Actualizar menú</button></div>;
   const printStatus = <PrintDispatch key={printCheckoutKey} checkoutKey={printCheckoutKey} latestOrderId={savedSale?.id??phonePrintId} />;
@@ -1642,7 +1644,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
                     </div>
                     <div className="flex justify-between items-end border-t border-slate-200 pt-3 mt-1">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Equivalente USD</span>
-                      <span className="text-lg font-black text-slate-400">${parseAmount(exchangeRate) > 0 ? (getTotal() / parseAmount(exchangeRate)).toFixed(2) : '0.00'}</span>
+                      <span className="text-lg font-black text-slate-400">${usdCashQuote(getTotal(),parseAmount(exchangeRate))?.usd ?? '—'}</span>
                     </div>
                  </div>
 
@@ -1670,7 +1672,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
                       </div>
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">USD</span>
-                        <input type="number" disabled={paymentMethod === 'Tarjeta' || paymentMethod === 'Otro'} value={amountReceivedUSD} onChange={e => setAmountReceivedUSD(e.target.value)} placeholder="0.00" className="w-full bg-[#f5f5f7] border-2 border-transparent focus:border-[#0071e3]/30 rounded-[16px] py-3.5 pl-14 pr-3 text-lg font-black outline-none disabled:opacity-60 text-right"/>
+                        <input type="number" min="0" step="1" disabled={paymentMethod === 'Tarjeta' || paymentMethod === 'Otro'} value={amountReceivedUSD} onChange={e => {if(/^\d{0,8}$/.test(e.target.value))setAmountReceivedUSD(e.target.value);}} placeholder="0" className="w-full bg-[#f5f5f7] border-2 border-transparent focus:border-[#0071e3]/30 rounded-[16px] py-3.5 pl-14 pr-3 text-lg font-black outline-none disabled:opacity-60 text-right"/>
                       </div>
                     </div>
 

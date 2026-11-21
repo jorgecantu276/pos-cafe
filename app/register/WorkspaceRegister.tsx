@@ -1,5 +1,6 @@
 'use client';
 import { posProfile } from '@/lib/pos-profile';
+import { receivedCashMXN, usdCashQuote } from '@/lib/usd-cash';
 
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import ProductPhoto from '@/components/ProductPhoto';
@@ -57,8 +58,8 @@ export function WorkspaceDialog({ title, children, onClose, busy = false, classN
   </dialog>;
 }
 
-export function WorkspaceKeyboard({ value, onChange, numeric = false, disabled = false, label }: {
-  value: string; onChange: (value: string) => void; numeric?: boolean; disabled?: boolean; label?: string;
+export function WorkspaceKeyboard({ value, onChange, numeric = false, integer = false, disabled = false, label }: {
+  value: string; onChange: (value: string) => void; numeric?: boolean; integer?: boolean; disabled?: boolean; label?: string;
 }) {
   const [symbols, setSymbols] = useState(false);
   const [upper, setUpper] = useState(false);
@@ -66,7 +67,7 @@ export function WorkspaceKeyboard({ value, onChange, numeric = false, disabled =
   return <fieldset disabled={disabled} className={`workspace-keyboard ${numeric ? 'is-numeric' : ''}`} aria-label={numeric ? 'Teclado numérico' : 'Teclado en pantalla'}>
     {label && <legend>{label}</legend>}
     {rows.map(row => <div key={row}>{[...row].map(key => <button type="button" key={key} onClick={() => onChange(value + (upper ? key.toLocaleUpperCase('es') : key))}>{upper ? key.toLocaleUpperCase('es') : key}</button>)}</div>)}
-    {numeric ? <div><button type="button" onClick={() => onChange(value + '.')}>.</button><button type="button" onClick={() => onChange(value + '0')}>0</button><button type="button" aria-label="Borrar último dígito" onClick={() => onChange(value.slice(0, -1))}>⌫</button></div>
+    {numeric ? <div><button type="button" disabled={integer} onClick={() => onChange(value + '.')}>.</button><button type="button" onClick={() => onChange(value + '0')}>0</button><button type="button" aria-label="Borrar último dígito" onClick={() => onChange(value.slice(0, -1))}>⌫</button></div>
       : <div><button type="button" aria-pressed={upper} onClick={() => setUpper(!upper)}>Mayús</button><button type="button" aria-pressed={symbols} onClick={() => setSymbols(!symbols)}>Símbolos</button><button type="button" className="workspace-space" onClick={() => onChange(value + ' ')}>Espacio</button><button type="button" onClick={() => onChange(value.slice(0, -1))}>Borrar</button></div>}
   </fieldset>;
 }
@@ -300,21 +301,24 @@ export function WorkspaceCheckout(p: CheckoutProps) {
   const cash = p.method === 'Efectivo' || p.method === 'Mixto';
   const canCharge = p.smoothies || !!p.phoneOrderLabel || validPagerNumber(p.pagerNumber);
   const parse = (value: string | number) => Number(String(value || 0).replace(',', '.'));
-  const received = Math.round((parse(p.mxn) + parse(p.usd) * p.exchangeRate) * 100) / 100;
+  const received = receivedCashMXN(parse(p.mxn), parse(p.usd), p.exchangeRate);
+  const quote = usdCashQuote(p.total, p.exchangeRate);
+  const validUSD = !cash || !!p.smoothies || (Number.isInteger(parse(p.usd)) && parse(p.usd) >= 0);
+  const change = <div className={`workspace-change ${received < p.total ? 'is-short' : ''}`} aria-live="polite"><span>{received < p.total ? 'Faltan MXN' : 'Cambio MXN'}</span><strong>{money(Math.abs(received - p.total))}</strong></div>;
   const bills = [50, 100, 200, 500, 1000].filter(value => value >= p.total).slice(0, 3);
-  const key = (value: string) => { if (/^\d{0,8}(?:\.\d{0,2})?$/.test(value)) (currency === 'MXN' ? p.onMXN : p.onUSD)(value); };
-  return <WorkspaceDialog title="Cobrar" onClose={p.onClose} busy={p.busy} className={`workspace-checkout${p.smoothies ? ' smoothie-checkout' : ''}`}><div className="workspace-dialog-content"><div className={`workspace-checkout-main ${cash ? 'has-cash' : ''}`}><section className="workspace-checkout-details"><div className="workspace-checkout-summary"><div><span>Total MXN</span><strong>{money(p.total)}</strong></div>{!p.smoothies && <select aria-label="Tipo de pedido" value={p.orderType} disabled={p.busy||!!p.phoneOrderLabel} onChange={event => p.onOrderType(event.target.value)}><option value="En Local">Para aquí</option><option value="Para Llevar">Para llevar</option></select>}</div>
+  const key = (value: string) => { if ((currency === 'USD' ? /^\d{0,8}$/ : /^\d{0,8}(?:\.\d{0,2})?$/).test(value)) (currency === 'MXN' ? p.onMXN : p.onUSD)(value); };
+  return <WorkspaceDialog title="Cobrar" onClose={p.onClose} busy={p.busy} className={`workspace-checkout${p.smoothies ? ' smoothie-checkout' : ''}`}><div className="workspace-dialog-content"><div className={`workspace-checkout-main ${cash ? 'has-cash' : ''}`}><section className="workspace-checkout-details"><div className="workspace-checkout-summary"><div><span>Total MXN</span><strong>{money(p.total)}</strong>{!p.smoothies && <div className="workspace-checkout-usd"><span>Total USD</span><b>{quote === null ? '—' : `$${quote.usd}`}</b><small>1 USD = {p.exchangeRate} MXN</small>{quote && <small>Cambio con ${quote.usd} USD: {money(quote.changeMXN)} MXN</small>}</div>}</div>{!p.smoothies && <select aria-label="Tipo de pedido" value={p.orderType} disabled={p.busy||!!p.phoneOrderLabel} onChange={event => p.onOrderType(event.target.value)}><option value="En Local">Para aquí</option><option value="Para Llevar">Para llevar</option></select>}</div>
     <div className="workspace-payment-methods" aria-label="Método de pago">{(p.smoothies ? ['Efectivo', 'Tarjeta'] : ['Efectivo', 'Mixto', 'Tarjeta']).map(method => <button type="button" key={method} disabled={p.busy} aria-pressed={p.method === method} onClick={() => { if (p.method === method) return; p.onMethod(method); setCardConfirmed(false); setCurrency('MXN'); }}>{method === 'Mixto' ? 'MXN + USD' : method}</button>)}</div>
     {cash && <div className="workspace-cash-fields"><label>Recibido MXN<input aria-label="Recibido MXN" inputMode="decimal" disabled={p.busy} value={p.mxn} onFocus={() => setCurrency('MXN')} onChange={event => p.onMXN(event.target.value)} /></label>
-      {p.method === 'Mixto' && <label>Recibido USD<input aria-label="Recibido USD" inputMode="decimal" disabled={p.busy} value={p.usd} onFocus={() => setCurrency('USD')} onChange={event => p.onUSD(event.target.value)} /></label>}
+      {p.method === 'Mixto' && <label>Recibido USD<input aria-label="Recibido USD" inputMode="numeric" disabled={p.busy} value={p.usd} onFocus={() => setCurrency('USD')} onChange={event => { if (/^\d{0,8}$/.test(event.target.value)) p.onUSD(event.target.value); }} /></label>}
       {p.method === 'Efectivo' && <button type="button" disabled={p.busy} onClick={() => { p.onMXN(String(p.total)); p.onUSD(''); }}>Importe exacto</button>}
-      {p.method === 'Mixto' && <p className="workspace-caption">1 USD = {p.exchangeRate} MXN</p>}
+      {p.method === 'Mixto' && <><button type="button" disabled={p.busy || quote === null} onClick={() => { if (quote) { p.onMXN(''); p.onUSD(String(quote.usd)); setCurrency('USD'); } }}>Recibir ${quote?.usd ?? '—'} USD</button><p className="workspace-caption">Dólares enteros. El cambio se entrega en pesos.</p></>}
       {p.smoothies && !!bills.length && <div className="smoothie-bills" role="group" aria-label="Billetes recibidos">{bills.map(bill => <button type="button" key={bill} disabled={p.busy} aria-pressed={received === bill} onClick={() => p.onMXN(String(bill))}>${bill}</button>)}</div>}
-      <div className={`workspace-change ${received < p.total ? 'is-short' : ''}`} aria-live="polite"><span>{received < p.total ? 'Faltan MXN' : 'Cambio MXN'}</span><strong>{money(Math.abs(received - p.total))}</strong></div>
+      {p.smoothies && change}
     </div>}
     {p.method === 'Tarjeta' && !p.clipEnabled && <label className="workspace-card-confirm"><input type="checkbox" disabled={p.busy} checked={cardConfirmed} onChange={event => setCardConfirmed(event.target.checked)} />Pago aprobado en la terminal</label>}
-    </section><section className="workspace-checkout-keypad">{p.phoneOrderLabel?<p className="phone-order-state">{p.phoneOrderLabel} · Paga al recoger</p>:p.onPagerNumber&&<PagerPicker value={p.pagerNumber??null} onChange={p.onPagerNumber} disabled={p.busy}/>}{cash && <WorkspaceKeyboard numeric label={`Teclado ${currency}`} disabled={p.busy} value={String(currency === 'MXN' ? p.mxn : p.usd)} onChange={key} />}
-  </section></div></div><footer><button type="button" className="workspace-primary" disabled={p.busy || p.insufficient || !canCharge || (p.method === 'Tarjeta' && !p.clipEnabled && !cardConfirmed)} onClick={()=>{if(canCharge)p.onConfirm();}}>{p.busy ? 'Confirmando…' : p.method==='Tarjeta'&&p.clipEnabled?'Enviar a CLIP':'Confirmar pago'}</button></footer></WorkspaceDialog>;
+    </section><section className="workspace-checkout-keypad">{p.phoneOrderLabel?<p className="phone-order-state">{p.phoneOrderLabel} · Paga al recoger</p>:p.onPagerNumber&&<PagerPicker value={p.pagerNumber??null} onChange={p.onPagerNumber} disabled={p.busy}/>}{cash && <WorkspaceKeyboard numeric integer={currency === 'USD'} label={`Teclado ${currency}`} disabled={p.busy} value={String(currency === 'MXN' ? p.mxn : p.usd)} onChange={key} />}
+  </section></div></div><footer>{cash && !p.smoothies && change}<button type="button" className="workspace-primary" disabled={p.busy || p.insufficient || !canCharge || !validUSD || (p.method === 'Tarjeta' && !p.clipEnabled && !cardConfirmed)} onClick={()=>{if(canCharge && validUSD)p.onConfirm();}}>{p.busy ? 'Confirmando…' : p.method==='Tarjeta'&&p.clipEnabled?'Enviar a CLIP':'Confirmar pago'}</button></footer></WorkspaceDialog>;
 }
 
 export function WorkspaceOpening(p: {

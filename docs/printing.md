@@ -14,8 +14,10 @@ on the same Y813BT sticker queue as drinks. It uses the existing
 57 × 32 mm form and rotation with the `desserts-compact-v1` label layout. It lists
 quantities, modifiers and notes without prices, with a **POSTRES** heading,
 customer, folio and delivery control. Drinks retain one label per cup; their
-cup count excludes desserts. Each brownie with ice cream gets its own label in
-the same job as the drink labels. Brownie labels have their own **POSTRE** count.
+cup count excludes desserts. Each brownie with ice cream and each **Rebanada
+cheesecake** (plain, frutos rojos, lotus, plátano, resses or tortuga) gets its own
+label per piece in the same job as the drink labels. These labels share their
+own **POSTRE** count, keeping each product's name, modifiers and notes.
 The grouped job is created when the order contains other desserts.
 
 The dessert job has its own `desserts` journal audience and recovery controls.
