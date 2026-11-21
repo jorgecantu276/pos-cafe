@@ -1643,8 +1643,8 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
                       <span className="text-4xl font-black tracking-tighter text-[#1d1d1f]">${getTotal().toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-end border-t border-slate-200 pt-3 mt-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Equivalente USD</span>
-                      <span className="text-lg font-black text-slate-400">${usdCashQuote(getTotal(),parseAmount(exchangeRate))?.usd ?? '—'}</span>
+                      <span className={smoothies?'text-[10px] font-bold text-slate-400 uppercase tracking-widest':'text-[11px] font-bold text-slate-500 uppercase tracking-widest'}>{smoothies?'Equivalente USD':'Total USD'}</span>
+                      <span className={smoothies?'text-lg font-black text-slate-400':'text-4xl font-black tracking-tighter text-[#1d1d1f]'}>${usdCashQuote(getTotal(),parseAmount(exchangeRate))?.usd ?? '—'}</span>
                     </div>
                  </div>
 
@@ -1680,7 +1680,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
                     {((paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && totalReceivedCombinedMXN >= getTotal()) && (
                       <div className="flex flex-col gap-2 bg-[#06c167]/10 p-4 rounded-xl mt-4 animate-in fade-in border border-[#06c167]/20">
                          <div className="flex justify-between items-center">
-                           <span className="text-xs font-bold text-[#06c167] uppercase tracking-wider">Cambio (MXN):</span>
+                           <span className="text-xs font-bold text-[#06c167] uppercase tracking-wider">{smoothies?'Cambio (MXN):':'Cambio'}</span>
                            <span className="text-xl font-black text-[#06c167]">${(totalReceivedCombinedMXN - getTotal()).toFixed(2)}</span>
                          </div>
                       </div>

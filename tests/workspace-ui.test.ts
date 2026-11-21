@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 import { act, createElement, useState, type ReactNode, type ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
 import WorkspaceRegister,{ WorkspaceOpening, WorkspaceCustomization, WorkspaceCheckout } from '../app/register/WorkspaceRegister';
+import { PrototypeCheckout } from '../app/register/PrototypeRegister';
 import { favoriteMenuCards, matchesMenuCard, menuCards } from '../lib/menu-cards';
 
 async function render(work: (screen: Document, click: (label: string) => Promise<void>) => Promise<void>, component: ReactNode) {
@@ -179,15 +180,15 @@ test('workspace cash keypad, exact payment and terminal confirmation preserve ch
 });
 
 test('Cafe checkout shows the USD total at the active shift rate for every payment method and phone pickup',async()=>{
-  for(const method of ['Efectivo','Mixto','Tarjeta'])for(const [total,exchangeRate,expected,change] of [[130,16,'$9','$14.00'],[130,20,'$7','$10.00'],[260,18,'$15','$10.00']] as const){
+  for(const method of ['Efectivo','Mixto','Tarjeta'])for(const [total,exchangeRate,expected] of [[55,16,'$4'],[130,16,'$9'],[130,20,'$7'],[260,18,'$15']] as const){
     await render(async screen=>{
       const summary=screen.querySelector('.workspace-checkout-summary')!;
       assert.match(summary.textContent!,new RegExp(`Total MXN\\$${total}\\.00`));
       const usd=summary.querySelector('.workspace-checkout-usd')!;
       assert.equal(usd.querySelector('b')?.textContent,expected);
       assert.match(usd.textContent!,/Total USD/);
-      assert.equal(usd.querySelector('small')?.textContent,`1 USD = ${exchangeRate} MXN`);
-      assert.equal(usd.querySelectorAll('small')[1]?.textContent,`Cambio con ${expected} USD: ${change} MXN`);
+      assert.doesNotMatch(screen.body.textContent!,/Cambio con|1 USD =|Tipo de cambio|Dólares enteros/);
+      assert.doesNotMatch(summary.textContent!,/Cambio/);
     },createElement(WorkspaceCheckout,{total,exchangeRate,method,mxn:'',usd:'',orderType:'Para Llevar',note:'',busy:false,insufficient:false,
       phoneOrderLabel:'T0042',onMethod:()=>{},onMXN:()=>{},onUSD:()=>{},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},onConfirm:()=>{}}));
   }
@@ -195,6 +196,32 @@ test('Cafe checkout shows the USD total at the active shift rate for every payme
     assert.equal(screen.querySelector('.workspace-checkout-usd'),null);
   },createElement(WorkspaceCheckout,{total:130,exchangeRate:16,method:'Efectivo',mxn:'',usd:'',orderType:'En Local',note:'',busy:false,insufficient:false,
     smoothies:true,onMethod:()=>{},onMXN:()=>{},onUSD:()=>{},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},onConfirm:()=>{}}));
+});
+
+test('Cafe shows only actual change for peso, whole-dollar and mixed tender',async()=>{
+  for(const [mxn,usd,result] of [['','','Faltan MXN$55.00'],['20','','Faltan MXN$35.00'],['55','','Cambio$0.00'],['100','','Cambio$45.00'],['','4','Cambio$9.00'],['','5','Cambio$25.00'],['7','3','Cambio$0.00'],['10','3','Cambio$3.00']] as const){
+    await render(async screen=>{
+      assert.equal(screen.querySelector('.workspace-change')?.textContent,result);
+      assert.doesNotMatch(screen.querySelector('.workspace-checkout-summary')!.textContent!,/Cambio|1 USD/);
+      assert.equal(screen.querySelectorAll('.workspace-change').length,1);
+    },createElement(WorkspaceCheckout,{total:55,exchangeRate:16,method:'Mixto',mxn,usd,orderType:'En Local',note:'',busy:false,insufficient:false,
+      pagerNumber:1,onMethod:()=>{},onMXN:()=>{},onUSD:()=>{},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},onConfirm:()=>{}}));
+  }
+  await render(async screen=>{
+    assert.equal(screen.querySelector('.workspace-change'),null);
+  },createElement(WorkspaceCheckout,{total:55,exchangeRate:16,method:'Tarjeta',mxn:'',usd:'',orderType:'En Local',note:'',busy:false,insufficient:false,
+    pagerNumber:1,onMethod:()=>{},onMXN:()=>{},onUSD:()=>{},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},onConfirm:()=>{}}));
+});
+
+test('prototype Cafe checkout keeps totals together and shows only actual peso change',async()=>{
+  for(const usd of ['','4'])await render(async screen=>{
+    const summary=screen.querySelector('.prototype-checkout-totals')!;
+    assert.match(summary.textContent!,/Total MXN\$55.00Total USD\$4/);
+    assert.doesNotMatch(screen.body.textContent!,/Cambio con|Tipo de cambio|Cambio MXN/);
+    if(usd)assert.match(screen.body.textContent!,/Cambio: \$9.00/);
+    else assert.doesNotMatch(screen.body.textContent!,/Cambio:/);
+  },createElement(PrototypeCheckout,{total:55,exchangeRate:16,method:'Mixto',mxn:'',usd,orderType:'En Local',note:'',busy:false,insufficient:!usd,
+    pagerNumber:1,onMethod:()=>{},onMXN:()=>{},onUSD:()=>{},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},onConfirm:()=>{}}));
 });
 
 test('receiving whole USD uses the real tender and gives peso change without increasing the sale total',async()=>{
@@ -208,7 +235,7 @@ test('receiving whole USD uses the real tender and gives peso change without inc
   await render(async(screen,click)=>{
     await click('Recibir $9 USD');
     assert.equal((screen.querySelector('[aria-label="Recibido USD"]') as HTMLInputElement).value,'9');
-    assert.equal(screen.querySelector('.workspace-change')?.textContent,'Cambio MXN$14.00');
+    assert.equal(screen.querySelector('.workspace-change')?.textContent,'Cambio$14.00');
     assert.equal([...screen.querySelectorAll('button')].find(button=>button.textContent==='.')?.disabled,true);
     assert.equal(screen.querySelector('.workspace-checkout-summary strong')?.textContent,'$130.00');
     await click('Confirmar pago');assert.deepEqual(paid,{mxn:'',usd:'9'});

@@ -133,7 +133,7 @@ for(const {role,cash} of [
       await click(button('Control de entrega: Elegir control'));await click(button('Control 1'));
       await click(button('Cobrar'));await click(button('MXN + USD'));
       await click(button(`Recibir $${cash.usd} USD`));
-      assert.equal(dom.window.document.querySelector('.workspace-change')?.textContent,`Cambio MXN$${cash.change.toFixed(2)}`);
+      assert.equal(dom.window.document.querySelector('.workspace-change')?.textContent,`Cambio$${cash.change.toFixed(2)}`);
       await click(button('Confirmar pago'));
       assert.equal(payload?.tender_usd,cash.usd);assert.equal(payload?.tender_mxn,0);
       assert.equal(cart.useCartStore.getState().items.length,0);assert.deepEqual(alerts,[]);
