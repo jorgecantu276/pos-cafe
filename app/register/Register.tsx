@@ -346,8 +346,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
 
   const calculateTotalCash = () => {
     const pesos = Object.entries(breakdown).reduce((sum, [den, qty]) => sum + (Number(den) * qty), 0);
-    const dollarsToPesos = parseAmount(dollarsInBox) * parseAmount(exchangeRate);
-    return pesos + dollarsToPesos;
+    return receivedCashMXN(pesos, parseAmount(dollarsInBox), parseAmount(exchangeRate));
   };
 
   const handleStartShift = async () => {
@@ -355,8 +354,9 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
     if (!exchangeRate || !Number.isFinite(parseAmount(exchangeRate)) || parseAmount(exchangeRate) <= 0
       || parseAmount(exchangeRate)>1000 || Math.round(parseAmount(exchangeRate)*10000)/10000 !== parseAmount(exchangeRate)
       || !Number.isFinite(calculateTotalCash()) || calculateTotalCash()<0 || calculateTotalCash()>10000000
-      || Object.values(breakdown).some(q=>!Number.isInteger(q)||q<0) || parseAmount(dollarsInBox)<0) {
-      alert("Revisa el tipo de cambio guardado.");
+      || Object.values(breakdown).some(q=>!Number.isInteger(q)||q<0) || parseAmount(dollarsInBox)<0
+      || !Number.isFinite(Number(dollarsInBox)) || Math.round(Number(dollarsInBox)*100)/100!==Number(dollarsInBox)) {
+      alert("Revisa el tipo de cambio y el efectivo inicial.");
       return;
     }
 

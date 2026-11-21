@@ -13,6 +13,19 @@ import { rememberSalePrint } from '../lib/sale-printing';
 import {beginPhoneRequest,completePhoneRequest,getPhoneOrder,phoneRequestKey,readPhoneRequest,submitPhoneRequest,validPhoneContact,type PhoneOrder,type PhoneRequest} from '../lib/phone-orders';
 import { createCartStore,customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
 import {bindCartDraft,cartDraftKey} from '../lib/cart-draft';
+import {receivedCashMXN} from '../lib/usd-cash';
+
+test('opening and closing denomination counts use the same decimal conversion as checkout',()=>{
+  const count=handler('calculateTotalCash',{breakdown:{100:1},dollarsInBox:9,exchangeRate:'15.075',parseAmount:Number,receivedCashMXN});
+  assert.equal(count(),235.68);
+});
+
+test('opening rejects sub-cent USD counts rather than silently rounding physical money',async()=>{
+  const messages:string[]=[];
+  const open=handler('handleStartShift',{openingInFlight:{current:false},loading:false,loadError:null,exchangeRate:'16',parseAmount:Number,
+    calculateTotalCash:()=>145.92,breakdown:{100:0},dollarsInBox:9.123,alert:(message:string)=>messages.push(message)});
+  await open();assert.equal(messages.length,1);
+});
 
 test('quick loyalty enrollment selects the new customer for the current order with required phone and optional birthday',async()=>{
   const person={id:'new-member',name:'Ana',points:50};let selected:unknown,hidden=false,saving=false;

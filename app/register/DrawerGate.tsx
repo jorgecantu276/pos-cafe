@@ -5,15 +5,17 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { drawerWrite, hasDrawerRequest, recoverDrawerRequest, type DrawerStatus } from '@/lib/drawer';
 import { errorMessage } from '@/lib/pos-types';
 import { WorkspaceDialog } from './WorkspaceRegister';
+import { receivedCashMXN } from '@/lib/usd-cash';
 
 export default function DrawerGate({ client, status, actor, isAdmin, reload, logout }: { client: Pick<SupabaseClient,'rpc'>; status: DrawerStatus; actor: string; isAdmin: boolean; reload: () => Promise<unknown>; logout: () => void }) {
   const [mxn, setMXN] = useState(''), [usd, setUSD] = useState(''), [note, setNote] = useState('');
   const [showUSD, setShowUSD] = useState(false);
   const [to, setTo] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const handoff = status.handoff, canAccept = handoff?.to_id === actor;
-  const counted = Math.round((Number(mxn || 0) + Number(usd || 0) * (handoff?.rate ?? 0)) * 100) / 100;
+  const counted = receivedCashMXN(Number(mxn || 0), Number(usd || 0), handoff?.rate ?? 0);
   const difference = handoff ? Math.round((counted - handoff.delivered) * 100) / 100 : 0;
-  const validCount = Boolean(mxn.trim()) && Number.isFinite(counted) && Number(mxn) >= 0 && Number(usd) >= 0;
+  const validCount = Boolean(mxn.trim()) && Number.isFinite(counted) && Number(mxn) >= 0 && Number(usd) >= 0
+    && Math.round(Number(mxn) * 100) / 100 === Number(mxn) && Math.round(Number(usd || 0) * 100) / 100 === Number(usd || 0);
   const needsReason = validCount && difference !== 0;
   let pendingAccept = false;
   if (canAccept && typeof window !== 'undefined') {

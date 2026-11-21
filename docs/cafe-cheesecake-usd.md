@@ -16,6 +16,11 @@ realmente recibido. La venta y los envíos a CLIP siguen en MXN. El pedido
 telefónico usa el tipo del turno al cobrar.
 POS Smoothies conserva su pantalla de cobro en pesos.
 
+La apertura, el arqueo/cierre, la recepción entre cajeros y el cierre por
+responsable comparten la misma conversión decimal. Esto evita diferencias de un
+centavo al contar USD con una tasa de hasta cuatro decimales. Cada operación
+conserva su tasa de turno o entrega, sin usar la de una apertura futura.
+
 Las etiquetas telefónicas nuevas usan la cabecera `T0042 · SIN PAGAR`, dejando
 espacio para cantidades de dos dígitos y continuaciones con notas. El texto
 guardado de la comanda sigue identificando el pedido por teléfono. Los documentos
