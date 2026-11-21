@@ -149,3 +149,25 @@ jobs:
         run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55540-55569
       - run: node --import tsx scripts/smoothies/import-drill.mjs
       - run: node --import tsx scripts/smoothies/local-sale-drill.mjs
+  required-verification:
+    name: Required verification
+    if: ${{ always() }}
+    needs: [integration, verify, smoothies-package, smoothies-backend]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Require every verification job to succeed
+        env:
+          VERIFICATION_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node <<'NODE'
+          const results = JSON.parse(process.env.VERIFICATION_RESULTS);
+          const expected = ['integration', 'verify', 'smoothies-package', 'smoothies-backend'];
+          const blocked = expected.filter(job => results[job]?.result !== 'success');
+          if (blocked.length) {
+            console.error('Verification did not pass:', blocked.map(job => `${job}=${results[job]?.result ?? 'missing'}`).join(', '));
+            process.exit(1);
+          }
+          console.log('All verification jobs passed. A release still requires review and explicit publication.');
+          NODE
