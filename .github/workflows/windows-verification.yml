@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        script: ['test:admin-http', 'test:phone-http', 'test:restore-business']
+        script: ['test:admin-http', 'test:phone-http', 'test:restore-business', 'test:storage-contract']
     env:
       NEXT_TELEMETRY_DISABLED: '1'
       POS_PRINT_MODE: disabled
@@ -36,7 +36,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Reserve local fixture ports against ephemeral client connections
-        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55450-55529
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55450-55569
       - name: Exercise one isolated Auth/backend scenario on its own runner
         run: npm run ${{ matrix.script }}
   verify:
