@@ -11,7 +11,8 @@ import { randomUUID } from 'node:crypto';
 
 // Separate fresh synthetic stack. Existing staging, archives and hosted data
 // are never read or reconciled. Each run owns a new project and test volumes.
-export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false } = {}) {
+export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false, storage = false } = {}) {
+  const storageEnabled = storage || emptyWithStorage;
   assert.ok([55471,55481,55501,55521,55541,55561].includes(portBase), 'Only dedicated loopback test port families are allowed');
   const portPrefix=String(portBase).slice(0,-1);
   await dockerCheck();
@@ -20,7 +21,7 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
   await mkdir(path.join(directory, 'supabase'), { recursive: true }); await mkdir(bin, { recursive: true });
   let configText = (await readFile(path.join(root, 'supabase/staging/config.toml'), 'utf8'))
     .replaceAll('pos-cafe-staging-local', project).replaceAll('5545', portPrefix);
-  if (emptyWithStorage) {
+  if (storageEnabled) {
     configText = configText.replace(/(\[storage\]\r?\nenabled = )false/, '$1true');
     assert.match(configText, /\[storage\]\r?\nenabled = true/);
   }
@@ -49,7 +50,7 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
   let db;
   try {
     const excluded = ['realtime','imgproxy','edge-runtime','logflare','vector','supavisor','studio','inbucket'];
-    if (!emptyWithStorage) excluded.push('storage-api');
+    if (!storageEnabled) excluded.push('storage-api');
     await cliRun(['start', '--exclude', excluded.join(',')]);
     const status = JSON.parse(await cliRun(['status', '-o', 'json']));
     assert.equal(status.API_URL, `http://127.0.0.1:${portBase}`);
@@ -63,7 +64,7 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
     db = new Client({ connectionString: status.DB_URL }); await db.connect();
     assert.equal(Number((await db.query("select count(*) n from pg_tables where schemaname='public'")).rows[0].n), 0, 'Requires a fresh empty test database; retained test volumes are never reset automatically');
     assert.equal(Number((await db.query('select count(*) n from auth.users')).rows[0].n), 0);
-    const source = await sourceFiles();
+    const source = await sourceFiles({ storage: storageEnabled });
     if (!emptyWithStorage) for (const statement of baselineStatements(JSON.parse(source.snapshot))) await db.query(statement);
     const config = { api: status.API_URL, database: status.DB_URL, anon: status.ANON_KEY, service: status.SERVICE_ROLE_KEY };
     const service = createClient(config.api, config.service, { auth: { persistSession: false, autoRefreshToken: false } });

@@ -2,6 +2,7 @@
 // This exercises the shipped supervisor, ZIP extractor, database/print locks,
 // real process health identity and activation; no publisher key is read.
 import assert from 'node:assert/strict';
+import { nextAcceptanceVersion } from './acceptance-version.mjs';
 import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -19,8 +20,9 @@ const { runAutoUpdate, acquireIdle } = await import(pathToFileURL(path.join(inst
 const scratch = await mkdtemp(path.join(path.dirname(root), 'update-acceptance-'));
 const candidateFolder = path.join(scratch, 'candidate');
 await cp(packageRoot, candidateFolder, { recursive: true });
-const candidate = { ...baseline, id: randomBytes(8).toString('hex'), appVersion: '1.0.0-rc.4',
-  familyRelease: 'pos-v1.0.0-rc.4', releaseLabel: 'smoothies-v1.0.0-rc.4',
+const fixtureVersion = nextAcceptanceVersion(baseline.appVersion);
+const candidate = { ...baseline, id: randomBytes(8).toString('hex'), appVersion: fixtureVersion,
+  familyRelease: `pos-v${fixtureVersion}`, releaseLabel: `smoothies-v${fixtureVersion}`,
   sourceCommit: 'a'.repeat(40), familySourceCommit: 'a'.repeat(40), sourceDirty: false, familySourceDirty: false };
 delete candidate.settingsPath;
 await writeFile(path.join(candidateFolder, 'release.json'), JSON.stringify(candidate));

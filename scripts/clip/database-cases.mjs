@@ -73,12 +73,13 @@ export async function clipDatabaseCases(db,connection,ids) {
   const {handleClipWebhook}=await import('../../supabase/functions/clip-webhook/index.ts');
   const integration=randomUUID(),integrationProvider='pinpad-'+randomUUID(),transaction=randomUUID();let posts=0;
   await rpc(cashier,'pos_clip_prepare',[integration,{...payload,pager_number:12}]);
-  const database={rpc:async(name,args)=>{
+  const databaseFor=client=>({rpc:async(name,args)=>{
     assert.ok(['pos_clip_get','pos_clip_claim','pos_clip_attach','pos_clip_settle','pos_clip_notify'].includes(name));
     const keys=Object.keys(args);assert.ok(keys.every(key=>/^p_[a-z_]+$/.test(key)));
-    try {const result=await service.query(`select ${name}(${keys.map((key,index)=>key+'=> $'+(index+1)).join(',')}) result`,Object.values(args));return {data:result.rows[0].result,error:null};}
+    try {const result=await client.query(`select ${name}(${keys.map((key,index)=>key+'=> $'+(index+1)).join(',')}) result`,Object.values(args));return {data:result.rows[0].result,error:null};}
     catch(error){return {data:null,error:{message:error.message,code:error.code}};}
-  }};
+  }});
+  const database=databaseFor(service);
   const providerFetch=async(_url,init)=>{
     if(init.method==='POST'){posts++;throw Error('Simulated lost CLIP response');}
     return Response.json({pinpad_request_id:integrationProvider,reference:'pos-'+integration,amount:'50.00',amount_paid:'50.00',tip_amount:'0.00',status:'COMPLETED',
@@ -96,6 +97,39 @@ export async function clipDatabaseCases(db,connection,ids) {
   const verified=await gateway.status(integration,ids.cashier);equal(verified.state,'completed');equal(verified.order.total,50);equal(verified.order.pager_number,12);
   equal((await gateway.status(integration,ids.cashier)).order.id,verified.order.id);equal(posts,1);
   equal((await db.query('select count(*)::int n from orders where request_id=$1',[integration])).rows[0].n,1);
+  // Two sessions of the same synthetic installation see the same payment fence.
+  // An authenticated canceled lookup may omit totals, but pending/paid conflict
+  // must never unlock a manual checkout or issue another provider POST.
+  await db.query('update products set price=50 where id=$1',[product]);
+  const canceled=randomUUID(),canceledProvider='pinpad-'+randomUUID();let canceledPosts=0,canceledStatus='PENDING';
+  await rpc(cashier,'pos_clip_prepare',[canceled,payload]);
+  await rpc(service,'pos_clip_claim',[canceled,ids.cashier,'TESTSERIAL']);
+  await rpc(service,'pos_clip_attach',[canceled,ids.cashier,canceledProvider]);
+  const canceledFetch=async(_url,init)=>{
+    if(init.method==='POST'){canceledPosts++;throw Error('Cancellation recovery must not create a payment');}
+    return Response.json({pinpad_request_id:canceledProvider,reference:'pos-'+canceled,amount:'50.00',status:canceledStatus,
+      ...(canceledStatus==='PAID_CONFLICT'?{status:'CANCELED',amount_paid:'50.00'}:{}),
+      detail:{pages:{total:0,total_results:0},results:[]}});
+  };
+  const canceledConfig={enabled:false,tokenReady:true,token:'SYNTHETIC_TEST_TOKEN',serial:'TESTSERIAL',webhook:'https://test.invalid/hook'};
+  const sessionA=new ClipGateway(database,canceledConfig,canceledFetch),sessionB=new ClipGateway(databaseFor(service2),canceledConfig,canceledFetch);
+  await Promise.all([sessionA.status(canceled,ids.cashier),sessionB.status(canceled,ids.cashier)]);
+  equal((await rpc(service,'pos_clip_get',[canceled,ids.cashier])).state,'pending');
+  await deny(rpc(parallel,'pos_checkout',[randomUUID(),payload]));
+  canceledStatus='PAID_CONFLICT';
+  await sessionB.status(canceled,ids.cashier);
+  equal((await rpc(service,'pos_clip_get',[canceled,ids.cashier])).state,'pending');
+  await deny(rpc(cashier,'pos_abandon_checkout',[canceled]));
+  await deny(db.query("update cash_registers set status='closed' where id=$1",[register]));
+  canceledStatus='CANCELED';
+  const recovered=await Promise.all([sessionA.status(canceled,ids.cashier),sessionB.status(canceled,ids.cashier)]);
+  equal(recovered.map(result=>result.state),['failed','failed']);
+  equal(canceledPosts,0);
+  equal((await db.query('select count(*)::int n from orders where request_id=$1',[canceled])).rows[0].n,0);
+  equal((await rpc(service,'pos_clip_get',[canceled,ids.cashier])).request_id,canceled);
+  await rpc(parallel,'pos_abandon_checkout',[canceled]);
+  const manual=await rpc(parallel,'pos_checkout',[randomUUID(),payload]);
+  equal(manual.total,50);
   const backup=JSON.parse(await rpc(service,'pos_business_backup',[]));
   equal(backup.tables['cafe_private.clip_payments'].rows.some(row=>row.request_id===integration&&row.state==='completed'),true);
   equal(backup.tables['cafe_private.clip_webhook_hints'].rows.some(row=>row.request_id===integration),true);
