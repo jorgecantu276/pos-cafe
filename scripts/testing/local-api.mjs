@@ -11,13 +11,18 @@ import { randomUUID } from 'node:crypto';
 
 // Separate fresh synthetic stack. Existing staging, archives and hosted data
 // are never read or reconciled. Each run owns a new project and test volumes.
-export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false, storage = false } = {}) {
+export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false, storage = false, runtimeDirectory } = {}) {
   const storageEnabled = storage || emptyWithStorage;
-  assert.ok([55471,55481,55501,55521,55541,55561].includes(portBase), 'Only dedicated loopback test port families are allowed');
+  assert.ok([55471,55481,55501,55521,55541,55561,55901,55921].includes(portBase), 'Only dedicated loopback test/demo port families are allowed');
+  if ([55901,55921].includes(portBase)) {
+    assert.ok(runtimeDirectory && path.isAbsolute(runtimeDirectory), 'Operations demos require their private runtime directory.');
+    const relative = path.relative(root, runtimeDirectory);
+    assert.ok(relative.startsWith('..' + path.sep), 'Keep demo runtime state outside immutable source.');
+  } else assert.equal(runtimeDirectory, undefined, 'Existing test directory policy is unchanged.');
   const portPrefix=String(portBase).slice(0,-1);
   await dockerCheck();
   const project = `pos-cafe-admin-${randomUUID().slice(0, 8)}`, network = `supabase_network_${project}`;
-  const directory = path.join(work, 'admin-api', project), bin = path.join(directory, 'docker-bin');
+  const directory = path.join(runtimeDirectory || work, 'admin-api', project), bin = path.join(directory, 'docker-bin');
   await mkdir(path.join(directory, 'supabase'), { recursive: true }); await mkdir(bin, { recursive: true });
   let configText = (await readFile(path.join(root, 'supabase/staging/config.toml'), 'utf8'))
     .replaceAll('pos-cafe-staging-local', project).replaceAll('5545', portPrefix);
@@ -38,7 +43,7 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
   }
   const cliRun = args => run(process.execPath, [cli, ...args, '--workdir', directory], { env });
   const names = (await run('docker', ['network', 'ls', '--format', '{{.Name}}'])).trim().split(/\r?\n/);
-  if (!names.includes(network)) await run('docker', ['network', 'create', '--label', `pos-cafe.admin-test=${project}`, '--opt', 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1', network]);
+  if (!names.includes(network)) await run('docker', ['network', 'create', '--subnet', `10.243.${parseInt(randomUUID().slice(0,2),16)}.0/24`, '--label', `pos-cafe.admin-test=${project}`, '--opt', 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1', network]);
   const [net] = JSON.parse(await run('docker', ['network', 'inspect', network]));
   assert.equal(net.Labels?.['pos-cafe.admin-test'], project); assert.equal(net.Options?.['com.docker.network.bridge.host_binding_ipv4'], '127.0.0.1');
   const cleanupNetwork=async()=>{
@@ -68,6 +73,7 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
     if (!emptyWithStorage) for (const statement of baselineStatements(JSON.parse(source.snapshot))) await db.query(statement);
     const config = { api: status.API_URL, database: status.DB_URL, anon: status.ANON_KEY, service: status.SERVICE_ROLE_KEY };
     const service = createClient(config.api, config.service, { auth: { persistSession: false, autoRefreshToken: false } });
-    return { config, db, service, install: () => db.query(source.migration), async cleanup() { await db.end(); await cliRun(['stop', '--no-backup']); await cleanupNetwork(); } };
+    const isolation = { project, network, containers: JSON.parse(await run('docker', ['inspect', ...containers])).map(value => ({ id: value.Id, image: value.Image })) };
+    return { config, db, service, isolation, directory, install: () => db.query(source.migration), async cleanup() { await db.end(); await cliRun(['stop', '--no-backup']); await cleanupNetwork(); } };
   } catch (error) { await db?.end(); await cliRun(['stop']).then(cleanupNetwork).catch(() => {}); throw error; }
 }

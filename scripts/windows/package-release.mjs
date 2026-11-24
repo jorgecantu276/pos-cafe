@@ -1,4 +1,5 @@
 import { packageVersion } from '../releases/version-info.mjs';
+import { operationsDemoFile } from '../operations/package-policy.mjs';
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -27,7 +28,7 @@ const files = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'ut
 const versionMetadata = packageVersion('cafe', root);
 const stage = mkdtempSync(path.join(root, '.build-check-release-'));
 for (const file of files) {
-  if (path.basename(file).startsWith('.env')) continue;
+  if (path.basename(file).startsWith('.env') || operationsDemoFile(file)) continue;
   mkdirSync(path.dirname(path.join(stage, file)), { recursive: true });
   cpSync(path.join(root, file), path.join(stage, file));
 }
@@ -47,9 +48,11 @@ stageDependencies(path.join(root, 'node_modules'), path.join(stage, 'node_module
 const env = { ...process.env, NEXT_PUBLIC_POS_PROFILE: 'cafe', POS_RELEASE_BUILD: '1', NEXT_TELEMETRY_DISABLED: '1',
   NEXT_PUBLIC_SUPABASE_URL: url.origin, NEXT_PUBLIC_SUPABASE_ANON_KEY: key };
 delete env.SUPABASE_SERVICE_ROLE_KEY; delete env.SUPABASE_ACCESS_TOKEN; delete env.POS_RECEIPT_ISSUER_FILE;
+delete env.NEXT_PUBLIC_POS_OPS_DEMO; delete env.POS_OPS_DEMO_ACCESS_FILE; delete env.POS_OPS_DEMO_TOKEN;
 for (const name of Object.keys(env)) if (name.startsWith('POS_CLIP_')) delete env[name];
 const build = spawnSync(process.execPath, [path.join(stage, 'node_modules/next/dist/bin/next'), 'build', '--webpack'], { cwd: stage, env, stdio: 'inherit' });
 assert.equal(build.status, 0, 'Production build failed; no release was created.');
+assert.ok(!Object.keys(JSON.parse(readFileSync(path.join(stage, '.next/server/app-paths-manifest.json'), 'utf8'))).some(route => /(?:^|\/)ops-demo(?:\/|$)/.test(route)), 'Operational demo routes must be physically absent from customer builds.');
 const standalone = path.join(stage, '.next/standalone');
 assert.ok(existsSync(path.join(standalone, 'server.js')), 'Standalone server missing.');
 mkdirSync(destination);
