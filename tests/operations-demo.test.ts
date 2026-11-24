@@ -7,7 +7,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { NextRequest } from 'next/server';
-import { webDemoContract, demoEnvironment, configurationIdentity, assertDemoStopped, demoBuildIdentity, localDemoAccess, writeDemoJson } from '../lib/operations-demo.mjs';
+import { webDemoContract, demoEnvironment, configurationIdentity, assertDemoStopped, demoBuildIdentity, localDemoAccess, writeDemoJson, initializeDemoPrintFaults } from '../lib/operations-demo.mjs';
+import { printConfig, printerAdapter } from '../lib/windows-print-server';
 import { operationsDemoFile } from '../scripts/operations/package-policy.mjs';
 import { middleware } from '../middleware';
 import { GET } from '../app/api/ops-demo/identity/route';
@@ -74,6 +75,18 @@ test('middleware opens only exact operational demo routes when configured; custo
 });
 test('resume refuses any live or uncertain original process without issuing a stop',()=>{
   const record={launcherPid:11,appPid:12};assert.throws(()=>assertDemoStopped(record,()=>true));assert.throws(()=>assertDemoStopped(record,()=>{throw Error('uncertain');}));assert.doesNotThrow(()=>assertDemoStopped(record,()=>false));
+});
+test('cold mock printer setup sends both copies and never overwrites retained fault state',async()=>{
+  const {record,env}=await fixture(),config=printConfig(env);await mkdir(config.directory);
+  const adapter=printerAdapter(config),document={title:'Synthetic demo',sections:[['Fictional sale']]};
+  const job={orderId:'synthetic-sale',ticket:'1',audience:'customer' as const,queue:config.queues.customer,state:'queued' as const,message:'',attempts:0,updatedAt:'2026-11-24T00:00:00Z'};
+  await assert.rejects(adapter.prepare(job,document),/simulación de impresora/);
+  await initializeDemoPrintFaults(record.directory);
+  for(const audience of ['customer','barista'] as const){const prepared=await adapter.prepare({...job,audience,queue:config.queues[audience]},document);try{await prepared.submit();}finally{prepared.dispose();}}
+  const spool=(await readFile(path.join(config.directory,'mock-spool.jsonl'),'utf8')).trim().split('\n').map(line=>JSON.parse(line));assert.deepEqual(spool.map(row=>row.audience),['customer','barista']);
+  await writeFile(config.mockFaults!,JSON.stringify({barista:'offline'}));
+  await assert.rejects(initializeDemoPrintFaults(record.directory),{code:'EEXIST'});
+  await assert.rejects(adapter.prepare({...job,audience:'barista',queue:config.queues.barista},document),/desconectada/);
 });
 test('customer stage excludes operational routes, helpers and their import-dependent test',async()=>{
   for(const file of ['app/ops-demo/page.tsx','app/api/ops-demo/identity/route.ts','scripts/operations/start.mjs','lib/operations-demo.mjs','tests/operations-demo.test.ts'])assert.equal(operationsDemoFile(file),true,file);
