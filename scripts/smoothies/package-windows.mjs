@@ -1,4 +1,5 @@
 import { packageVersion } from '../releases/version-info.mjs';
+import { operationsDemoFile } from '../operations/package-policy.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -21,7 +22,7 @@ function copy(src, into, names) {
   for (const name of names) {
     const target = path.join(into, name);
     mkdirSync(path.dirname(target), { recursive: true });
-    cpSync(path.join(src, name), target, { recursive: true, dereference: true, filter: file => !path.basename(file).startsWith('.env') });
+    cpSync(path.join(src, name), target, { recursive: true, dereference: true, filter: file => !path.basename(file).startsWith('.env') && !operationsDemoFile(path.relative(src, file)) });
   }
 }
 
@@ -60,12 +61,14 @@ try {
   linkDependencies(path.join(source, 'node_modules'), path.join(stage, 'node_modules'));
   const env = { ...process.env, NEXT_PUBLIC_POS_PROFILE: 'smoothies', NEXT_TELEMETRY_DISABLED: '1', POS_RELEASE_BUILD: '1', NEXT_PUBLIC_SMOOTHIES_PORTABLE: '1',
     NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:58000', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'smoothies-runtime-config' };
+  delete env.NEXT_PUBLIC_POS_OPS_DEMO; delete env.POS_OPS_DEMO_ACCESS_FILE; delete env.POS_OPS_DEMO_TOKEN;
   for (const key of Object.keys(env)) {
     if (/^SMOOTHIES_|^SUPABASE_|^POS_(?:CLIP|PRINT|BACKUP|DATABASE|RECEIPT|LAUNCH)/.test(key)) delete env[key];
   }
   const result = spawnSync(process.execPath, [path.join(stage, 'node_modules/next/dist/bin/next'), 'build', '--webpack'],
     { cwd: stage, env, stdio: 'inherit' });
   assert.equal(result.status, 0, 'No se generó el paquete de producción.');
+  assert.ok(!Object.keys(JSON.parse(readFileSync(path.join(stage, '.next/server/app-paths-manifest.json'), 'utf8'))).some(route => /(?:^|\/)ops-demo(?:\/|$)/.test(route)), 'Operational demo routes must be physically absent from customer builds.');
   const standalone = path.join(stage, '.next/standalone');
   assert.ok(existsSync(path.join(standalone, 'server.js')), 'Falta el servidor portable de Next.');
   cpSync(standalone, runtimePath, { recursive: true, dereference: true, filter: file => !path.basename(file).startsWith('.env') });

@@ -5,8 +5,13 @@ import { isAuthUnavailable } from '@/lib/user-management';
 import { loginReturnTarget } from '@/lib/login-return';
 import { withDeadline } from '@/lib/request-deadline';
 import { supabasePublicKey } from '@/lib/supabase-public-config';
+import { operationsDemoAuth } from '@/lib/operations-demo-auth';
 
 export async function middleware(request: NextRequest) {
+  if (['/ops-demo','/api/ops-demo/identity','/api/ops-demo/login'].includes(request.nextUrl.pathname)) {
+    if (!process.env.POS_OPS_DEMO_ACCESS_FILE || !process.env.POS_OPS_DEMO_TOKEN || process.env.POS_RELEASE_BUILD === '1') return new NextResponse(null, { status: 404 });
+    return NextResponse.next(); // Each demo route validates the fixed local instance before access.
+  }
   if (['/api/local-instance','/smoothies-config.js'].includes(request.nextUrl.pathname)) return NextResponse.next();
   const updates = new Map<string, { name: string; value: string; options: CookieOptions }>();
   const authHeaders = new Headers();
@@ -22,6 +27,7 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     supabasePublicKey(),
     {
+      ...operationsDemoAuth(process.env.NEXT_PUBLIC_SUPABASE_URL!),
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll(values, headers) {
