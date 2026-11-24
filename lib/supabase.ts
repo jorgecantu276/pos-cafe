@@ -1,9 +1,10 @@
 import { createBrowserClient } from '@supabase/ssr'
 import { supabasePublicKey } from './supabase-public-config'
+import { operationsDemoAuth } from './operations-demo-auth'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 function createClient() {
-  return createBrowserClient(supabaseUrl, supabasePublicKey())
+  return createBrowserClient(supabaseUrl, supabasePublicKey(), operationsDemoAuth(supabaseUrl))
 }
 type BrowserClient = ReturnType<typeof createClient>
 let client: BrowserClient | undefined

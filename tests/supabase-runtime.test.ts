@@ -22,21 +22,25 @@ test('portable SDK construction waits for a real runtime key and preserves singl
   const oldPortable = process.env.NEXT_PUBLIC_SMOOTHIES_PORTABLE;
   const oldBuildKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const oldRuntime = process.env.SMOOTHIES_RUNTIME_ANON_KEY;
+  const oldOpsDemo = process.env.NEXT_PUBLIC_POS_OPS_DEMO;
   const oldWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
   try {
     process.env.NEXT_PUBLIC_SMOOTHIES_PORTABLE = '1';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'smoothies-runtime-config';
     delete process.env.SMOOTHIES_RUNTIME_ANON_KEY;
+    delete process.env.NEXT_PUBLIC_POS_OPS_DEMO;
     const window: { smoothiesPublicKey?: string } = {};
     Object.defineProperty(globalThis, 'window', { configurable: true, value: window });
     const config = compile('../lib/supabase-public-config.ts', { './pos-profile': { posProfile: { id: 'smoothies' } } });
     const keys: string[] = [];
+    const options: unknown[] = [];
     const auth = { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) };
     const storage = { from: (name: string) => ({ name }) };
     const actual = { auth, storage, marker: 'actual-client', rpc() { return this.marker; } };
     const { supabase } = compile('../lib/supabase.ts', {
       './supabase-public-config': config,
-      '@supabase/ssr': { createBrowserClient: (_url: string, key: string) => { keys.push(key); return actual; } },
+      './operations-demo-auth': compile('../lib/operations-demo-auth.ts', {}),
+      '@supabase/ssr': { createBrowserClient: (_url: string, key: string, config: unknown) => { keys.push(key); options.push(config); return actual; } },
     }) as { supabase: typeof actual };
     assert.deepEqual(keys, [], 'Evaluating route modules must not create or poison the SDK singleton.');
     assert.throws(() => supabase.rpc(), /configuracion/);
@@ -48,6 +52,7 @@ test('portable SDK construction waits for a real runtime key and preserves singl
     assert.equal(supabase.storage, storage);
     assert.ok(supabase.auth.onAuthStateChange().data.subscription.unsubscribe);
     assert.deepEqual(keys, ['real-local-anon-key']);
+    assert.deepEqual(options, [{}], 'Installed portable clients retain the original auth namespace.');
     Reflect.deleteProperty(globalThis, 'window');
     const getKey = config.supabasePublicKey as () => string;
     assert.throws(getKey, /configuracion/);
@@ -55,7 +60,7 @@ test('portable SDK construction waits for a real runtime key and preserves singl
     assert.equal(getKey(), 'real-server-anon-key');
   } finally {
     for (const [key, value] of Object.entries({ NEXT_PUBLIC_SMOOTHIES_PORTABLE: oldPortable,
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: oldBuildKey, SMOOTHIES_RUNTIME_ANON_KEY: oldRuntime })) {
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: oldBuildKey, SMOOTHIES_RUNTIME_ANON_KEY: oldRuntime, NEXT_PUBLIC_POS_OPS_DEMO: oldOpsDemo })) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
     if (oldWindow) Object.defineProperty(globalThis, 'window', oldWindow); else Reflect.deleteProperty(globalThis, 'window');
