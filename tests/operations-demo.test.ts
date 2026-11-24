@@ -53,7 +53,8 @@ test('identity requires exact host/origin/token and current compiled output; no 
   try{
     for(const key of Object.keys(process.env))if(/^(POS_|SMOOTHIES_|NEXT_PUBLIC_|SUPABASE_|STRIPE_|NODE_OPTIONS$|NODE_ENV$|NEXT_TELEMETRY_DISABLED$)/i.test(key))delete process.env[key];
     Object.assign(process.env,env);process.chdir(record.app);
-    const request=(token=record.token,host='127.0.0.1:3151',origin?:string)=>new Request('http://127.0.0.1:3151/api/ops-demo/identity',{headers:{host,'X-Pos-Ops-Token':token,...(origin?{origin}:{})}});
+    const request=(token=record.token,host='127.0.0.1:3151',origin?:string)=>new NextRequest('http://127.0.0.1:3151/api/ops-demo/identity',{headers:{host,'X-Pos-Ops-Token':token,...(origin?{origin}:{})}});
+    assert.equal(new URL(request().url).hostname,'localhost','Actual NextRequest normalizes its internal loopback URL.');
     const response=await GET(request());assert.equal(response.status,200);const body=await response.json();assert.equal(body.product,'cafe');assert.equal(body.token,undefined);assert.equal(body.config,undefined);
     assert.equal((await GET(request('0'.repeat(64)))).status,403);assert.equal((await GET(request(record.token,'localhost:3151'))).status,403);
     await assert.rejects(localDemoAccess(request(record.token,'127.0.0.1:3151','https://foreign.invalid'),{token:true}));
