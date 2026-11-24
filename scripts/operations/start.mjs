@@ -109,4 +109,4 @@ try {
 } catch (error) {
   await writeDemoJson(recordFile, { ...record, phase: record.phase === 'ready' ? 'ready' : 'attention', error: 'Demo startup/runtime requires review; data and backend were retained.' });
   throw error;
-} finally { await local?.db.end(); }
+} finally { await local?.db.end();await local?.disposeTools(); }

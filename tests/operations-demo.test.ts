@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { NextRequest } from 'next/server';
 import { webDemoContract, demoEnvironment, configurationIdentity, assertDemoStopped, demoBuildIdentity, localDemoAccess, writeDemoJson } from '../lib/operations-demo.mjs';
 import { operationsDemoFile } from '../scripts/operations/package-policy.mjs';
 import { middleware } from '../middleware';
 import { GET } from '../app/api/ops-demo/identity/route';
 import { operationsDemoAuth } from '../lib/operations-demo-auth';
+import { operationsLoopbackTool } from '../scripts/testing/operations-loopback.mjs';
 
 async function fixture(product='cafe') {
   const directory=await mkdtemp(path.join(tmpdir(),'pos-web-demo-test-')),app=path.join(directory,'app');
@@ -76,4 +80,17 @@ test('customer stage excludes operational routes, helpers and their import-depen
   for(const file of ['scripts/windows/package-release.mjs','scripts/smoothies/package-windows.mjs']){
     const source=await readFile(new URL('../'+file,import.meta.url),'utf8');assert.ok(source.includes('operationsDemoFile'));assert.ok(source.includes('Operational demo routes must be physically absent'));
   }
+});
+test('actual Windows loopback compiler succeeds from deep private paths without moving private state', {skip:process.platform!=='win32'},async()=>{
+  const root=await mkdtemp(path.join(tmpdir(),'ops-deep-state-')),deep=path.join(root,...Array(9).fill('long-private-state-segment'));
+  await mkdir(deep,{recursive:true});const sentinel=path.join(deep,'private-state.txt');await writeFile(sentinel,'keep-private-state');
+  let tool:Awaited<ReturnType<typeof operationsLoopbackTool>>|undefined;
+  try{
+    assert.ok(deep.length>260);const sourceFile=fileURLToPath(new URL('../scripts/staging/docker-loopback.cs',import.meta.url));
+    const compiler=path.join(process.env.WINDIR||'C:/Windows','Microsoft.NET/Framework64/v4.0.30319/csc.exe');
+    await assert.rejects(promisify(execFile)(compiler,['/nologo','/target:exe',`/out:${path.join(deep,'docker.exe')}`,sourceFile],{windowsHide:true}),'The original deep compiler-output path must reproduce the platform failure.');
+    tool=await operationsLoopbackTool({sourceFile,portPrefix:'5590'});
+    assert.ok(tool.launcher.length<200);assert.equal(await readFile(sentinel,'utf8'),'keep-private-state');
+    assert.ok(!tool.bin.startsWith(deep));await tool.dispose();tool=undefined;
+  }finally{await tool?.dispose();}
 });

@@ -8,6 +8,7 @@ import { root, work, run, dockerCheck } from '../staging/runtime.mjs';
 import { baselineStatements } from '../staging/safety.mjs';
 import { sourceFiles } from '../staging/bootstrap.mjs';
 import { randomUUID } from 'node:crypto';
+import { operationsLoopbackTool } from './operations-loopback.mjs';
 
 // Separate fresh synthetic stack. Existing staging, archives and hosted data
 // are never read or reconciled. Each run owns a new project and test volumes.
@@ -22,7 +23,9 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
   const portPrefix=String(portBase).slice(0,-1);
   await dockerCheck();
   const project = `pos-cafe-admin-${randomUUID().slice(0, 8)}`, network = `supabase_network_${project}`;
-  const directory = path.join(runtimeDirectory || work, 'admin-api', project), bin = path.join(directory, 'docker-bin');
+  const directory = path.join(runtimeDirectory || work, 'admin-api', project);
+  const tool=process.platform==='win32'&&runtimeDirectory?await operationsLoopbackTool({sourceFile:path.join(root,'scripts/staging/docker-loopback.cs'),portPrefix}):null;
+  const bin=tool?.bin||path.join(directory,'docker-bin');
   await mkdir(path.join(directory, 'supabase'), { recursive: true }); await mkdir(bin, { recursive: true });
   let configText = (await readFile(path.join(root, 'supabase/staging/config.toml'), 'utf8'))
     .replaceAll('pos-cafe-staging-local', project).replaceAll('5545', portPrefix);
@@ -35,10 +38,12 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
   const cli = path.join(path.dirname(require.resolve('supabase/package.json')), pkg.bin.supabase);
   let env = { ...process.env };
   if (process.platform === 'win32') {
-    const source = path.join(bin, 'loopback.cs'), launcher = path.join(bin, 'docker.exe');
-    await writeFile(source, (await readFile(path.join(root, 'scripts/staging/docker-loopback.cs'), 'utf8')).replaceAll('5545', portPrefix));
-    await run(path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/target:exe', `/out:${launcher}`, source]);
-    await run(launcher, ['--pos-cafe-self-test']);
+    if(!tool){
+      const source = path.join(bin, 'loopback.cs'), launcher = path.join(bin, 'docker.exe');
+      await writeFile(source, (await readFile(path.join(root, 'scripts/staging/docker-loopback.cs'), 'utf8')).replaceAll('5545', portPrefix));
+      await run(path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/target:exe', `/out:${launcher}`, source]);
+      await run(launcher, ['--pos-cafe-self-test']);
+    }
     env = { ...env, POS_CAFE_REAL_DOCKER: path.join(process.env.LOCALAPPDATA, 'Programs/DockerDesktop/resources/bin/docker.exe'), PATH: `${bin}${path.delimiter}${process.env.PATH}` };
   }
   const cliRun = args => run(process.execPath, [cli, ...args, '--workdir', directory], { env });
@@ -74,6 +79,6 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
     const config = { api: status.API_URL, database: status.DB_URL, anon: status.ANON_KEY, service: status.SERVICE_ROLE_KEY };
     const service = createClient(config.api, config.service, { auth: { persistSession: false, autoRefreshToken: false } });
     const isolation = { project, network, containers: JSON.parse(await run('docker', ['inspect', ...containers])).map(value => ({ id: value.Id, image: value.Image })) };
-    return { config, db, service, isolation, directory, install: () => db.query(source.migration), async cleanup() { await db.end(); await cliRun(['stop', '--no-backup']); await cleanupNetwork(); } };
-  } catch (error) { await db?.end(); await cliRun(['stop']).then(cleanupNetwork).catch(() => {}); throw error; }
+    return { config, db, service, isolation, directory, disposeTools:async()=>tool?.dispose(), install: () => db.query(source.migration), async cleanup() { try{await db.end(); await cliRun(['stop', '--no-backup']); await cleanupNetwork();}finally{await tool?.dispose();} } };
+  } catch (error) { await db?.end(); await cliRun(['stop']).then(cleanupNetwork).catch(() => {}); await tool?.dispose();throw error; }
 }
