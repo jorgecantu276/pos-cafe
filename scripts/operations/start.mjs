@@ -9,7 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 import { freshLocalApi } from '../testing/local-api.mjs';
 import { prepareLocal } from '../smoothies/prepare-local.mjs';
 import { webDemoContract, readDemoJson, writeDemoJson, verifyDemoSource, demoEnvironment,
-  configurationIdentity, demoBuildIdentity, verifyDemoBackend, assertDemoStopped } from '../../lib/operations-demo.mjs';
+  configurationIdentity, demoBuildIdentity, verifyDemoBackend, assertDemoStopped, initializeDemoPrintFaults } from '../../lib/operations-demo.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), require = createRequire(import.meta.url);
 const recordFile = process.argv[2], resume = process.argv[3] === '--resume';
@@ -77,6 +77,7 @@ try {
     await local.db.query('insert into cafe_private.ops_demo_identity values($1,$2,$3,$4,$5,$6)', [record.identity.runId, record.identity.product,
       record.identity.sourceCommit, record.identity.sourceTree, record.identity.contentSha256, record.identity.databaseContractSha256]);
     for (const folder of ['printing','backups']) await mkdir(path.join(record.directory, folder), { recursive: true });
+    await initializeDemoPrintFaults(record.directory);
     await writeFile(path.join(record.directory, 'backup.key'), randomBytes(32), { flag: 'wx', mode: 0o600 });
     await writeDemoJson(path.join(record.directory, 'issuer.json'), { legalName: 'COMERCIO FICTICIO DEMO', rfc: 'XAXX010101000',
       taxRegime: '616 - Sin obligaciones fiscales', establishmentAddress: 'Avenida Ejemplo 100', postalCode: '00000', city: 'Ciudad Demo' });
