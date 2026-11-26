@@ -4,13 +4,14 @@ param([switch]$Background, [switch]$Stop, [switch]$Support)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $url = 'http://127.0.0.1:3180'
+$healthUrl = $url
 $settings = Join-Path $root 'caja.env'
 $logs = Join-Path $root 'diagnostico'
 [void](New-Item -ItemType Directory -Path $logs -Force)
 $launcherLog = Join-Path $logs 'inicio.log'
 
 function Read-Instance {
-    try { Invoke-RestMethod -Uri "$url/api/local-instance" -TimeoutSec 2 }
+    try { Invoke-RestMethod -Uri "$healthUrl/api/local-instance" -TimeoutSec 2 }
     catch { $null }
 }
 
@@ -28,6 +29,9 @@ try {
     $node = Join-Path $release 'node.exe'
     $app = Join-Path $release 'app'
     $launcher = Join-Path $app 'scripts\smoothies\start-local.mjs'
+    $publicOrigin = & $node "--env-file=$settings" -p 'process.env.SMOOTHIES_LAN_ORIGIN || String()'
+    if ($LASTEXITCODE -ne 0) { throw 'No se pudo leer la configuración de red.' }
+    if ($publicOrigin) { $url = $publicOrigin }
     if ($Support) {
         $instance = Read-Instance
         $online = $instance -and $instance.packageId -eq $active.id
@@ -46,6 +50,7 @@ try {
             ('Espacio libre: {0:N1} GB' -f ($drive.AvailableFreeSpace / 1GB))
             "Ultimo respaldo local: $lastSuccess"
             "Clave de recuperacion local: $key"
+            "Acceso de caja: $url"
             $(if ($status.lastError) { 'El ultimo intento de respaldo requiere revision.' })
             ''
             "Registros: $logs"

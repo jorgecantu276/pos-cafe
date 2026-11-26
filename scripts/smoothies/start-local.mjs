@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { localTarget } from './prepare-local.mjs';
+import { openSmoothiesLan, readSmoothiesLan } from './lan.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const action = process.argv[2];
@@ -11,6 +12,8 @@ assert.ok(['build', 'start', 'open'].includes(action), 'Usa build, start u open.
 const building = action === 'build';
 const portable = process.env.SMOOTHIES_PORTABLE === '1';
 const base = 'http://127.0.0.1:3180';
+const lan = building ? null : await readSmoothiesLan(process.env, { sourceRoot: root });
+const browserUrl = lan?.origin || base;
 const api = localTarget(process.env.SMOOTHIES_API_URL, 'http:', 58000);
 assert.equal(api.href, 'http://127.0.0.1:58000/');
 const { SMOOTHIES_ANON_KEY: anon, SMOOTHIES_SERVICE_KEY: service, SMOOTHIES_PRINT_DIR: journal } = process.env;
@@ -78,7 +81,8 @@ if (!building) {
     : build?.buildId === buildId && build.publicKeyHash === publicKeyHash),
     'El paquete de POS Smoothies no está completo.');
   releaseId = hash(JSON.stringify([root, buildId]));
-  configId = hash(JSON.stringify([api.origin, anon, service, printDirectory, backupDirectory, backupKey]));
+  configId = hash(JSON.stringify([api.origin, anon, service, printDirectory, backupDirectory, backupKey,
+    ...(lan ? [[lan.origin, lan.fingerprint]] : [])]));
   instanceToken = randomUUID();
   if (!await backendReady()) {
     assert.ok(composeFile, 'Inicia la base local o configura SMOOTHIES_COMPOSE_FILE antes de abrir caja.');
@@ -98,6 +102,7 @@ const env = {
   POS_DATABASE_CONTRACT_DIR: !building && backupDirectory ? path.join(root, 'supabase') : '',
   POS_LAUNCH_INSTANCE_TOKEN: instanceToken || '', POS_LAUNCH_CONFIG_ID: configId || '', POS_LAUNCH_RELEASE_ID: releaseId || '',
   POS_LAUNCH_PACKAGE_ID: portable ? process.env.SMOOTHIES_PACKAGE_ID || '' : '',
+  POS_LAN_MODE: lan ? '1' : '', POS_PUBLIC_ORIGIN: lan?.origin || '',
 };
 delete env.SMOOTHIES_ADMIN_PASSWORD;
 delete env.SMOOTHIES_SERVICE_KEY;
@@ -115,56 +120,58 @@ async function existingInstance() {
 
 function openBrowser() {
   return new Promise((resolve, reject) => {
-    const browser = spawn('rundll32.exe', ['url.dll,FileProtocolHandler', base], { windowsHide: true, stdio: 'ignore' });
+    const browser = spawn('rundll32.exe', ['url.dll,FileProtocolHandler', browserUrl], { windowsHide: true, stdio: 'ignore' });
     browser.once('error', reject);
-    browser.once('exit', code => code === 0 ? resolve() : reject(new Error(`Abre ${base} en el navegador.`)));
+    browser.once('exit', code => code === 0 ? resolve() : reject(new Error(`Abre ${browserUrl} en el navegador.`)));
   });
 }
 
 async function main() {
   if (action === 'open') {
-    assert.equal(process.platform, 'win32', `Usa start y abre ${base} en el navegador.`);
+    assert.equal(process.platform, 'win32', `Usa start y abre ${browserUrl} en el navegador.`);
     if (await existingInstance()) return openBrowser();
   }
   if (building) await rm(buildFile, { force: true });
-  const args = portable && !building ? [path.join(root, 'server.js')]
-    : [path.join(root, 'node_modules/next/dist/bin/next'), ...(building ? ['build', '--webpack'] : ['start', '--hostname', '127.0.0.1', '--port', '3180'])];
-  const child = spawn(process.execPath, args,
-    { cwd: root, env: { ...env, HOSTNAME: '127.0.0.1', PORT: '3180' }, stdio: 'inherit', windowsHide: true });
-  const finished = new Promise(resolve => {
-    child.once('error', error => { console.error(error.message); resolve(1); });
-    child.once('exit', code => resolve(code ?? 1));
-  });
-  const stopFile = portable && process.env.SMOOTHIES_DATA_HOME ? path.join(process.env.SMOOTHIES_DATA_HOME, 'detener-caja') : '';
-  let stopping = false;
-  const monitor = stopFile && setInterval(async () => {
-    if (stopping) return;
-    const token = await readFile(stopFile, 'utf8').catch(() => '');
-    if (token !== instanceToken) return;
-    stopping = true;
-    child.kill();
-    await rm(stopFile, { force: true }).catch(() => {});
-  }, 500);
-  if (action === 'open') {
-    try {
+  // Bind exclusively before Next starts. A failed front never leaves a partial app.
+  const front = await openSmoothiesLan(lan);
+  let child, monitor, stopping = false, result;
+  const stop = () => { stopping = true; child?.kill(); };
+  try {
+    const args = portable && !building ? [path.join(root, 'server.js')]
+      : [path.join(root, 'node_modules/next/dist/bin/next'), ...(building ? ['build', '--webpack'] : ['start', '--hostname', '127.0.0.1', '--port', '3180'])];
+    child = spawn(process.execPath, args,
+      { cwd: root, env: { ...env, HOSTNAME: '127.0.0.1', PORT: '3180' }, stdio: 'inherit', windowsHide: true });
+    const finished = new Promise(resolve => {
+      child.once('error', error => { console.error(error.message); resolve(1); });
+      child.once('exit', code => resolve(code ?? 1));
+    });
+    process.once('SIGINT', stop); process.once('SIGTERM', stop);
+    const stopFile = portable && process.env.SMOOTHIES_DATA_HOME ? path.join(process.env.SMOOTHIES_DATA_HOME, 'detener-caja') : '';
+    monitor = stopFile && setInterval(async () => {
+      if (stopping) return;
+      const token = await readFile(stopFile, 'utf8').catch(() => '');
+      if (token !== instanceToken) return;
+      stop();
+      await rm(stopFile, { force: true }).catch(() => {});
+    }, 500);
+    if (action === 'open') {
       const deadline = Date.now() + 20_000;
       let ready = false;
       while (Date.now() < deadline && child.exitCode === null && child.signalCode === null && child.pid) {
         if ((await existingInstance())?.instanceToken === instanceToken) {
-          await openBrowser();
-          ready = true;
-          break;
+          await openBrowser(); ready = true; break;
         }
         await new Promise(resolve => setTimeout(resolve, 250));
       }
       if (!ready && Date.now() >= deadline) throw new Error('La caja no abrió a tiempo. Revisa si Supabase local sigue abierto.');
-    } catch (error) {
-      child.kill();
-      throw error;
     }
+    result = await finished;
+  } finally {
+    process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop);
+    if (monitor) clearInterval(monitor);
+    if (child && child.exitCode === null && child.signalCode === null) child.kill();
+    await front?.close();
   }
-  const result = await finished;
-  if (monitor) clearInterval(monitor);
   if (building && result === 0) {
     const buildId = (await readFile(path.join(buildDirectory, 'BUILD_ID'), 'utf8')).trim();
     await writeFile(buildFile, JSON.stringify({ buildId, publicKeyHash }));

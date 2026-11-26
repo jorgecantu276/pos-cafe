@@ -65,6 +65,7 @@ try {
   for (const key of Object.keys(env)) {
     if (/^SMOOTHIES_|^SUPABASE_|^POS_(?:CLIP|PRINT|BACKUP|DATABASE|RECEIPT|LAUNCH)/.test(key)) delete env[key];
   }
+  delete env.POS_LAN_MODE; delete env.POS_PUBLIC_ORIGIN;
   const result = spawnSync(process.execPath, [path.join(stage, 'node_modules/next/dist/bin/next'), 'build', '--webpack'],
     { cwd: stage, env, stdio: 'inherit' });
   assert.equal(result.status, 0, 'No se generó el paquete de producción.');
@@ -76,9 +77,9 @@ try {
   rmSync(path.join(runtimePath, 'public/receipt-branding'), { recursive: true, force: true });
   copy(source, runtimePath, ['supabase/migrations', 'supabase/smoothies', 'supabase/schema.snapshot.json',
     'scripts/printing/windows-print.ps1', 'scripts/printing/DesktopPrinter.cs', 'scripts/staging/safety.mjs',
-    'scripts/backups/restore-business.mjs', 'lib/business-backup-format.mjs', 'lib/smoothies-backup-assets.mjs',
+    'scripts/backups/restore-business.mjs', 'scripts/customer/lan.mjs', 'lib/business-backup-format.mjs', 'lib/smoothies-backup-assets.mjs',
     ...['Install-Smoothies.ps1','Launch-Smoothies.ps1','install-local.mjs','prepare-local.mjs',
-      'provision-supabase.mjs','restore-local.mjs','restore-contract.mjs','start-local.mjs','stop-local.mjs','auto-update.mjs',
+      'provision-supabase.mjs','provision-lan.mjs','New-LanCertificate.ps1','lan.mjs','restore-local.mjs','restore-contract.mjs','start-local.mjs','stop-local.mjs','auto-update.mjs',
       'Extract-Smoothies-Update.ps1','supabase']
       .map(name => `scripts/smoothies/${name}`)]);
   recoveryDependency('pg');
@@ -87,6 +88,7 @@ try {
   cpSync(nodeLicense, path.join(output, 'Node-LICENSE.txt'));
   copy(source, output, ['Instalar POS Smoothies.cmd']);
   cpSync(path.join(source, 'docs/smoothies-local.md'), path.join(output, 'Guia PC e iPad.md'));
+  cpSync(path.join(source, 'docs/smoothies-lan.md'), path.join(output, 'smoothies-lan.md'));
   const policyFile = process.env.SMOOTHIES_UPDATE_POLICY_FILE || path.join(source, 'config/smoothies-update-policy.json');
   const publicKeyFile = process.env.SMOOTHIES_UPDATE_PUBLIC_KEY_FILE || path.join(source, 'config/smoothies-update-public-key.pem');
   assert.ok(existsSync(policyFile) && existsSync(publicKeyFile), 'Faltan la politica y la clave publica de actualizaciones.');

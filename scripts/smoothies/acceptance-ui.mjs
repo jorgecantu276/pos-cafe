@@ -4,18 +4,22 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'node:module';
 import { get } from 'node:http';
+import { get as httpsGet } from 'node:https';
 import { gunzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { parseEnv } from 'node:util';
 import { freshLocalApi } from '../testing/local-api.mjs';
+import { lanOrigin } from '../customer/lan.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright-core');
 const { createClient } = require('@supabase/supabase-js');
 const { Client } = require('pg');
-const base = 'http://127.0.0.1:3180';
+const localBase = 'http://127.0.0.1:3180';
+const base = process.env.POS_TEST_LAN_ORIGIN ? lanOrigin(process.env.POS_TEST_LAN_ORIGIN).origin : localBase;
+if (base !== localBase) assert.ok(process.env.NODE_EXTRA_CA_CERTS, 'Configura la autoridad PEM sintética para Node y acepta su confianza en el navegador de prueba. No se omiten errores TLS.');
 const localApi = 'http://127.0.0.1:58000';
 const viewport = { width:1366, height:768 };
 const auth = { autoRefreshToken:false, persistSession:false };
@@ -51,7 +55,7 @@ function record(event) {
 function ok({data,error}) {if(error) throw Error(error.message); return data;}
 async function raw(url,encoding) {
   return new Promise((resolve,reject)=>{
-    const outgoing=get(url,{headers:{'accept-encoding':encoding}},response=>{
+    const outgoing=(new URL(url).protocol === 'https:' ? httpsGet : get)(url,{headers:{'accept-encoding':encoding}},response=>{
       const parts=[];
       response.on('data',chunk=>parts.push(chunk));
       response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,bytes:Buffer.concat(parts)}));
@@ -102,7 +106,7 @@ try {
   const form = { version: 1, menu, extras: [oat, soy, chia], stock };
   const backupRoot=portableHome;
   const backups={directory:path.join(backupRoot,'respaldos'),keyFile:path.join(backupRoot,'clave','recuperacion.key')};
-  assert.equal((await (await fetch(`${base}/api/local-instance`)).json()).protocol, 1);
+  assert.equal((await (await fetch(`${localBase}/api/local-instance`)).json()).protocol, 1);
   const recipeDemo = true;
   browser = await chromium.launch({ channel: 'msedge', headless: audit || process.argv.includes('--headless'), args: ['--window-size=1420,860'] });
 
@@ -115,21 +119,23 @@ try {
   });
   page.on('response', response => {
     const url = new URL(response.url());
-    if (url.origin === localApi && url.pathname.startsWith('/rest/v1/rpc/'))
+    if (url.origin === base && url.pathname.startsWith('/api/backend/rest/v1/rpc/'))
       record({ kind: 'local-rpc', method: response.request().method(), url: diagnosticUrl(response.url()),
         status: response.status(), publicKeyMatches: response.request().headers().apikey === config.anon });
   });
   page.on('requestfailed', request => {
     const url = new URL(request.url());
-    if (url.origin === localApi && url.pathname.startsWith('/rest/v1/rpc/'))
+    if (url.origin === base && url.pathname.startsWith('/api/backend/rest/v1/rpc/'))
       record({ kind: 'local-rpc-failed', method: request.method(), url: diagnosticUrl(request.url()),
         message: sanitize(request.failure()?.errorText || 'Request failed') });
   });
   await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false }));
-  const localOrigins = new Set([base, localApi]);
+  // Browser traffic must remain on the visible origin even when the browser
+  // happens to run on the PC. Allowing direct loopback calls would mask iPad bugs.
+  const localOrigins = new Set([base]);
   await page.route('**/*', route => localOrigins.has(new URL(route.request().url()).origin) ? route.continue() : route.abort());
   if (portableHome) {
-    await page.route(`${localApi}/auth/v1/**`, route => {
+    await page.route(`${base}/api/backend/auth/v1/**`, route => {
       assert.equal(route.request().headers().apikey, config.anon);
       return route.continue();
     });

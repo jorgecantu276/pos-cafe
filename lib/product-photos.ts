@@ -1,3 +1,4 @@
+import { proxiedCatalogPhoto } from './supabase-connection';
 // Temporary, illustrative stock photos. Merchant URLs and database rows stay unchanged.
 export function stockProductPhoto(name: string, category = ''): string {
   const text = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -32,7 +33,7 @@ export function productPhotoSource(url: string | null | undefined, fallback: str
   if (/^\/(?!\/)/.test(value)) return value;
   try {
     const parsed = new URL(value);
-    if (['https:', 'http:'].includes(parsed.protocol)) return value;
+    if (['https:', 'http:'].includes(parsed.protocol)) return proxiedCatalogPhoto(value, process.env.NEXT_PUBLIC_SUPABASE_URL || '');
   } catch { /* Invalid merchant URL: use the bundled photo. */ }
   return fallback;
 }

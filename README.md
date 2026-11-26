@@ -3,8 +3,9 @@
 Windows POS for a smoothie bar: local selling, private recipe trials, menu and
 extras, opening counts and encrypted backups. The PC uses local Supabase
 (PostgreSQL/Auth/Storage). The target workflow is to operate the same POS from
-Safari on her iPad over the local Wi-Fi. That LAN browser path is not yet integrated:
-the current package is PC-only. It needs implementation and device acceptance.
+Safari on her iPad over the local Wi-Fi. The LAN workflow uses one configured
+HTTPS address with the existing PC backend. Setup prepares its certificate;
+acceptance on the actual PC, iPad and network is still required.
 Internet is needed for initial downloads and update checks, not local cash sales.
 
 **Status:** pre-launch. The owner identifies only Café as live. Historical signed
@@ -18,8 +19,8 @@ See [product progress and next milestones](docs/products/smoothies.md).
 - [Backup and recovery contract](docs/business-backups.md).
 - [Development and independent review](AGENTS.md).
 
-The iPad milestone must extend the existing authenticated web workflow, including
-printing, menu import and backups. Remote desktop does not complete this milestone.
+The iPad uses the same authenticated workflow, including printing through the PC,
+menu import and backups. See the [LAN setup and device acceptance](docs/smoothies-lan.md).
 
 The client completes this product's [menu intake form](https://jorgecantu276.github.io/formulario-smoothies/)
 and sends its JSON. Review menu/prices/extras before importing. Planned inventory

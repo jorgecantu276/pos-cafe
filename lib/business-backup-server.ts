@@ -8,6 +8,7 @@ import { AccessError, isAuthUnavailable, requireAdministrator } from './user-man
 import { withDeadline } from './request-deadline';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { collectSmoothiesAssets } from './smoothies-backup-assets.mjs';
+import { requestOriginMatches } from './request-origin';
 
 interface BackupConfig { directory: string; keyFile: string; contractDirectory: string; releaseCommit: string; url: string; serviceKey: string; printDirectory?: string }
 export interface BackupSuccess { createdAt: string; filename: string; bytes: number; sha256: string }
@@ -271,6 +272,7 @@ export async function handleBusinessBackupRequest(request: Request, caller: Supa
 }) {
   const headers = { 'Cache-Control': 'private, no-store, max-age=0', Vary: 'Cookie' };
   const url = new URL(request.url);
+  if (process.env.POS_LAN_MODE === '1' && !requestOriginMatches(request)) throw new AccessError('Solicitud de respaldo inválida.', 400);
   if (request.method === 'GET') {
     await requireAdministrator(caller);
     if (url.searchParams.size === 0) return Response.json(await operations.status(), { headers });
@@ -280,9 +282,8 @@ export async function handleBusinessBackupRequest(request: Request, caller: Supa
       'Content-Disposition': `attachment; filename="${result.filename}"`, 'X-Content-Type-Options': 'nosniff' } });
   }
   const action = request.headers.get('X-Pos-Backup');
-  const authority = new URL(`${url.protocol}//${request.headers.get('host') || url.host}`);
   if (request.method !== 'POST' || url.searchParams.size || !['1', 'checkpoint'].includes(action ?? '')
-    || (request.headers.has('origin') && request.headers.get('origin') !== authority.origin)) throw new AccessError('Solicitud de respaldo inválida.', 400);
+    || !requestOriginMatches(request)) throw new AccessError('Solicitud de respaldo inválida.', 400);
   if (action === 'checkpoint') {
     await requireBackupStaff(caller);
     void (operations.checkpoint ?? operations.run)().catch(() => { state.lastError = unavailable; });

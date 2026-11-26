@@ -63,6 +63,11 @@ jobs:
       - run: npm audit
       - run: npm audit --omit=dev
       - run: npm run build:verify
+        env:
+          NEXT_PUBLIC_POS_PROFILE: smoothies
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:59999
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-public-key-for-build-only
+          POS_VERIFY_LAN: '1'
       - run: npm run test:printing
         env:
           POS_RECEIPT_CONTRACT_EVIDENCE: ${{ runner.temp }}/pos-receipt-contract.json
