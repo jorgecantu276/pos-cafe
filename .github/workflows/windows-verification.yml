@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      run_installed_acceptance:
+        description: Run final-ZIP LAN acceptance on an enrolled disposable Windows/Linux-Docker runner
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -84,6 +89,8 @@ jobs:
     name: Portable Smoothies package (Windows)
     runs-on: windows-latest
     timeout-minutes: 25
+    outputs:
+      zip_sha256: ${{ steps.candidate.outputs.sha256 }}
     env:
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
@@ -108,7 +115,7 @@ jobs:
           node scripts/smoothies/package-windows.mjs $release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          foreach ($entry in 'node.exe', 'app/server.js', 'Instalar POS Smoothies.cmd') {
+          foreach ($entry in 'node.exe', 'app/server.js', 'Instalar POS Smoothies.cmd', 'smoothies-site.example.json', 'smoothies-reporting.example.json', 'app/scripts/smoothies/site-plan.mjs', 'app/scripts/smoothies/support-report.mjs', 'app/scripts/smoothies/export-backup.mjs', 'app/scripts/smoothies/Publish-BackupCopy.ps1', 'app/scripts/smoothies/BackendOwnership.psm1', 'app/scripts/smoothies/Install-SmoothiesSupport.ps1', 'app/scripts/smoothies/Report-SmoothiesSupport.ps1', 'app/scripts/smoothies/SupportTransport.psm1', 'app/lib/business-backup-export.mjs') {
             if (!(Test-Path -LiteralPath (Join-Path $release $entry) -PathType Leaf)) {
               throw "Package file missing: $entry"
             }
@@ -133,8 +140,34 @@ jobs:
           if (Select-String -LiteralPath $compose -Pattern '__[A-Z_]+__' -Quiet) {
             throw 'Unresolved placeholder in the generated Compose template.'
           }
+          $site = Join-Path $fixture 'site.json'
+          & $nodeExe (Join-Path $release 'app/scripts/smoothies/site-plan.mjs') init $site
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $plan = & $nodeExe (Join-Path $release 'app/scripts/smoothies/site-plan.mjs') inspect $site | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $plan.configurationReady -or $plan.liveAcceptance -ne 'pending') { throw 'Blank live values cannot qualify an installation.' }
+          & $nodeExe (Join-Path $release 'app/scripts/smoothies/site-plan.mjs') checklist $site (Join-Path $fixture 'live-acceptance.json')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $nodeExe (Join-Path $release 'app/scripts/smoothies/support-report.mjs') $fixture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $disabled = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $release 'app/scripts/smoothies/Install-SmoothiesSupport.ps1') -Root $fixture -ConfigurationPath (Join-Path $release 'smoothies-reporting.example.json') | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $disabled.installed -or $disabled.publication -or $disabled.state -ne 'disabled') { throw 'The placeholder reporting template must never enroll or publish.' }
           node scripts/smoothies/smoke-portable-config.mjs $release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve the exact uninstalled candidate ZIP
+        id: candidate
+        shell: pwsh
+        run: |
+          $release = Join-Path $env:RUNNER_TEMP 'pos-smoothies-portable'
+          $zip = Join-Path $env:RUNNER_TEMP 'smoothies-candidate.zip'
+          [IO.Compression.ZipFile]::CreateFromDirectory($release, $zip)
+          $sha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "sha256=$sha"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoothies-windows-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/smoothies-candidate.zip
+          if-no-files-found: error
+          retention-days: 14
   smoothies-backend:
     name: Smoothies import and cash recovery
     runs-on: ubuntu-24.04
@@ -154,3 +187,56 @@ jobs:
         run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55540-55569
       - run: node --import tsx scripts/smoothies/import-drill.mjs
       - run: node --import tsx scripts/smoothies/local-sale-drill.mjs
+  smoothies-installed-lan:
+    name: Final ZIP installation and LAN acceptance (disposable runner)
+    if: github.event_name == 'workflow_dispatch' && inputs.run_installed_acceptance
+    needs: [verify, smoothies-package, smoothies-backend, integration]
+    runs-on: [self-hosted, Windows, X64, pos-smoothies-acceptance]
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    env:
+      POS_ACCEPTANCE_DISPOSABLE: ${{ vars.SMOOTHIES_ACCEPTANCE_DISPOSABLE }}
+      POS_TEST_LAN_ORIGIN: ${{ vars.SMOOTHIES_ACCEPTANCE_LAN_ORIGIN }}
+      POS_TEST_LAN_CERT_FILE: ${{ vars.SMOOTHIES_ACCEPTANCE_CERT_FILE }}
+      POS_TEST_LAN_KEY_FILE: ${{ vars.SMOOTHIES_ACCEPTANCE_KEY_FILE }}
+      NODE_EXTRA_CA_CERTS: ${{ vars.SMOOTHIES_ACCEPTANCE_CA_FILE }}
+      NEXT_TELEMETRY_DISABLED: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.2
+          cache: npm
+      - name: Refuse an unenrolled runner or missing trusted test identity
+        shell: pwsh
+        run: |
+          if ($env:POS_ACCEPTANCE_DISPOSABLE -ne '1') { throw 'Use only a disposable acceptance computer, never a store PC.' }
+          foreach ($name in 'POS_TEST_LAN_ORIGIN','POS_TEST_LAN_CERT_FILE','POS_TEST_LAN_KEY_FILE','NODE_EXTRA_CA_CERTS') {
+            if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing runner value: $name" }
+          }
+          if ((docker info --format '{{.OSType}}') -ne 'linux') { throw 'The acceptance runner needs the Linux Docker engine.' }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - run: npm ci
+      - name: Verify and exercise this run's exact candidate ZIP
+        shell: pwsh
+        run: |
+          $artifacts = Join-Path $env:RUNNER_TEMP 'smoothies-candidate-download'
+          gh run download $env:GITHUB_RUN_ID --repo $env:GITHUB_REPOSITORY --name 'smoothies-windows-candidate-${{ github.sha }}' --dir $artifacts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $zip = Join-Path $artifacts 'smoothies-candidate.zip'
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne '${{ needs.smoothies-package.outputs.zip_sha256 }}') { throw 'Candidate ZIP hash mismatch.' }
+          $reference = Join-Path $artifacts 'reference'
+          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/smoothies/Extract-Smoothies-Update.ps1 -ZipPath $zip -Destination $reference
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $evidence = Join-Path $env:RUNNER_TEMP 'smoothies-installed-evidence'
+          node scripts/smoothies/acceptance.mjs $zip $evidence $reference
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoothies-installed-acceptance-${{ github.sha }}
+          path: ${{ runner.temp }}/smoothies-installed-evidence/acceptance.json
+          if-no-files-found: error
+          retention-days: 14

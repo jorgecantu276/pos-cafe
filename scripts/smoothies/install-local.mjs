@@ -18,6 +18,10 @@ const startup = {
   SMOOTHIES_BACKUP_DIR: env.SMOOTHIES_BACKUP_DIR || path.join(localDirectory, 'respaldos'),
   SMOOTHIES_BACKUP_KEY_FILE: env.SMOOTHIES_BACKUP_KEY_FILE || path.join(localDirectory, 'clave', 'recuperacion.key'),
 };
+if (env.SMOOTHIES_BACKUP_EXPORT_DIR) {
+  assert.ok(path.isAbsolute(env.SMOOTHIES_BACKUP_EXPORT_DIR), 'Elige una ruta absoluta para la copia externa.');
+  startup.SMOOTHIES_BACKUP_EXPORT_DIR = env.SMOOTHIES_BACKUP_EXPORT_DIR;
+}
 if (env.SMOOTHIES_PORTABLE === '1') startup.SMOOTHIES_PORTABLE = '1';
 const lan = await readSmoothiesLan(env, { sourceRoot: root });
 if (lan) Object.assign(startup, { SMOOTHIES_LAN_ORIGIN: lan.origin,

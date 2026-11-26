@@ -34,8 +34,21 @@ where source and API architecture are shared with Café.
 | Operate from her iPad, including internet loss | PC-local runtime, one HTTPS LAN front and same-origin browser API | Candidate integrates login/cookies, photos, print/import/backup origins and private certificate setup. Actual Safari, device trust, reboot and internet-loss acceptance remain. |
 | Preserve the whole business | `lib/smoothies-backup-assets.mjs`, restore-local/restore-contract tools | Encrypted database plus catalog photos and print journal; off-PC destination and separately retained key must be established. |
 | Receive compatible updates automatically | Signed pilot feed, `scripts/smoothies/auto-update.mjs`, `Launch-Smoothies.ps1` | Signature/hash/product/channel checks, no downgrade, unchanged database contract, closed-shift/payment/printing gate, failed-start fallback. Installed client enrollment is not evidenced. |
+| Configure the destination without another development pass | `config/smoothies-site.example.json`, `scripts/smoothies/site-plan.mjs`, existing installer | Unknown live values stay null; private package-bound checklist stays pending. Actual device/menu/count facts still required. |
+| Keep an encrypted copy outside the PC | Existing backup scheduler plus verified external-copy helper/status | Destination is optional until supplied. Independent failure/retry status preserves the good local backup; real device separation and restore remain acceptance. |
+| Inspect installation health for support | Single sanitized `support-report.mjs` behind the existing Support shortcut | App identity, TLS expiry, backup/external copy and installed signing-key status. Device acceptance and remote reporting enrollment remain explicit. |
 
 ## Progress and unfinished work
+
+- The portable package now carries site-value placeholders, an unaccepted live
+  checklist, external encrypted-copy automation and sanitized support diagnostics.
+  CI preserves the exact candidate ZIP. Installed LAN automation is wired to an
+  explicitly disposable Windows/Linux-Docker runner with pre-provisioned trusted
+  TLS identity; the runner/device values and its observed result remain pending.
+- First installation checks resolved Docker volume names as well as project,
+  logical-volume and instance labels. An unlabelled or foreign existing disk is
+  refused without deletion or relabelling. Private reporting likewise binds its
+  remote record to machine and backend fingerprints, beyond the display label.
 
 - The current source review brings the independently accepted shared recipe
   recovery and bounded checkout-abandonment fixes into this variant. Recipe

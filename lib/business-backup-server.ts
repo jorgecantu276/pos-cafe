@@ -9,10 +9,12 @@ import { withDeadline } from './request-deadline';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { collectSmoothiesAssets } from './smoothies-backup-assets.mjs';
 import { requestOriginMatches } from './request-origin';
+import { backupDestinationId, exportBusinessBackup } from './business-backup-export.mjs';
 
-interface BackupConfig { directory: string; keyFile: string; contractDirectory: string; releaseCommit: string; url: string; serviceKey: string; printDirectory?: string }
+interface BackupConfig { directory: string; keyFile: string; contractDirectory: string; releaseCommit: string; url: string; serviceKey: string; printDirectory?: string; exportDirectory?: string }
 export interface BackupSuccess { createdAt: string; filename: string; bytes: number; sha256: string }
-interface StoredStatus { version: 1; lastAttemptAt?: string; lastSuccess?: BackupSuccess; lastError?: string }
+export interface BackupExternalCopy { configured: boolean; state: 'pending' | 'copied' | 'failed'; destinationId?: string; lastAttemptAt?: string; lastSuccess?: BackupSuccess; lastError?: string }
+interface StoredStatus { version: 1; lastAttemptAt?: string; lastSuccess?: BackupSuccess; lastError?: string; externalCopy?: BackupExternalCopy }
 export interface BackupStatus extends StoredStatus { enabled: boolean; running: boolean; message?: string; retainedCopies?: number; retainedBytes?: number }
 interface BackupDependencies {
   config?: () => BackupConfig | null;
@@ -41,7 +43,8 @@ export function businessBackupConfig(): BackupConfig | null {
   const printDirectory = posProfile.id === 'smoothies' ? process.env.POS_PRINT_DATA_DIR : undefined;
   if (posProfile.id === 'smoothies' && (!printDirectory || !path.isAbsolute(printDirectory)))
     throw Error('Falta configurar la carpeta del registro de impresión.');
-  return { ...resolved, releaseCommit: process.env.POS_RELEASE_COMMIT || 'sin-identificador', url, serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY, printDirectory };
+  const exportDirectory = posProfile.id === 'smoothies' ? process.env.POS_BACKUP_EXPORT_DIR || undefined : undefined;
+  return { ...resolved, releaseCommit: process.env.POS_RELEASE_COMMIT || 'sin-identificador', url, serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY, printDirectory, exportDirectory };
 }
 
 function validSuccess(value: unknown): value is BackupSuccess {
@@ -50,6 +53,24 @@ function validSuccess(value: unknown): value is BackupSuccess {
   return typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt)) && typeof row.filename === 'string'
     && backupFilename.test(row.filename) && typeof row.bytes === 'number' && row.bytes > 0 && row.bytes <= maximumBackupBytes
     && typeof row.sha256 === 'string' && /^[a-f0-9]{64}$/.test(row.sha256);
+}
+
+function validExternalCopy(value: unknown): value is BackupExternalCopy {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.configured === 'boolean' && ['pending', 'copied', 'failed'].includes(String(row.state))
+    && (row.destinationId === undefined || typeof row.destinationId === 'string' && /^[a-f0-9]{64}$/.test(row.destinationId))
+    && (row.lastAttemptAt === undefined || typeof row.lastAttemptAt === 'string' && Number.isFinite(Date.parse(row.lastAttemptAt)))
+    && (row.lastSuccess === undefined || validSuccess(row.lastSuccess)) && (row.lastError === undefined || typeof row.lastError === 'string');
+}
+
+function externalCopyStatus(config: BackupConfig, status: StoredStatus): BackupExternalCopy {
+  if (!config.exportDirectory) return { configured: false, state: 'pending' };
+  const destinationId = backupDestinationId(config.exportDirectory), previous = status.externalCopy;
+  if (!validExternalCopy(previous) || previous.destinationId !== destinationId) return { configured: true, state: 'pending', destinationId };
+  if (previous.state === 'copied' && (previous.lastSuccess?.sha256 !== status.lastSuccess?.sha256 || previous.lastSuccess?.bytes !== status.lastSuccess?.bytes))
+    return { ...previous, state: 'pending', configured: true, lastError: undefined };
+  return { ...previous, configured: true };
 }
 
 async function readStatus(config: BackupConfig): Promise<StoredStatus> {
@@ -61,6 +82,9 @@ async function readStatus(config: BackupConfig): Promise<StoredStatus> {
     if (raw.version !== 1 || (raw.lastSuccess !== undefined && !validSuccess(raw.lastSuccess))
       || (raw.lastAttemptAt !== undefined && !Number.isFinite(Date.parse(raw.lastAttemptAt)))
       || (raw.lastError !== undefined && typeof raw.lastError !== 'string')) throw Error();
+    // A malformed external-copy record must not disable otherwise verified
+    // local backups. It is retried through the same scheduled backup operation.
+    if (raw.externalCopy !== undefined && !validExternalCopy(raw.externalCopy)) delete raw.externalCopy;
     return raw;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1 };
@@ -80,6 +104,24 @@ async function atomicWrite(filename: string, bytes: Uint8Array) {
     if (handle) await handle.close();
     await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });
   }
+}
+
+async function finishExternalCopy(config: BackupConfig, stored: StoredStatus, now: Date): Promise<StoredStatus> {
+  const previous = externalCopyStatus(config, stored);
+  if (!config.exportDirectory || !stored.lastSuccess) return { ...stored, externalCopy: previous };
+  if (previous.state === 'copied' && previous.lastSuccess?.sha256 === stored.lastSuccess.sha256 && previous.lastSuccess.bytes === stored.lastSuccess.bytes)
+    return { ...stored, externalCopy: previous };
+  let externalCopy: BackupExternalCopy = { ...previous, lastAttemptAt: now.toISOString() };
+  try {
+    const lastSuccess = await exportBusinessBackup({ ...config, exportDirectory: config.exportDirectory }, stored.lastSuccess);
+    externalCopy = { configured: true, state: 'copied', destinationId: previous.destinationId, lastAttemptAt: now.toISOString(), lastSuccess };
+  } catch {
+    externalCopy = { ...externalCopy, state: 'failed', lastError: 'El respaldo local está guardado; no se confirmó su copia externa. Revisa el destino, la conexión y el espacio disponible.' };
+  }
+  const result = { ...stored, externalCopy };
+  try { await atomicWrite(path.join(config.directory, 'status.json'), Buffer.from(JSON.stringify(result))); }
+  catch { result.externalCopy = { ...externalCopy, state: 'failed', lastError: 'El respaldo local está guardado; no se pudo registrar el resultado de la copia externa.' }; }
+  return result;
 }
 
 async function recoveryKey(config: BackupConfig, established: boolean) {
@@ -170,7 +212,7 @@ export async function businessBackupStatus(dependencies: BackupDependencies = {}
     const config = (dependencies.config ?? businessBackupConfig)();
     if (!config) return { version: 1, enabled: false, running: false, message: 'El respaldo automático todavía no está configurado en esta PC.' };
     const status = await readStatus(config);
-    return { ...status, ...await retainedSize(config), lastError: state.lastError ?? status.lastError, enabled: true, running: Boolean(state.running) };
+    return { ...status, externalCopy: externalCopyStatus(config, status), ...await retainedSize(config), lastError: state.lastError ?? status.lastError, enabled: true, running: Boolean(state.running) };
   } catch (error) { return { version: 1, enabled: false, running: false, message: error instanceof Error ? error.message : 'Configuración de respaldos no disponible.' }; }
 }
 
@@ -180,7 +222,7 @@ export async function runBusinessBackup(force = false, dependencies: BackupDepen
     const config = (dependencies.config ?? businessBackupConfig)();
     if (!config) throw new AccessError('El respaldo automático no está configurado.', 503);
     const previous = await readStatus(config), now = (dependencies.now ?? (() => new Date()))();
-    if (!force && !businessBackupDue(previous.lastSuccess, now)) return { ...previous, enabled: true, running: false };
+    if (!force && !businessBackupDue(previous.lastSuccess, now)) return { ...await finishExternalCopy(config, previous, now), enabled: true, running: false };
     const lastAttemptAt = now.toISOString();
     try {
       const key = await recoveryKey(config, Boolean(previous.lastSuccess));
@@ -200,13 +242,13 @@ export async function runBusinessBackup(force = false, dependencies: BackupDepen
       // Confirm the published bytes as well, before changing last-success.
       if (sha256(await readFile(file)) !== sha256(bytes)) throw Error(unavailable);
       const lastSuccess: BackupSuccess = { filename, createdAt: lastAttemptAt, bytes: bytes.length, sha256: sha256(bytes) };
-      const stored: StoredStatus = { version: 1, lastAttemptAt, lastSuccess };
+      const stored: StoredStatus = { version: 1, lastAttemptAt, lastSuccess, externalCopy: previous.externalCopy };
       await atomicWrite(path.join(config.directory, 'status.json'), Buffer.from(JSON.stringify(stored)));
       state.lastError = undefined;
       // Retention runs only after publication; unrelated files and symlinks
       // are never deleted. A cleanup failure does not undo a good backup.
       await retainGoodArchives(config, lastSuccess).catch(() => { state.lastError = 'El respaldo se guardó; el responsable debe revisar la limpieza de copias antiguas.'; });
-      return { ...stored, lastError: state.lastError, enabled: true, running: false };
+      return { ...await finishExternalCopy(config, stored, now), lastError: state.lastError, enabled: true, running: false };
     } catch {
       state.lastError = unavailable;
       await atomicWrite(path.join(config.directory, 'status.json'), Buffer.from(JSON.stringify({ ...previous, lastAttemptAt, lastError: unavailable }))).catch(() => {});

@@ -35,9 +35,20 @@ export default function BackupsPage() {
         {status.retainedCopies !== undefined && <SettingsRow label="Copias en esta PC"><span className="settings-value">{status.retainedCopies}</span></SettingsRow>}
         {(busy || status.running) && <SettingsRow label="Guardando respaldo"><span className="settings-badge" role="status">En curso</span></SettingsRow>}
         {status.lastError && <div className="settings-editor"><SettingsNotice error>El último respaldo no se completó.</SettingsNotice></div>}
+        {posProfile.id === 'smoothies' && <>
+          <SettingsRow label="Copia en destino externo" detail={!status.externalCopy?.configured
+            ? 'Pendiente: falta elegir el dispositivo o destino externo.'
+            : status.externalCopy.state === 'copied' && status.externalCopy.lastSuccess
+              ? `Última copia verificada: ${date(status.externalCopy.lastSuccess.createdAt)}`
+              : status.externalCopy.state === 'failed' ? 'El respaldo local se conserva. Revisa el destino externo.' : 'Pendiente de copiar el último respaldo.'}>
+            <span className={`settings-badge${status.externalCopy?.state === 'copied' ? ' is-on' : ''}`}>{status.externalCopy?.state === 'copied' ? 'Verificada' : status.externalCopy?.state === 'failed' ? 'Requiere revisión' : 'Pendiente'}</span>
+          </SettingsRow>
+          {status.externalCopy?.lastError && <div className="settings-editor"><SettingsNotice error>{status.externalCopy.lastError}</SettingsNotice></div>}
+        </>}
         {status.enabled && <div className="settings-editor"><div><button type="button" className="is-primary" disabled={busy || status.running} onClick={() => void run()}>Crear respaldo</button></div></div>}
         <details className="settings-details"><summary>Información del respaldo</summary><div>
           <p>Las copias están cifradas. Guarda la clave de recuperación por separado.</p>
+          {posProfile.id === 'smoothies' && <p>La copia externa contiene solo el archivo cifrado. Su clave se conserva por separado. Verificar el archivo no sustituye una restauración de prueba ni confirma que el destino esté fuera de esta PC.</p>}
           {posProfile.id === 'smoothies' &&
             <p>La copia incluye los datos del POS, las fotos subidas al catálogo y el registro local de impresión.</p>}
           {status.lastSuccess && <p>Tamaño: {(status.lastSuccess.bytes / 1024 / 1024).toFixed(2)} MB</p>}

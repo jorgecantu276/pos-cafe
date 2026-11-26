@@ -77,11 +77,13 @@ try {
   rmSync(path.join(runtimePath, 'public/receipt-branding'), { recursive: true, force: true });
   copy(source, runtimePath, ['supabase/migrations', 'supabase/smoothies', 'supabase/schema.snapshot.json',
     'scripts/printing/windows-print.ps1', 'scripts/printing/DesktopPrinter.cs', 'scripts/staging/safety.mjs',
-    'scripts/backups/restore-business.mjs', 'scripts/customer/lan.mjs', 'lib/business-backup-format.mjs', 'lib/smoothies-backup-assets.mjs',
+    'scripts/backups/restore-business.mjs', 'scripts/customer/lan.mjs', 'lib/business-backup-format.mjs', 'lib/smoothies-backup-assets.mjs', 'lib/business-backup-export.mjs',
+    'config/smoothies-site.example.json', 'config/smoothies-reporting.example.json',
     ...['Install-Smoothies.ps1','Launch-Smoothies.ps1','install-local.mjs','prepare-local.mjs',
-      'provision-supabase.mjs','provision-lan.mjs','New-LanCertificate.ps1','lan.mjs','restore-local.mjs','restore-contract.mjs','start-local.mjs','stop-local.mjs','auto-update.mjs',
+      'provision-supabase.mjs','provision-lan.mjs','New-LanCertificate.ps1','lan.mjs','site-plan.mjs','support-report.mjs','Publish-BackupCopy.ps1','export-backup.mjs','restore-local.mjs','restore-contract.mjs','start-local.mjs','stop-local.mjs','auto-update.mjs',
       'Extract-Smoothies-Update.ps1','supabase']
       .map(name => `scripts/smoothies/${name}`)]);
+  copy(source, runtimePath, ['BackendOwnership.psm1', 'SupportTransport.psm1', 'SmoothiesSupport.psm1', 'Report-SmoothiesSupport.ps1', 'Install-SmoothiesSupport.ps1', 'support-transport-origin.json'].map(name => `scripts/smoothies/${name}`));
   recoveryDependency('pg');
   recoveryDependency('@supabase/supabase-js');
   cpSync(process.execPath, path.join(output, 'node.exe'));
@@ -89,6 +91,8 @@ try {
   copy(source, output, ['Instalar POS Smoothies.cmd']);
   cpSync(path.join(source, 'docs/smoothies-local.md'), path.join(output, 'Guia PC e iPad.md'));
   cpSync(path.join(source, 'docs/smoothies-lan.md'), path.join(output, 'smoothies-lan.md'));
+  cpSync(path.join(source, 'config/smoothies-site.example.json'), path.join(output, 'smoothies-site.example.json'));
+  cpSync(path.join(source, 'config/smoothies-reporting.example.json'), path.join(output, 'smoothies-reporting.example.json'));
   const policyFile = process.env.SMOOTHIES_UPDATE_POLICY_FILE || path.join(source, 'config/smoothies-update-policy.json');
   const publicKeyFile = process.env.SMOOTHIES_UPDATE_PUBLIC_KEY_FILE || path.join(source, 'config/smoothies-update-public-key.pem');
   assert.ok(existsSync(policyFile) && existsSync(publicKeyFile), 'Faltan la politica y la clave publica de actualizaciones.');

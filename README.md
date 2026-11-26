@@ -21,6 +21,11 @@ See [product progress and next milestones](docs/products/smoothies.md).
 
 The iPad uses the same authenticated workflow, including printing through the PC,
 menu import and backups. See the [LAN setup and device acceptance](docs/smoothies-lan.md).
+The [site-values template](config/smoothies-site.example.json) keeps unknown device,
+network, backup and menu facts as `null`. The installer consumes that private file;
+the matching checklist leaves every live observation pending until tested.
+Configured encrypted backup copies and sanitized installation diagnostics are
+included in the portable package.
 
 The client completes this product's [menu intake form](https://jorgecantu276.github.io/formulario-smoothies/)
 and sends its JSON. Review menu/prices/extras before importing. Planned inventory
@@ -54,6 +59,9 @@ Node and compiled app; the operator should not install npm/developer tools.
 Functional local drills include `scripts/smoothies/import-drill.mjs`,
 `local-sale-drill.mjs`, `acceptance-ui.mjs` and `acceptance-update.mjs`.
 Read each script's prerequisites and use a verified synthetic backend.
+CI retains the uninstalled Windows candidate ZIP. Full installed LAN acceptance
+has an explicit disposable Windows/Linux-Docker runner gate with trusted test
+certificates; standard source CI does not impersonate that equipment test.
 
 Recipe saves and explicit recovery use the shared `lib/recipe-trial.ts` owner:
 pending writes survive reload, retain their original account/payload and block

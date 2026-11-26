@@ -2,6 +2,8 @@
 param(
     [string]$DataDirectory = (Join-Path $env:LOCALAPPDATA 'POS Smoothies'),
     [string]$SettingsPath,
+    [string]$SiteFile,
+    [string]$BackupExportDirectory,
     [string]$LanAddress,
     [ValidateRange(1024,65535)][int]$LanPort = 3443,
     [switch]$RenewLanCertificate,
@@ -10,12 +12,27 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $OutputEncoding
 $source = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..\..')).Path
 $package = Get-Content -LiteralPath (Join-Path $source 'release.json') -Raw | ConvertFrom-Json
 if ($package.version -ne 1 -or $package.id -notmatch '^[a-f0-9]{16}$') { throw 'El paquete esta incompleto.' }
 $DataDirectory = [IO.Path]::GetFullPath($DataDirectory)
 if (-not $SettingsPath) { $SettingsPath = Join-Path $DataDirectory 'instalacion.env' }
 $SettingsPath = [IO.Path]::GetFullPath($SettingsPath)
+if ($SiteFile) {
+    if ($PSBoundParameters.ContainsKey('LanAddress') -or $PSBoundParameters.ContainsKey('LanPort') -or $PSBoundParameters.ContainsKey('BackupExportDirectory')) {
+        throw 'Usa la ficha del sitio o los parametros directos, sin mezclar configuraciones.'
+    }
+    $SiteFile = [IO.Path]::GetFullPath($SiteFile)
+    $siteJson = & (Join-Path $source 'node.exe') (Join-Path $source 'app\scripts\smoothies\site-plan.mjs') install $SiteFile
+    if ($LASTEXITCODE -ne 0) { throw 'Completa la IP real en la ficha privada del sitio.' }
+    $site = $siteJson | ConvertFrom-Json
+    $LanAddress = $site.lanAddress
+    $LanPort = $site.lanPort
+    $BackupExportDirectory = $site.backupExportDirectory
+}
+if ($BackupExportDirectory) { $env:SMOOTHIES_BACKUP_EXPORT_DIR = $BackupExportDirectory }
 $docker = Get-Command docker.exe -ErrorAction SilentlyContinue
 if (-not $docker) { throw 'Instala Docker Desktop con el motor Linux (WSL 2). Abre Docker una vez y vuelve a ejecutar este instalador.' }
 
@@ -39,6 +56,7 @@ try {
         $runningState = Get-Content -LiteralPath (Join-Path $DataDirectory 'release.json') -Raw | ConvertFrom-Json
         $runningInstance = Invoke-RestMethod -Uri 'http://127.0.0.1:3180/api/local-instance' -TimeoutSec 2
         if ($runningState.id -eq $package.id -and $runningInstance.packageId -eq $package.id) {
+            if ($SiteFile -or $LanAddress -or $BackupExportDirectory -or $RenewLanCertificate) { throw 'Deten POS Smoothies antes de cambiar la configuracion del sitio.' }
             Write-Host 'Esta version ya esta instalada y abierta. Cierra POS Smoothies para reparar accesos.'
             return
         }
@@ -60,7 +78,7 @@ try {
     } else {
         $staging = Join-Path $DataDirectory ('preparar-' + [guid]::NewGuid())
         [void](New-Item -ItemType Directory -Path $staging)
-        foreach ($entry in @('app','node.exe','Node-LICENSE.txt','Guia PC e iPad.md','smoothies-lan.md','release.json','SHA256.json',
+        foreach ($entry in @('app','node.exe','Node-LICENSE.txt','Guia PC e iPad.md','smoothies-lan.md','smoothies-site.example.json','smoothies-reporting.example.json','release.json','SHA256.json',
             'update-policy.json','update-public-key.pem','Instalar POS Smoothies.cmd')) {
             Copy-Item -LiteralPath (Join-Path $source $entry) -Destination $staging -Recurse
         }
@@ -121,6 +139,19 @@ try {
     $resolvedCompose = & $docker.Source @composeArgs config --format json
     if ($LASTEXITCODE -ne 0) { throw 'No se pudo validar el archivo Compose.' }
     $compose = ($resolvedCompose -join [Environment]::NewLine) | ConvertFrom-Json
+    if ($managed -eq '1') {
+        Import-Module (Join-Path $app 'scripts\smoothies\BackendOwnership.psm1') -Force -DisableNameChecking
+        $allVolumeNames = @(& $docker.Source volume ls --format '{{.Name}}')
+        if ($LASTEXITCODE -ne 0) { throw 'Docker no pudo comprobar los nombres de sus discos.' }
+        Assert-SmoothiesManagedVolumes -Compose $compose -Instance $instance -ExistingNames $allVolumeNames -Inspect {
+            param($name)
+            $raw = & $docker.Source volume inspect $name
+            if ($LASTEXITCODE -ne 0) { throw 'Docker no pudo verificar la identidad del disco existente.' }
+            $details = @(($raw -join [Environment]::NewLine) | ConvertFrom-Json)
+            if ($details.Count -ne 1) { throw 'Identidad de disco no disponible.' }
+            return $details[0]
+        }
+    }
     $services = $compose.services.PSObject.Properties.Value
     $ports = @($services | ForEach-Object { $_.ports } | Where-Object { $_ })
     if ($ports.Count -lt 2 -or @($ports | Where-Object { $_.host_ip -ne '127.0.0.1' }).Count -gt 0 -or
@@ -185,6 +216,15 @@ try {
     $package | ConvertTo-Json | Set-Content -LiteralPath $pendingState -Encoding UTF8
     if ($previous) { [IO.File]::Replace($pendingState, $statePath, (Join-Path $DataDirectory 'release.previous.json')) }
     else { Move-Item -LiteralPath $pendingState -Destination $statePath }
+    if ($SiteFile) {
+        $savedSite = Join-Path $DataDirectory 'site.json'
+        if ($SiteFile -ne $savedSite) { Copy-Item -LiteralPath $SiteFile -Destination $savedSite -Force }
+        $acceptance = Join-Path $DataDirectory ('aceptacion-' + $package.id + '-' + $site.siteSha256 + '.json')
+        if (-not (Test-Path -LiteralPath $acceptance)) {
+            Invoke-Checked $node @((Join-Path $app 'scripts\smoothies\site-plan.mjs'), 'checklist', $savedSite, $acceptance, $package.id) 'No se pudo preparar la lista de pruebas del sitio.'
+        }
+        Write-Host 'Ficha privada guardada. Las pruebas de equipo siguen pendientes hasta observarlas.'
+    }
     Write-Host 'Instalacion lista. Abre POS Smoothies desde el escritorio y entra como admin.'
 } finally {
     if ($launchLock) { if ($launchHeld) { $launchLock.ReleaseMutex() }; $launchLock.Dispose() }

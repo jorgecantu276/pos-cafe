@@ -68,6 +68,53 @@ router **sin apagar la Wi‑Fi** y repite el recorrido local. Las impresoras y l
 pagos con terminal conservan su aceptación específica; una conexión web no los
 califica. Registra el resultado y la identidad del paquete antes de entregar.
 
+## Ficha privada: completar valores sin cambiar código
+
+El paquete incluye `smoothies-site.example.json`. Soporte guarda una copia fuera
+del paquete, con nombre `site.json`, y completa los valores reales. `null` significa
+pendiente; no se sustituye por una IP, cantidad o resultado inventado. La ficha no
+admite contraseñas ni claves de Supabase. La contraseña inicial sigue el flujo
+existente del instalador.
+
+Con la IP privada real completada, el mismo instalador acepta la ficha:
+
+```powershell
+.\Instalar POS Smoothies.cmd -SiteFile 'C:\ruta-privada\site.json'
+```
+
+La ficha contiene versión de Windows, IP de la PC, modelo/iPadOS, puerto HTTPS,
+confirmación de red, destino externo de respaldo, datos de impresora y aprobación
+del menú/conteos. Solo la IP es necesaria para preparar HTTPS; los demás datos
+pendientes siguen visibles y no acreditan una instalación aceptada. No mezcles
+`-SiteFile` con parámetros de IP, puerto o destino de respaldo.
+
+El instalador prepara automáticamente una lista privada `aceptacion-*.json`
+para esa ficha y ese paquete. La lista deja cada resultado, fecha, responsable
+y evidencia pendientes. No sobrescribe una lista existente. Cambiar los datos
+de la ficha requiere revisar la aceptación correspondiente.
+
+## Copia externa y diagnóstico
+
+`backup.externalDirectory` identifica una carpeta existente elegida en otro
+dispositivo. El instalador conserva esa ruta en la configuración privada. También
+puede configurarse mediante `-BackupExportDirectory` al usar parámetros directos.
+No se crea una carpeta sustituta si el dispositivo falta.
+
+Después del respaldo local, el POS copia solo el archivo cifrado, comprueba sus
+bytes y publica la copia sin reemplazar archivos existentes. La clave de
+recuperación permanece separada. En **Configuración → Respaldos** se muestra el
+resultado externo por separado: si falla o se desconecta el destino, el respaldo
+local continúa disponible. El siguiente ciclo vuelve a intentar la copia actual.
+Confirmar que el destino está fuera de esta PC y restaurar una copia siguen
+siendo pruebas reales; una ruta y un hash no las sustituyen.
+
+**Diagnóstico POS Smoothies** genera `diagnostico\support-report.json` en la carpeta
+privada. Informa identidad del paquete/servidor, vigencia de HTTPS, respaldo local
+y copia externa, espacio y estado de actualización/firma. Omite claves,
+contraseñas, datos de clientes y rutas privadas. Un informe legible no equivale
+a aceptar Safari, impresoras o restauración. El envío remoto requiere su propia
+configuración y permanece desactivado mientras falten sus valores.
+
 ## Renovación y soporte
 
 El certificado de servidor dura como máximo 365 días. La autoridad privada dura
@@ -103,3 +150,51 @@ Para ensayar el paquete instalado por HTTPS con datos sintéticos, el mismo
 autoridad en su navegador. El ensayo no desactiva la validación TLS ni instala
 confianza automáticamente. La identidad privada del proceso se verifica por
 loopback, aunque el recorrido del navegador use la dirección de la LAN.
+
+## Soporte remoto preparado, con inscripción explícita
+
+El paquete incluye `smoothies-reporting.example.json` desactivado. Los campos de
+repositorio, cuenta publicadora, identificador del equipo y huellas de máquina y
+backend quedan en `null` hasta obtener evidencia del destino real. Soporte obtiene
+las huellas con el dispatcher incluido en modo `-BindingOnly`; la operadora no
+elige un hash ni comparte credenciales. El equipo de desarrollo queda excluido.
+
+Después de revisar esa identidad y la autorización de GitHub en la PC del negocio,
+soporte completa la copia privada y ejecuta explícitamente
+`Install-SmoothiesSupport.ps1`. Ese paso valida cuenta/repositorio privado y crea
+la tarea diaria del usuario a las 08:00. Instalar el POS con una ficha de sitio no
+ejecuta esa inscripción. La plantilla desactivada tampoco crea una tarea ni envía
+un informe. No se guardan tokens en las fichas.
+
+El transporte compartido conserva una sola incidencia y comentario por equipo y
+comprueba sus identidades antes de escribir. Un acuse perdido se reconcilia por
+su marcador antes de repetir. El primer informe real aún requiere revisión; un
+envío exitoso no acredita impresoras, efectivo, restauración ni Safari.
+
+## Ensayo completo del ZIP antes de entregar
+
+La verificación estándar guarda el ZIP de Windows como artefacto candidato con
+el commit de origen. Ese ZIP contiene Node, el POS compilado y las herramientas;
+conservar el artefacto no publica el canal de actualizaciones.
+
+El trabajo opcional `smoothies-installed-lan` verifica el hash de ese mismo ZIP,
+instala en estado sintético vacío y recorre importación, recetas, fotos, venta,
+respaldo/restauración, actualización firmada, reinicio y reparación por HTTPS.
+Se activa expresamente con `run_installed_acceptance` y necesita un runner
+Windows x64 desechable con motor Docker Linux, Edge y GitHub CLI. El runner lleva
+la etiqueta `pos-smoothies-acceptance`; nunca se usa la PC del negocio.
+
+Valores pendientes del entorno de ensayo:
+
+| Variable del repositorio | Valor hasta preparar el runner |
+| --- | --- |
+| `SMOOTHIES_ACCEPTANCE_DISPOSABLE` | Sin configurar; se establece en `1` solo para el equipo desechable revisado |
+| `SMOOTHIES_ACCEPTANCE_LAN_ORIGIN` | IP privada y puerto HTTPS reales del runner |
+| `SMOOTHIES_ACCEPTANCE_CERT_FILE` | Ruta privada al certificado de esa IP |
+| `SMOOTHIES_ACCEPTANCE_KEY_FILE` | Ruta privada a su clave correspondiente |
+| `SMOOTHIES_ACCEPTANCE_CA_FILE` | Ruta al CA público aceptado por Node y el navegador del runner |
+
+El ensayo rechaza puertos, contenedores o volúmenes Smoothies existentes y no
+borra instalaciones para liberar el entorno. Un trabajo omitido por falta del
+runner conserva esa comprobación pendiente. Sus resultados sintéticos tampoco
+rellenan la lista de aceptación de los dispositivos del negocio.

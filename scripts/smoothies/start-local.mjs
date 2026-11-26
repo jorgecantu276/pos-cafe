@@ -22,6 +22,7 @@ const printDirectory = journal ? path.resolve(journal) : '';
 const composeFile = process.env.SMOOTHIES_COMPOSE_FILE;
 const backupDirectory = process.env.SMOOTHIES_BACKUP_DIR;
 const backupKey = process.env.SMOOTHIES_BACKUP_KEY_FILE;
+const backupExportDirectory = process.env.SMOOTHIES_BACKUP_EXPORT_DIR;
 const hash = value => createHash('sha256').update(value).digest('hex');
 const buildDirectory = path.join(root, '.next');
 const buildFile = path.join(buildDirectory, 'smoothies-local.json');
@@ -82,7 +83,7 @@ if (!building) {
     'El paquete de POS Smoothies no está completo.');
   releaseId = hash(JSON.stringify([root, buildId]));
   configId = hash(JSON.stringify([api.origin, anon, service, printDirectory, backupDirectory, backupKey,
-    ...(lan ? [[lan.origin, lan.fingerprint]] : [])]));
+    ...(lan ? [[lan.origin, lan.fingerprint]] : []), ...(backupExportDirectory ? [backupExportDirectory] : [])]));
   instanceToken = randomUUID();
   if (!await backendReady()) {
     assert.ok(composeFile, 'Inicia la base local o configura SMOOTHIES_COMPOSE_FILE antes de abrir caja.');
@@ -99,6 +100,7 @@ const env = {
   POS_PRINT_MODE: 'mock', POS_PRINT_DATA_DIR: printDirectory,
   POS_BACKUP_DIR: !building ? backupDirectory || '' : '',
   POS_BACKUP_KEY_FILE: !building ? backupKey || '' : '',
+  POS_BACKUP_EXPORT_DIR: !building ? backupExportDirectory || '' : '',
   POS_DATABASE_CONTRACT_DIR: !building && backupDirectory ? path.join(root, 'supabase') : '',
   POS_LAUNCH_INSTANCE_TOKEN: instanceToken || '', POS_LAUNCH_CONFIG_ID: configId || '', POS_LAUNCH_RELEASE_ID: releaseId || '',
   POS_LAUNCH_PACKAGE_ID: portable ? process.env.SMOOTHIES_PACKAGE_ID || '' : '',

@@ -33,30 +33,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'No se pudo leer la configuración de red.' }
     if ($publicOrigin) { $url = $publicOrigin }
     if ($Support) {
-        $instance = Read-Instance
-        $online = $instance -and $instance.packageId -eq $active.id
-        $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($root))
-        $backupDir = & $node "--env-file=$settings" -p 'process.env.SMOOTHIES_BACKUP_DIR || String()'
-        $keyFile = & $node "--env-file=$settings" -p 'process.env.SMOOTHIES_BACKUP_KEY_FILE || String()'
-        $status = if ($backupDir) {
-            Get-Content -LiteralPath (Join-Path $backupDir 'status.json') -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
-        }
-        $lastSuccess = if ($status.lastSuccess) { [DateTimeOffset]::Parse($status.lastSuccess.createdAt).ToLocalTime().ToString('yyyy-MM-dd HH:mm') } else { 'Pendiente' }
-        $key = if ($keyFile -and (Test-Path -LiteralPath $keyFile -PathType Leaf)) { 'presente' } else { 'pendiente' }
-        $report = @(
-            'POS Smoothies'
-            $(if ($active.appVersion) { "Version $($active.appVersion) ($($active.id))" } else { "Version $($active.id)" })
-            ('Estado: ' + $(if ($online) { 'Servidor abierto' } else { 'Servidor detenido o iniciando' }))
-            ('Espacio libre: {0:N1} GB' -f ($drive.AvailableFreeSpace / 1GB))
-            "Ultimo respaldo local: $lastSuccess"
-            "Clave de recuperacion local: $key"
-            "Acceso de caja: $url"
-            $(if ($status.lastError) { 'El ultimo intento de respaldo requiere revision.' })
-            ''
-            "Registros: $logs"
-        )
-        $reportPath = Join-Path $logs 'resumen.txt'
-        $report | Set-Content -LiteralPath $reportPath -Encoding UTF8
+        & $node "--env-file=$settings" (Join-Path $app 'scripts\smoothies\support-report.mjs') $root
+        if ($LASTEXITCODE -ne 0) { throw 'No se pudo generar el informe de soporte. Conserva los registros para revision.' }
+        $reportPath = Join-Path $logs 'support-report.json'
         Start-Process -FilePath 'notepad.exe' -ArgumentList ('"{0}"' -f $reportPath)
         return
     }
