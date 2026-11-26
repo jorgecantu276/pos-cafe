@@ -9,8 +9,9 @@ The owner currently identifies **only Café as live**. Smoothies is pre-launch.
 A chef student should run her own approachable smoothie bar, experiment privately,
 and move a recipe to the menu deliberately. It must feel like her business, not
 a Café copy. Selling continues without internet on a Windows PC; an iPad on the
-same Wi-Fi is her operating device, with interactive access to that PC's POS
-session. The PC owns the application, local backend and retained state.
+same Wi-Fi is her operating device, using the existing POS web workflow in Safari.
+The PC owns the application, local backend and retained state. This LAN browser
+path remains an implementation milestone; the current package is PC-only.
 
 The owner's November 25 clarification supersedes the earlier read-only mirror
 guidance. One product includes both the POS and its menu intake form. The form
@@ -30,7 +31,7 @@ where source and API architecture are shared with Café.
 | Prepare inventory before opening | Planned inventory and opening-count workflow | Planned quantity is not real stock. Blank remains pending; explicit zero is confirmed only through a physical count. Recount after unit changes. |
 | Enjoy learning without accidentally changing sales | Private recipe book, saved trials/comparison, inactive catalog draft and explicit activation | Recipe notes stay private; exact recipe-to-product link and safe navigation preserve work. Do not create another trial to recover a transient success message. |
 | Make daily work clear and appealing | `lib/pos-profile.ts`, Smoothies register/admin, special-of-week and builder | Product-specific extras, responsive totals/color, visible folio/change and connected workflows; historical previews are not onsite usability acceptance. |
-| Operate from her iPad, including internet loss | PC-local runtime plus interactive same-session LAN access | Historical PC offline sale/restart/restore checks passed. Real iPad control, touch input, reconnect and Windows reboot still need acceptance; read-only viewing does not satisfy this requirement. |
+| Operate from her iPad, including internet loss | PC-local runtime, one HTTPS LAN front and same-origin browser API | Not integrated. Next and browser Supabase still use PC loopback; printer/import routes also reject LAN origins. Historical PC offline checks do not establish an iPad workflow. |
 | Preserve the whole business | `lib/smoothies-backup-assets.mjs`, restore-local/restore-contract tools | Encrypted database plus catalog photos and print journal; off-PC destination and separately retained key must be established. |
 | Receive compatible updates automatically | Signed pilot feed, `scripts/smoothies/auto-update.mjs`, `Launch-Smoothies.ps1` | Signature/hash/product/channel checks, no downgrade, unchanged database contract, closed-shift/payment/printing gate, failed-start fallback. Installed client enrollment is not evidenced. |
 
@@ -39,8 +40,9 @@ where source and API architecture are shared with Café.
 - Historical readiness work published `pos-v1.0.0-rc.3` with a signed Smoothies
   updater. Publication does not establish a client installation. Test counts in
   that chat describe that historical revision only.
-- Current operations select a separate Smoothies checkout of the `pos-cafe`
-  repository at `00e6211...`; Café's selected revision differs. Profiles exist,
+- The qualified PC demo remains tied to `00e6211...` from the Smoothies checkout
+  of `pos-cafe`; current source corrections do not move that qualification.
+  Café's selected revision differs. Profiles exist,
   but source convergence is conditional on retained-data/business parity.
 - The November 23 consolidation pilot had scoped independent acceptance. Later
   runnable-package experiments remain engineering candidates; some full Smoothies
@@ -51,6 +53,23 @@ where source and API architecture are shared with Café.
 
 ## Next milestones and completion criteria
 
+### Complete the existing browser workflow on the LAN
+
+1. Reuse the family's existing private-IP HTTPS front and backend proxy contract;
+   keep Next, Auth/Storage and PostgreSQL on the PC/loopback. Use one configured
+   public origin and shared origin validation for browser reads and writes.
+2. Apply that same origin to login/cookies, catalog, receipt/phone print outbox,
+   menu import and backups. Allow only the Smoothies RPCs actually used. Extend
+   existing handlers; do not add an alternate checkout or remote-desktop workflow.
+3. Keep canonical backend photo URLs in saved catalog records and rewrite only
+   their browser projection. Prove that a photo uploaded from iPad is included in
+   the encrypted asset backup and restored correctly.
+4. Test Safari login → products/extras → cash payment → one saved sale → existing
+   print outbox, then reload/reconnect and loss of internet with LAN active.
+   Validate certificates, touch/keyboard and Windows restart on the actual devices.
+
+### Prepare the client installation
+
 1. Receive the client's JSON, review products/prices/sizes/extras with her, and
    import without duplicating or converting planned inventory into stock.
 2. Select one exact candidate through the catalog; finish applicable profile,
@@ -58,8 +77,8 @@ where source and API architecture are shared with Café.
    all-three family promotion contract.
 3. Enroll the actual PC once: local stack, branded shortcut, private settings,
    backup/key locations and update trust. Record actual installation identity.
-4. On destination equipment prove reboot and interactive iPad operation of the PC
-   session: select products/extras, enter payment, save one sale, reconnect/reopen
+4. After the LAN implementation above, on destination equipment prove reboot and
+   iPad browser operation: select products/extras, enter payment, save one sale, reconnect/reopen
    without duplication and reconcile the saved record with internet disconnected
    but LAN active. Accept printers if required and confirm opening counts.
 5. Demonstrate one compatible signed update and failed-start recovery with retained
