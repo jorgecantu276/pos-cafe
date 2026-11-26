@@ -129,6 +129,22 @@ try {
   const keyBefore = await readFile(path.join(fixture, 'clave/recuperacion.key'));
   stop();
   assert.equal(await waitForExit(launch), 0);
+  if (process.env.POS_TEST_BACKUP_EXPORT_DIR) {
+    const pending = JSON.parse(await readFile(path.join(evidenceDirectory, 'external-copy-fixture.json'), 'utf8'));
+    assert.ok(pending.copiedInitially && pending.unavailablePreservedLocal);
+    launch = start(); await ready(launch);
+    let copied = false;
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const status = JSON.parse(await readFile(path.join(fixture, 'respaldos/status.json'), 'utf8'));
+      assert.equal(status.lastSuccess.filename, pending.filename, 'Startup retry must reuse the original verified archive, not take another snapshot.');
+      if (status.externalCopy?.state === 'copied' && status.externalCopy.lastSuccess?.sha256 === pending.sha256) { copied = true; break; }
+      await pause(500);
+    }
+    assert.ok(copied, 'Installed startup scheduler must retry the external copy after its media returns.');
+    assert.equal(createHash('sha256').update(await readFile(path.join(process.env.POS_TEST_BACKUP_EXPORT_DIR, pending.filename))).digest('hex'), pending.sha256);
+    console.log('PASS: installed restart retries the same verified archive after external media returns.');
+    stop(); assert.equal(await waitForExit(launch), 0);
+  }
   execFileSync(node, [`--env-file=${path.join(fixture, 'instalacion.env')}`,
     `--env-file=${path.join(fixture, 'caja.env')}`, path.join(import.meta.dirname, 'acceptance-update.mjs'),
     fixture, packageRoot, evidenceDirectory], { env, windowsHide: true, stdio: 'inherit', cwd: root });
@@ -161,7 +177,8 @@ try {
     next: next.version, node: '24.22.2', zipSha256: createHash('sha256').update(await readFile(zipFile)).digest('hex'), filesSha256,
     checks: ['zip-build-equality', 'complete-file-index', 'exact-zip-install', 'private-config', 'launch-reuse', 'browser-offline', 'json-import',
       'opening-counts', 'photos', 'private-recipes', 'extra-scope', 'weekly-special', 'cash-sale',
-      'closing', 'gzip', 'backup-attachment', 'full-restore', 'signed-live-update', 'docker-restart', 'installer-repair'],
+      'closing', 'gzip', 'backup-attachment', 'full-restore', 'signed-live-update', 'docker-restart', 'installer-repair',
+      ...(process.env.POS_TEST_BACKUP_EXPORT_DIR ? ['external-ciphertext-copy', 'external-copy-failure-local-preserved', 'external-copy-restart-retry'] : [])],
   }, null, 2));
 } finally {
   settings ||= await readFile(path.join(fixture, 'instalacion.env'), 'utf8').then(parseEnv).catch(() => null);

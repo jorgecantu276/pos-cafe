@@ -42,9 +42,12 @@ where source and API architecture are shared with Café.
 
 - The portable package now carries site-value placeholders, an unaccepted live
   checklist, external encrypted-copy automation and sanitized support diagnostics.
-  CI preserves the exact candidate ZIP. Installed LAN automation is wired to an
-  explicitly disposable Windows/Linux-Docker runner with pre-provisioned trusted
-  TLS identity; the runner/device values and its observed result remain pending.
+  CI preserves the exact candidate ZIP. Explicit installed LAN rehearsal creates
+  a fresh hosted Windows 2025/Ubuntu WSL2 environment with verified real Docker
+  transport and synthetic trusted HTTPS. It tests encrypted export, unavailable
+  media and restart retry, alongside installation, normal operation and recovery.
+  Its result is recorded by exact source/ZIP in the run artifact; actual PC,
+  iPad Safari, network and printer observations remain separate live acceptance.
 - First installation checks resolved Docker volume names as well as project,
   logical-volume and instance labels. An unlabelled or foreign existing disk is
   refused without deletion or relabelling. Private reporting likewise binds its

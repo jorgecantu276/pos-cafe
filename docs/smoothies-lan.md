@@ -180,21 +180,25 @@ conservar el artefacto no publica el canal de actualizaciones.
 El trabajo opcional `smoothies-installed-lan` verifica el hash de ese mismo ZIP,
 instala en estado sintético vacío y recorre importación, recetas, fotos, venta,
 respaldo/restauración, actualización firmada, reinicio y reparación por HTTPS.
-Se activa expresamente con `run_installed_acceptance` y necesita un runner
-Windows x64 desechable con motor Docker Linux, Edge y GitHub CLI. El runner lleva
-la etiqueta `pos-smoothies-acceptance`; nunca se usa la PC del negocio.
+Se activa expresamente con `run_installed_acceptance`. Crea una VM nueva de
+GitHub Windows 2025, Ubuntu 24.04 en WSL2 y un motor Docker Linux real. Edge y
+GitHub CLI corren en Windows; el instalador y el ZIP quedan sin modificaciones.
+El adaptador privado de operaciones permite seleccionarlo con
+`delivery.mjs build --product smoothies --ref <rama> --installed-lan true`.
 
-Valores pendientes del entorno de ensayo:
+El entorno genera sus propios valores sintéticos: IP privada asignada, origen
+HTTPS, autoridad temporal y carpeta externa de respaldos. Valida montajes,
+transporte binario y puertos Docker antes de instalar. No requiere valores ni
+variables del repositorio del cliente. El certificado se acepta solo en esta
+VM y se retira al terminar; no se desactiva la validación TLS.
 
-| Variable del repositorio | Valor hasta preparar el runner |
-| --- | --- |
-| `SMOOTHIES_ACCEPTANCE_DISPOSABLE` | Sin configurar; se establece en `1` solo para el equipo desechable revisado |
-| `SMOOTHIES_ACCEPTANCE_LAN_ORIGIN` | IP privada y puerto HTTPS reales del runner |
-| `SMOOTHIES_ACCEPTANCE_CERT_FILE` | Ruta privada al certificado de esa IP |
-| `SMOOTHIES_ACCEPTANCE_KEY_FILE` | Ruta privada a su clave correspondiente |
-| `SMOOTHIES_ACCEPTANCE_CA_FILE` | Ruta al CA público aceptado por Node y el navegador del runner |
+Además verifica copia cifrada, medio ausente sin perder el respaldo local y
+reintento del mismo archivo al reiniciar. El artefacto `rehearsal.json` contiene
+resultado, plataforma, comprobaciones y hashes; los registros privados y claves
+no se exportan. Un error conserva evidencia saneada y falla el trabajo.
 
 El ensayo rechaza puertos, contenedores o volúmenes Smoothies existentes y no
-borra instalaciones para liberar el entorno. Un trabajo omitido por falta del
-runner conserva esa comprobación pendiente. Sus resultados sintéticos tampoco
-rellenan la lista de aceptación de los dispositivos del negocio.
+borra instalaciones para liberar el entorno. Un trabajo omitido o fallido no
+acredita aceptación instalada. Sus resultados sintéticos tampoco rellenan la
+lista de los dispositivos del negocio: configuración Windows/Docker Desktop,
+reinicio de su PC, Safari/confianza/tacto en su iPad, Wi-Fi y papel físico.

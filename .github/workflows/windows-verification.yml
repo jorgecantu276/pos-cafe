@@ -7,12 +7,8 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      probe_rehearsal_host:
-        description: Inspect a fresh hosted Windows VM for isolated Linux-engine rehearsal capability
-        type: boolean
-        default: false
       run_installed_acceptance:
-        description: Run final-ZIP LAN acceptance on an enrolled disposable Windows/Linux-Docker runner
+        description: Run final-ZIP LAN acceptance on a fresh hosted Windows/WSL2 VM
         type: boolean
         default: false
 
@@ -25,7 +21,6 @@ concurrency:
 
 jobs:
   integration:
-    if: ${{ !inputs.probe_rehearsal_host }}
     name: Auth and backend integration (${{ matrix.script }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -50,7 +45,6 @@ jobs:
       - name: Exercise one isolated Auth/backend scenario on its own runner
         run: npm run ${{ matrix.script }}
   verify:
-    if: ${{ !inputs.probe_rehearsal_host }}
     runs-on: windows-latest
     timeout-minutes: 20
     env:
@@ -92,7 +86,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows/smoke-release.mjs $releaseFolder
   smoothies-package:
-    if: ${{ !inputs.probe_rehearsal_host }}
     name: Portable Smoothies package (Windows)
     runs-on: windows-latest
     timeout-minutes: 25
@@ -176,7 +169,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   smoothies-backend:
-    if: ${{ !inputs.probe_rehearsal_host }}
     name: Smoothies import and cash recovery
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -195,39 +187,17 @@ jobs:
         run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55540-55569
       - run: node --import tsx scripts/smoothies/import-drill.mjs
       - run: node --import tsx scripts/smoothies/local-sale-drill.mjs
-  rehearsal-host-probe:
-    if: github.event_name == 'workflow_dispatch' && inputs.probe_rehearsal_host
-    runs-on: windows-2025
-    timeout-minutes: 15
-    steps:
-      - name: Inspect virtualization and boot a disposable WSL distribution
-        shell: pwsh
-        run: |
-          Get-CimInstance Win32_ComputerSystem | Select-Object HypervisorPresent,TotalPhysicalMemory
-          Get-CimInstance Win32_Processor | Select-Object VirtualizationFirmwareEnabled,SecondLevelAddressTranslationExtensions
-          foreach ($feature in 'VirtualMachinePlatform','Microsoft-Windows-Subsystem-Linux') { Get-WindowsOptionalFeature -Online -FeatureName $feature -ErrorAction Continue }
-          wsl.exe --status
-          wsl.exe --list --verbose
-          docker.exe info --format '{{.OSType}}'
-          wsl.exe --install --distribution Ubuntu-24.04 --no-launch --web-download
-          if ($LASTEXITCODE -ne 0) { throw 'Hosted WSL distribution provisioning failed.' }
-          wsl.exe --distribution Ubuntu-24.04 --user root -- uname -a
-          if ($LASTEXITCODE -ne 0) { throw 'Hosted WSL kernel boot failed; this VM cannot provide the required engine.' }
   smoothies-installed-lan:
-    name: Final ZIP installation and LAN acceptance (disposable runner)
+    name: Final ZIP installation and LAN acceptance (hosted Windows/WSL2)
     if: github.event_name == 'workflow_dispatch' && inputs.run_installed_acceptance
     needs: [verify, smoothies-package, smoothies-backend, integration]
-    runs-on: [self-hosted, Windows, X64, pos-smoothies-acceptance]
+    runs-on: windows-2025
     timeout-minutes: 60
     permissions:
       contents: read
       actions: read
     env:
-      POS_ACCEPTANCE_DISPOSABLE: ${{ vars.SMOOTHIES_ACCEPTANCE_DISPOSABLE }}
-      POS_TEST_LAN_ORIGIN: ${{ vars.SMOOTHIES_ACCEPTANCE_LAN_ORIGIN }}
-      POS_TEST_LAN_CERT_FILE: ${{ vars.SMOOTHIES_ACCEPTANCE_CERT_FILE }}
-      POS_TEST_LAN_KEY_FILE: ${{ vars.SMOOTHIES_ACCEPTANCE_KEY_FILE }}
-      NODE_EXTRA_CA_CERTS: ${{ vars.SMOOTHIES_ACCEPTANCE_CA_FILE }}
+      POS_ACCEPTANCE_DISPOSABLE: '1'
       NEXT_TELEMETRY_DISABLED: '1'
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -236,33 +206,18 @@ jobs:
         with:
           node-version: 24.22.2
           cache: npm
-      - name: Refuse an unenrolled runner or missing trusted test identity
-        shell: pwsh
-        run: |
-          if ($env:POS_ACCEPTANCE_DISPOSABLE -ne '1') { throw 'Use only a disposable acceptance computer, never a store PC.' }
-          foreach ($name in 'POS_TEST_LAN_ORIGIN','POS_TEST_LAN_CERT_FILE','POS_TEST_LAN_KEY_FILE','NODE_EXTRA_CA_CERTS') {
-            if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing runner value: $name" }
-          }
-          if ((docker info --format '{{.OSType}}') -ne 'linux') { throw 'The acceptance runner needs the Linux Docker engine.' }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - run: npm ci
-      - name: Verify and exercise this run's exact candidate ZIP
+      - name: Establish a real isolated Linux Docker engine and verify Windows transport
+        shell: pwsh
+        run: ./scripts/testing/Start-HostedWslDocker.ps1
+      - name: Install and rehearse this run's exact candidate with synthetic LAN values
         shell: pwsh
         run: |
-          $artifacts = Join-Path $env:RUNNER_TEMP 'smoothies-candidate-download'
-          gh run download $env:GITHUB_RUN_ID --repo $env:GITHUB_REPOSITORY --name 'smoothies-windows-candidate-${{ github.sha }}' --dir $artifacts
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $zip = Join-Path $artifacts 'smoothies-candidate.zip'
-          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne '${{ needs.smoothies-package.outputs.zip_sha256 }}') { throw 'Candidate ZIP hash mismatch.' }
-          $reference = Join-Path $artifacts 'reference'
-          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/smoothies/Extract-Smoothies-Update.ps1 -ZipPath $zip -Destination $reference
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $evidence = Join-Path $env:RUNNER_TEMP 'smoothies-installed-evidence'
-          node scripts/smoothies/acceptance.mjs $zip $evidence $reference
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/testing/Run-HostedSmoothiesRehearsal.ps1 -SourceRunId $env:GITHUB_RUN_ID -SourceCommit $env:GITHUB_SHA -ExpectedZipSha256 '${{ needs.smoothies-package.outputs.zip_sha256 }}'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
         with:
           name: smoothies-installed-acceptance-${{ github.sha }}
-          path: ${{ runner.temp }}/smoothies-installed-evidence/acceptance.json
-          if-no-files-found: error
+          path: ${{ runner.temp }}/smoothies-rehearsal-evidence/rehearsal.json
+          if-no-files-found: warn
           retention-days: 14

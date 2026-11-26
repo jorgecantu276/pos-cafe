@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { Client } from 'pg';
 import { createClient } from '@supabase/supabase-js';
-import { root, work, run, dockerCheck, ensureLoopbackNetwork } from '../staging/runtime.mjs';
+import { root, work, run, dockerCheck, ensureLoopbackNetwork, realDockerExecutable } from '../staging/runtime.mjs';
 import { baselineStatements } from '../staging/safety.mjs';
 import { sourceFiles } from '../staging/bootstrap.mjs';
 import { randomUUID } from 'node:crypto';
@@ -44,7 +44,7 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
       await run(path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/target:exe', `/out:${launcher}`, source]);
       await run(launcher, ['--pos-cafe-self-test']);
     }
-    env = { ...env, POS_CAFE_REAL_DOCKER: path.join(process.env.LOCALAPPDATA, 'Programs/DockerDesktop/resources/bin/docker.exe'), PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+    env = { ...env, POS_CAFE_REAL_DOCKER: realDockerExecutable(), PATH: `${bin}${path.delimiter}${process.env.PATH}` };
   }
   const cliRun = args => run(process.execPath, [cli, ...args, '--workdir', directory], { env });
   await ensureLoopbackNetwork({ name: network, label: 'pos-cafe.admin-test', owner: project });

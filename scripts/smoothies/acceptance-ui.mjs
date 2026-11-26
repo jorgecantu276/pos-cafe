@@ -8,7 +8,7 @@ import { get as httpsGet } from 'node:https';
 import { gunzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { parseEnv } from 'node:util';
 import { freshLocalApi } from '../testing/local-api.mjs';
 import { lanOrigin } from '../customer/lan.mjs';
@@ -361,8 +361,30 @@ try {
       await createBackup.click();
       const backupReply = await backupResponse;
       assert.equal(backupReply.status(), 200, await backupReply.text());
-      const status = await backupReply.json();
+      let status = await backupReply.json();
       assert.ok(status.lastSuccess?.filename);
+      const external = process.env.POS_TEST_BACKUP_EXPORT_DIR;
+      if (external) {
+        assert.ok(path.isAbsolute(external));
+        assert.equal(status.externalCopy?.state, 'copied');
+        assert.equal(sha256(await readFile(path.join(external, status.lastSuccess.filename))), status.lastSuccess.sha256);
+        console.log('PASS: installed backup operation exports the exact encrypted archive to its configured synthetic external destination.');
+        const unavailable = external + '.unavailable-' + randomUUID();
+        await rename(external, unavailable);
+        try {
+          const failedCopyResponse = page.waitForResponse(response => response.url().endsWith('/api/backups') && response.request().headers()['x-pos-backup'] === '1');
+          await createBackup.click();
+          const reply = await failedCopyResponse;
+          assert.equal(reply.status(), 200);
+          status = await reply.json();
+          assert.ok(status.lastSuccess?.filename);
+          assert.equal(status.externalCopy?.state, 'failed');
+          assert.ok(!status.lastError, 'Unavailable external media must not turn the verified local archive into a failed backup.');
+          await writeFile(path.join(artifacts, 'external-copy-fixture.json'), JSON.stringify({ filename: status.lastSuccess.filename,
+            sha256: status.lastSuccess.sha256, bytes: status.lastSuccess.bytes, copiedInitially: true, unavailablePreservedLocal: true }));
+          console.log('PASS: an unavailable external destination preserves a newly verified local archive for restoration.');
+        } finally { await rename(unavailable, external); }
+      }
       const storedBytes = await readFile(path.join(backups.directory, status.lastSuccess.filename));
       const attachment = await page.request.get(`${base}/api/backups?download=latest`, {headers:{'accept-encoding':'gzip'}});
       assert.equal(attachment.status(), 200);

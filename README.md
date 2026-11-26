@@ -60,8 +60,10 @@ Functional local drills include `scripts/smoothies/import-drill.mjs`,
 `local-sale-drill.mjs`, `acceptance-ui.mjs` and `acceptance-update.mjs`.
 Read each script's prerequisites and use a verified synthetic backend.
 CI retains the uninstalled Windows candidate ZIP. Full installed LAN acceptance
-has an explicit disposable Windows/Linux-Docker runner gate with trusted test
-certificates; standard source CI does not impersonate that equipment test.
+runs on a fresh hosted Windows 2025/Ubuntu WSL2 machine when explicitly selected
+with `run_installed_acceptance`. It verifies real Docker transport and trusted
+synthetic HTTPS, then exports hash-bound sanitized evidence. Actual PC setup,
+iPad Safari and physical printing remain equipment acceptance.
 
 Recipe saves and explicit recovery use the shared `lib/recipe-trial.ts` owner:
 pending writes survive reload, retain their original account/payload and block
