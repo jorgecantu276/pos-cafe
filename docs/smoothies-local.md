@@ -1,6 +1,8 @@
 # POS Smoothies en Windows
 
-El POS, las ventas, el recetario y las fotos del catálogo quedan en la PC de caja. El iPad muestra esa misma pantalla por la red Wi‑Fi.
+> Procedimiento del paquete local, no prueba de una tienda desplegada. El propietario identifica solo Café como producto en vivo. Consultar [plan de Smoothies](products/smoothies.md) y verificar el paquete exacto antes de inscripción o actualización.
+
+El POS, las ventas, el recetario y las fotos del catálogo quedan en la PC de caja. El objetivo es que la estudiante de chef lo opere desde Safari en su iPad por la red Wi‑Fi del local. El paquete actual solo funciona desde la PC; el acceso web LAN aún requiere implementación y aceptación. POS y formulario de menú son componentes del mismo producto Smoothies.
 
 ## Preparar la caja local
 
@@ -42,10 +44,12 @@ En **Catálogo → Especial de la semana**, elige un smoothie activo y guarda. L
 
 Abre **Recetario** desde caja y guarda la primera prueba. **Nueva prueba** copia los ingredientes y la preparación anterior para que puedas ajustar cantidades. **Preparar para venta** lleva el nombre y el precio a **Catálogo → Inactivos**. Desde allí puedes revisar la ficha, editarla y activarla. Las pruebas y notas quedan en el recetario.
 
-## Duplicar la pantalla en el iPad
+## Acceso desde el iPad: pendiente de integración
 
-1. En la PC configura un servidor VNC que comparta la sesión de Windows y permita una contraseña de solo lectura, por ejemplo [TightVNC](https://www.tightvnc.com/winst.php). Usa esa contraseña para el iPad. Desactiva el portapapeles y la transferencia de archivos si el servidor ofrece esos controles.
-2. Reserva una IP privada para la PC en el router. Limita el acceso entrante al iPad en el perfil privado del firewall de Windows. Si el servidor VNC no cifra la sesión, usa un túnel SSH local y limita VNC al loopback. El router no necesita redirigir puertos.
-3. En el iPad, permite el acceso a la red local y crea una [conexión manual en Screens](https://support.edovia.com/en/screens-5/getting-started/connecting) con la IP de la PC y la contraseña de solo lectura. Si usas SSH, la IP de la PC va en los ajustes del túnel y `127.0.0.1` como destino VNC. Abre la caja en el monitor de Windows. El iPad verá esa misma pantalla.
+Ella debe poder seleccionar productos, usar el recetario y cobrar desde Safari en el iPad. El paquete actual escucha en `127.0.0.1:3180` en la PC y el navegador se conecta a Supabase por loopback; esa dirección en el iPad apunta al propio iPad. Compartir el escritorio de Windows no completa el flujo web solicitado.
 
-Con los dos equipos en la red del local, desconecta la salida del router a internet sin apagar su Wi‑Fi. Vuelve a conectar el iPad a la pantalla, inicia sesión en la caja y prueba un cobro en efectivo. Comprueba el folio del pedido, el cambio, la persistencia al reabrir y que tocar el iPad no controle Windows. Pausa el espejo antes de abrir el recetario si hay alguien mirando el iPad, porque el espejo muestra toda la sesión. El pago con tarjeta se registra después de aprobarlo en la terminal.
+La siguiente entrega debe integrar el frente HTTPS local y el proxy del backend en el mismo POS, incluyendo sesiones, fotos, importación, respaldos y el diario de impresión de la PC. Consulta el [plan de implementación y aceptación](products/smoothies.md#complete-the-existing-browser-workflow-on-the-lan). La instalación acordará IP privada, certificado y acceso de la red local; la base seguirá en la PC. No se configura un segundo POS ni una segunda base en el iPad.
+
+Con los dos equipos en la red del local, desconecta la salida del router a internet sin apagar su Wi‑Fi. **Desde el iPad**, selecciona una bebida y sus extras, cobra en efectivo y comprueba el cambio y el folio guardado en la PC. Desconecta/reconecta el iPad y reabre la sesión: debe permanecer una sola venta y conservarse el inventario y el recetario. Prueba también el arranque después de reiniciar Windows. El pago con tarjeta se registra después de aprobarlo en la terminal.
+
+Esta prueba se ejecuta después de integrar el acceso LAN. La implementación y la aceptación en la PC y el iPad del negocio siguen pendientes; los ensayos históricos de venta local no las sustituyen.

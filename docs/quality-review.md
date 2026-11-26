@@ -1,3 +1,5 @@
+> Registro histórico: conserva resultados y límites de su fecha. No describe la configuración actual ni concede permiso para desplegar, restablecer datos, cobrar o imprimir. Para estado y siguiente trabajo, consultar el [plan de Café](products/cafe.md).
+
 # Calidad del POS, inventario, pantalla y tickets
 
 Revisión del 2 de noviembre de 2026. El inventario pasa las mismas comprobaciones de código, UI, permisos y transacciones que el resto de la app, más casos de activación y reservas CLIP. Eso no certifica automáticamente usabilidad, WCAG completo ni rendimiento en la PC del café.

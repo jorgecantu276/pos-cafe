@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -57,6 +56,10 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - name: Signed Cafe updater and immutable publication contracts
+        run: |
+          node --test scripts/windows/auto-update.test.mjs
+          node --experimental-strip-types --test tests/github-release.test.ts
       - run: npm run test:db
         env:
           POS_RECEIPT_CONTRACT_EVIDENCE: ${{ runner.temp }}/pos-receipt-contract.json

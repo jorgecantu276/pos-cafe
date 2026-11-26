@@ -331,6 +331,19 @@ test('discard never clears a request until the database confirms abandonment',as
     await fn();assert.equal(cleared,!failed);
   }
 });
+test('a hung abandon checkout releases processing and retains the original pending request', async () => {
+  let cleared = false, busy = false;
+  const inFlight = { current: false };
+  const run = handler('handleDiscardCheckout', {
+    checkoutInFlight: inFlight, checkoutReview: { requestId: 'pending' }, confirm: () => true,
+    setIsProcessingCheckout: (value: boolean) => { busy = value; },
+    withDeadline: (action: () => PromiseLike<unknown>) => withDeadline(action, { timeoutMs: 5 }),
+    supabase: { rpc: () => new Promise(() => {}) }, localStorage: { removeItem: () => { cleared = true; } },
+    checkoutReviewKey: { current: 'test' }, cartDraft: { current: null }, alert: () => {},
+  });
+  await run();
+  assert.equal(cleared, false); assert.equal(busy, false); assert.equal(inFlight.current, false);
+});
 test('opening a customization edit leaves the original line intact until confirmation',()=>{
   useCartStore.getState().clearCart();
   useCartStore.getState().addItem(customizeProduct({id:'coffee',name:'Coffee',price:50,category:'Bebidas'},[{name:'Vainilla',price:10}],''));
