@@ -1,5 +1,11 @@
 # Local Supabase acceptance environment
 
+> Development reference: use isolated synthetic state only. Historical fixture
+> counts and earlier schemas below do not establish the current Smoothies/client
+> contract. Preserve the full current migration order and verify the script's
+> prerequisites before running. No hosted deployment or production reset is implied.
+
+
 This is a separate Docker-backed PostgreSQL 17, GoTrue Auth and PostgREST stack. It contains synthetic data only. It does not link to either hosted Supabase project, clone business rows or change the normal `.env.local`.
 
 Use the pinned Supabase CLI installed by `npm ci`. On this Windows development PC, Docker Desktop with its WSL 2 Linux engine must be running. Docker/WSL are development tools here; installing them on the café PC is not a deployment requirement.

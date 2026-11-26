@@ -2,6 +2,13 @@
 
 # Expense journal and verified closing
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 The cashier keeps the same expense controls, closing panel and manual printing
 choices. Expense controls wait for server acknowledgment; a failed or uncertain
 save shows a Spanish recovery message instead of changing the displayed journal.

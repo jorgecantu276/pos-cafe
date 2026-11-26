@@ -1,5 +1,11 @@
 # Local startup, restart and PWA acceptance
 
+> Development reference: use isolated synthetic state only. Historical fixture
+> counts and earlier schemas below do not establish the current Smoothies/client
+> contract. Preserve the full current migration order and verify the script's
+> prerequisites before running. No hosted deployment or production reset is implied.
+
+
 Run `npm run test:lifecycle` with Docker Desktop running and ports 3110, 3111,
 55460, 55462, 55463 and 55464 free. The normal staging preview on 3101 may remain
 open. This is a browser-assisted acceptance drill, not an unattended test command.

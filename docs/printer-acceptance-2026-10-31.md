@@ -1,12 +1,19 @@
 # Café printer acceptance — October 31, 2026
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 The user personally confirmed the final corrective receipt, eight long-note
 labels and automatic Bluetooth recovery. Software submission and paper output
 were recorded separately. Final Windows queues were empty; the exported
 journal audit contained no unresolved jobs.
 
 The supplied evidence is in `outputs` and `work` under
-`D:\Codex\2026-10-31\prepare-and-execute-the-cari-ito`. Key records are
+`<private-evidence>`. Key records are
 `ACCEPTANCE-SUMMARY.txt`, `APPROVED-TEST-SETUP.txt`, `ONSITE-RESULTS.txt`,
 `final-queues.json`, `final-journal-audit.json` and
 `approved-artifact-hashes.json`. Fiscal details, samples and mutable journals
@@ -52,7 +59,7 @@ remains a Windows handoff state, never proof of paper output.
   existing job print automatically, without replacement/cancellation. The same
   command retained attempts/timestamps; the user confirmed no extra paper.
 
-Preserve the complete café test root at `D:\Cafe-Printer-Test-2026-10-31`,
+Preserve the complete café test root at `<private-evidence>`,
 especially `runtime\windows\windows-jobs.sqlite` and associated files.
 Do not delete, replace or restore an older journal, or include one in a release.
 
@@ -97,7 +104,7 @@ These SHA-256 values identify the café artifacts, not the changed repo helper:
 
 ## Follow-up: V8 customer receipt and concurrent dual output
 
-The later transfer at `D:\prepare-and-execute-the-cari-ito\outputs` and `work`
+The later transfer at `<private-evidence>\outputs` and `work`
 adds physical acceptance of the branded receipt. The earlier 12:35 PM files
 remain the first-session evidence; the V8 and SIMULTANEOUS records at 1:09 PM
 and 1:14 PM describe the new tests. No additional print was performed while
@@ -147,9 +154,9 @@ pairing, queue cancellation, journal reset or recovery replacement was part of
 either follow-up test.
 
 The original active journal remains in place at
-`D:\Cafe-Printer-Test-2026-10-31\runtime\windows\windows-jobs.sqlite`, with its
+`<private-evidence>\runtime\windows\windows-jobs.sqlite`, with its
 companions. Keep the V8 stable sample/result there. The V8 code/evidence stays
-in the separate `D:\Cafe-Receipt-Only-V8-2026-10-31` folder.
+in the separate `<private-evidence>` folder.
 
 | Transferred follow-up record | SHA-256 |
 |---|---|

@@ -1,5 +1,12 @@
 # Receipt data contract
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 The reference image defines the layout. New production sale amounts are computed by `pos_checkout` from catalog IDs, quantities and allowed extra IDs, then read back from `orders.receipt_snapshot` by the local print endpoint. Browser prices and the synthetic hardware-test sample are not production price sources.
 
 | Printed field | Authoritative source / rule |

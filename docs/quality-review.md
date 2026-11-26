@@ -1,5 +1,12 @@
 # Calidad del POS, inventario, pantalla y tickets
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 Revisión del 2 de noviembre de 2026. El inventario pasa las mismas comprobaciones de código, UI, permisos y transacciones que el resto de la app, más casos de activación y reservas CLIP. Eso no certifica automáticamente usabilidad, WCAG completo ni rendimiento en la PC del café.
 
 ## Criterios externos y evidencia

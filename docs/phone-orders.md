@@ -1,5 +1,12 @@
 # Pedidos por teléfono
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 Un pedido recibido por teléfono se paga **al recoger**. Se guarda separado de una venta pagada: no suma efectivo, ingresos, compras ni puntos antes del cobro. El contacto del pedido no inscribe automáticamente al cliente en lealtad.
 
 ## Operación
@@ -32,6 +39,6 @@ Con inventario apagado no se inventan cantidades ni movimientos. La activación 
 
 La migración `202611020019_phone_orders.sql` agrega pedidos, solicitudes recuperables, vínculo único a la venta y reservas. Guardar y cancelar conservan una identidad por operación; cobrar usa además el bloqueo global del pedido. Los respaldos nuevos incluyen pedidos, reservas, revisiones y secuencia de folios. Los archivos anteriores a esta migración siguen siendo legibles.
 
-Esta versión requiere las migraciones 017–021, ya desplegadas al cliente después de respaldo y comparación de huellas. Esto no instala el POS en el café ni certifica los nuevos documentos en papel; ver [entrega](delivery-readiness.md).
+El contrato compartido requiere las migraciones 017–021. Su despliegue histórico en Café no establece el estado del backend local de Smoothies. Esto no instala el POS en el café ni certifica los nuevos documentos en papel; ver [entrega](delivery-readiness.md).
 
 Verificación: `npm test`, `npm run test:db`, `npm run test:printing` y `POS_BROWSER_QUALITY=1 npm run test:phone-http`. El último ensayo usa una base nueva en loopback 55501/55502, producción aislada en 3112, cuentas ficticias y cola simulada; conserva la vista de prueba existente en 3111.
