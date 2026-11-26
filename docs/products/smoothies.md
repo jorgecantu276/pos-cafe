@@ -37,6 +37,13 @@ where source and API architecture are shared with Café.
 
 ## Progress and unfinished work
 
+- The current source review brings the independently accepted shared recipe
+  recovery and bounded checkout-abandonment fixes into this variant. Recipe
+  requests survive reload under their original account, cannot be replaced by
+  another new save, and use the verified account for the RPC. The existing
+  recipe deep links, exact menu-product state and explicit activation remain.
+  This source correction does not update a published package or installation.
+
 - Historical readiness work published `pos-v1.0.0-rc.3` with a signed Smoothies
   updater. Publication does not establish a client installation. Test counts in
   that chat describe that historical revision only.

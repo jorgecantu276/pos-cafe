@@ -42,7 +42,12 @@ En **Catálogo → Extras**, usa **Nuevo extra** o **Editar**, marca los product
 
 En **Catálogo → Especial de la semana**, elige un smoothie activo y guarda. La tarjeta aparece arriba del menú de caja y abre la preparación. Para rotar el especial, elige otro producto o selecciona **Sin especial**. El vaso toma un color según el nombre del smoothie y la preparación muestra los extras asignados a ese producto.
 
-Abre **Recetario** desde caja y guarda la primera prueba. **Nueva prueba** copia los ingredientes y la preparación anterior para que puedas ajustar cantidades. **Preparar para venta** lleva el nombre y el precio a **Catálogo → Inactivos**. Desde allí puedes revisar la ficha, editarla y activarla. Las pruebas y notas quedan en el recetario.
+Abre **Recetario** desde caja y guarda la primera prueba. **Hacer otra prueba** copia los ingredientes y la preparación anterior para que puedas ajustar cantidades. **Llevar al menú → Crear borrador** lleva el nombre y el precio a **Catálogo → Inactivos**. Desde allí puedes revisar la ficha, editarla y activarla. Las pruebas y notas quedan en el recetario.
+
+Si no se confirma un guardado, usa **Revisar prueba pendiente**, incluso después
+de cerrar y volver a abrir la página. Ese paso comprueba la misma prueba; no
+crees otra para recuperar un resultado incierto. Esta recuperación pertenece al
+candidato revisado y requiere su entrega aceptada antes de usarse en el negocio.
 
 ## Acceso desde el iPad: pendiente de integración
 

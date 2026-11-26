@@ -6,6 +6,8 @@ import { act, createElement, type ComponentType, type ReactNode } from 'react';
 import { JSDOM } from 'jsdom';
 import * as ts from 'typescript';
 import * as resource from '../lib/use-resource';
+import * as recovery from '../lib/recipe-trial';
+import * as deadline from '../lib/request-deadline';
 
 type Recipe = { id: string; name: string; product_id: string | null; trial_count: number };
 type Product = { id: string; name: string; is_active: boolean };
@@ -26,13 +28,14 @@ function compile(file: string, imports: Record<string, unknown>) {
   return exports;
 }
 
-async function withRecipe(options: { product?: Product; publishProduct?: Product; failProductRead?: boolean }, check: (view: {
+async function withRecipe(options: { product?: Product; publishProduct?: Product; failProductRead?: boolean; loseTrialReply?: boolean }, check: (view: {
   document: Document; click: (text: string) => Promise<void>; fill: (selector: string, value: string) => Promise<void>;
   submit: () => Promise<void>; calls: { name: string; args?: Record<string, unknown> }[];
 }) => Promise<void>) {
   const dom = new JSDOM('<div id="root"></div>', { url: `http://127.0.0.1:3181/admin/recetario?receta=${recipeId}` });
   const prior = new Map<string, PropertyDescriptor | undefined>();
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, location: dom.window.location,
+    localStorage: dom.window.localStorage, navigator: { userAgent: dom.window.navigator.userAgent, locks: { request: async (_key: string, _options: unknown, action: (lock: object) => unknown) => action({}) } },
     confirm: () => true, IS_REACT_ACT_ENVIRONMENT: true })) {
     prior.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     Object.defineProperty(globalThis, key, { configurable: true, value });
@@ -41,20 +44,33 @@ async function withRecipe(options: { product?: Product; publishProduct?: Product
   const recipe: Recipe = { id: recipeId, name: 'Mango con coco', product_id: options.product?.id ?? null, trial_count: 1 };
   let products = options.product ? [options.product] : [];
   let failed = false;
+  let trialReplyLost = false;
   const client = {
+    auth: {
+      getUser: async () => ({ data: { user: { id: 'demo-owner' } }, error: null }),
+      getSession: async () => ({ data: { session: { user: { id: 'demo-owner' }, access_token: 'synthetic-token' } }, error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+    },
     rpc(name: string, args?: Record<string, unknown>) {
       calls.push({ name, args });
       let data: unknown;
+      let error: { message: string } | null = null;
       if (name === 'pos_smoothies_recipes') data = [recipe, { ...recipe, id: 'other-recipe', name: 'Otra receta', product_id: null }];
       else if (name === 'pos_smoothies_recipe_trials') data = [trial];
-      else if (name === 'pos_save_smoothies_recipe_trial') data = { ...trial, id: args!.p_trial, number: 2 };
+      else if (name === 'pos_save_smoothies_recipe_trial') {
+        data = { ...trial, id: args!.p_trial, recipe_id: args!.p_recipe, number: 2,
+          ingredients: args!.p_ingredients, method: args!.p_method, changes: args!.p_changes };
+        if (options.loseTrialReply && !trialReplyLost) { trialReplyLost = true; data = null; error = { message: 'Respuesta perdida' }; }
+      }
       else if (name === 'pos_publish_smoothies_recipe') {
         assert.equal(args!.p_recipe, recipeId);
         assert.equal(args!.p_trial, trial.id);
         products = [options.publishProduct ?? { id: productId, name: 'Mango del menú', is_active: false }];
         data = productId;
       } else throw Error(`Unexpected mutation ${name}`);
-      return { abortSignal: () => Promise.resolve({ data, error: null }) };
+      const result = Object.assign(Promise.resolve({ data, error }), { abortSignal: () => result,
+        setHeader: (name: string, value: string) => { assert.equal(name, 'Authorization'); assert.equal(value, 'Bearer synthetic-token'); return result; } });
+      return result;
     },
     from(name: string) {
       assert.equal(name, 'products');
@@ -83,6 +99,7 @@ async function withRecipe(options: { product?: Product; publishProduct?: Product
     '@/lib/pos-types': { errorMessage: (error: Error) => error.message },
     '@/lib/menu-cards': { normalizeMenuText: (text: string) => text.toLowerCase() },
     '@/lib/supabase': { supabase: client }, '@/lib/use-resource': resource,
+    '@/lib/recipe-trial': recovery, '@/lib/request-deadline': deadline,
   }).default as ComponentType<{ initialRecipe: string }>;
   const { createRoot } = await import('react-dom/client');
   const root = createRoot(dom.window.document.getElementById('root')!);
@@ -122,6 +139,24 @@ test('another private trial retains the linked active product and leaves selling
     assert.match(document.querySelector('.recipe-next-step')!.textContent!, /Las nuevas pruebas no cambian el producto/);
     assert.equal(calls.filter(call => call.name === 'pos_save_smoothies_recipe_trial').length, 1);
     assert.equal(calls.filter(call => call.name === 'pos_publish_smoothies_recipe').length, 0);
+  });
+});
+
+test('confirmed recipe recovery retires its dirty navigation guard and keeps the original trial identity', async () => {
+  await withRecipe({ loseTrialReply: true }, async ({ document, click, fill, submit, calls }) => {
+    await click('Hacer otra prueba');
+    await fill('textarea', '160 g de mango');
+    await submit();
+    assert.match(document.body.textContent!, /prueba sin confirmar/);
+    await click('Revisar prueba pendiente');
+    const writes = calls.filter(call => call.name === 'pos_save_smoothies_recipe_trial');
+    assert.equal(writes.length, 2);
+    assert.deepEqual(writes[1].args, writes[0].args);
+    Object.defineProperty(globalThis, 'confirm', { configurable: true, value: () => assert.fail('A confirmed recovered save is no longer a dirty draft.') });
+    const other = [...document.querySelectorAll<HTMLButtonElement>('li button')].find(button => button.querySelector('strong')?.textContent === 'Otra receta');
+    assert.ok(other);
+    await act(async () => other.click());
+    assert.equal(document.querySelector('.recipe-book-detail h2')?.textContent, 'Otra receta');
   });
 });
 

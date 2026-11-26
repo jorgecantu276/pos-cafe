@@ -953,7 +953,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
     try {
       await withCheckoutLock(checkoutKey, async () => {
         if (!stillCurrent()) return;
-        const { error } = await supabase.rpc('pos_abandon_checkout', { p_request: checkoutReview.requestId });
+        const { error } = await withDeadline(() => supabase.rpc('pos_abandon_checkout', { p_request: checkoutReview.requestId }));
         if (error) throw new Error(errorMessage(error));
         if(!checkoutReview.payload?.phone_order_id)binding?.complete();
         localStorage.removeItem(checkoutKey);

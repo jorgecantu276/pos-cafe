@@ -54,6 +54,12 @@ Functional local drills include `scripts/smoothies/import-drill.mjs`,
 `local-sale-drill.mjs`, `acceptance-ui.mjs` and `acceptance-update.mjs`.
 Read each script's prerequisites and use a verified synthetic backend.
 
+Recipe saves and explicit recovery use the shared `lib/recipe-trial.ts` owner:
+pending writes survive reload, retain their original account/payload and block
+new trials until resolved. The newer recipe-to-menu links and inactive-product
+activation flow stay in place. The register also bounds a stalled abandonment
+request while preserving its saved recovery identity.
+
 ## Delivery boundaries
 
 The existing signed pilot updater verifies product/channel/version/files, stages
