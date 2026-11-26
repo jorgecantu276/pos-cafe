@@ -1,3 +1,4 @@
+import { supabaseStorageKey, supabaseCookieOptions } from '../../lib/supabase-connection.ts';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
@@ -32,7 +33,7 @@ try {
     const client = createServerClient(config.api, config.anon, { cookies: {
       getAll: () => [...jar].map(([name, value]) => ({ name, value })),
       setAll: values => values.forEach(({ name, value }) => value ? jar.set(name, value) : jar.delete(name)),
-    }, auth: { autoRefreshToken: false } });
+    }, auth: { autoRefreshToken: false, storageKey: supabaseStorageKey(config.api) }, cookieOptions: supabaseCookieOptions(config.api) });
     sessions.push(client);
     ok(await client.auth.signInWithPassword({ email: `${actor.username}@carinitomio.local`, password: actor.password }));
     return { client, cookie: () => [...jar].map(([name, value]) => `${name}=${value}`).join('; ') };

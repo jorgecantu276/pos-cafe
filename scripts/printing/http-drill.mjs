@@ -1,3 +1,4 @@
+import { supabaseStorageKey, supabaseCookieOptions } from '../../lib/supabase-connection.ts';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawnSync } from 'node:child_process';
@@ -62,7 +63,7 @@ try {
   const cookies = [];
   for (const actor of actors) {
     const jar = new Map();
-    const client = createServerClient(api, config.anon, { cookies: { getAll: () => [...jar].map(([name, value]) => ({ name, value })),
+    const client = createServerClient(api, config.anon, { auth: { storageKey: supabaseStorageKey(api) }, cookieOptions: supabaseCookieOptions(api), cookies: { getAll: () => [...jar].map(([name, value]) => ({ name, value })),
       setAll: values => values.forEach(({ name, value }) => jar.set(name, value)) } });
     const login = await client.auth.signInWithPassword({ email: actor + '@local.invalid', password: 'Synthetic-only' });
     assert.ifError(login.error); cookies.push([...jar].map(([k, v]) => `${k}=${v}`).join('; ')); client.auth.stopAutoRefresh();

@@ -1,3 +1,4 @@
+import { supabaseStorageKey, supabaseCookieOptions } from '../../lib/supabase-connection.ts';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -41,7 +42,7 @@ export async function stagingTests(config) {
       const supabase = createServerClient(config.api, config.anon, { cookies: {
         getAll: () => [...jar].map(([name, value]) => ({ name, value })),
         setAll: values => values.forEach(({ name, value }) => { if (value) jar.set(name, value); else jar.delete(name); }),
-      }, auth: { autoRefreshToken: false } });
+      }, auth: { autoRefreshToken: false, storageKey: supabaseStorageKey(config.api) }, cookieOptions: supabaseCookieOptions(config.api) });
       sessions.push(supabase);
       ok(await supabase.auth.signInWithPassword({ email: `${username}@carinitomio.local`, password }), 'Real GoTrue sign-in');
       return { supabase, jar, cookie: () => [...jar].map(([name, value]) => `${name}=${value}`).join('; ') };

@@ -1,3 +1,4 @@
+import { supabaseStorageKey, supabaseCookieOptions } from '../../lib/supabase-connection.ts';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
@@ -45,7 +46,7 @@ try {
   const client = createServerClient(restored.config.api, restored.config.anon, { cookies: {
     getAll: () => [...jar].map(([name, value]) => ({ name, value })),
     setAll: values => values.forEach(({ name, value }) => value ? jar.set(name, value) : jar.delete(name)),
-  }, auth: { autoRefreshToken: false } }); sessions.push(client);
+  }, auth: { autoRefreshToken: false, storageKey: supabaseStorageKey(restored.config.api) }, cookieOptions: supabaseCookieOptions(restored.config.api) }); sessions.push(client);
   const ok = (result, name) => { assert.ifError(result.error && new Error(`${name}: ${result.error.message}`)); return result.data; };
   const admin = backup.payload.credentials.admin;
   ok(await client.auth.signInWithPassword({ email: `${admin.username}@carinitomio.local`, password: admin.password }), 'Restored password login');
