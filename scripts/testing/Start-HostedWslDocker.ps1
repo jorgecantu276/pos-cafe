@@ -129,10 +129,10 @@ docker info --format '{{.OSType}}'
     @"
 services:
   canary:
-    image: alpine:3.22
+    image: busybox:1.37
     labels:
       mx.pos-hosted-rehearsal: '$owner'
-    command: ['httpd', '-f', '-p', '8080', '-h', '/fixture']
+    command: ['busybox', 'httpd', '-f', '-p', '8080', '-h', '/fixture']
     ports:
       - '127.0.0.1:58000:8080'
       - '127.0.0.1:55432:8080'
