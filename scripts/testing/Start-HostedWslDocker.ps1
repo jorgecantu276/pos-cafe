@@ -23,8 +23,14 @@ $serviceStopped = $false; $createdDistro = $false; $bridge = $null; $keepAlive =
 
 function Native {
     param([Parameter(Position=0)][string]$Executable, [Parameter(Position=1,ValueFromRemainingArguments=$true)][string[]]$Arguments)
-    $result = & $Executable @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "$(Split-Path -Leaf $Executable) failed: $($result -join [Environment]::NewLine)" }
+    # Docker emits pull progress on stderr even when create succeeds. Keep its
+    # machine-readable stdout (IDs/hashes/JSON) separate from diagnostics.
+    $stderrFile = Join-Path $WorkDirectory 'native-stderr.log'
+    $result = & $Executable @Arguments 2> $stderrFile
+    if ($LASTEXITCODE -ne 0) {
+        $diagnostics = Get-Content -LiteralPath $stderrFile -Raw -ErrorAction SilentlyContinue
+        throw "$(Split-Path -Leaf $Executable) failed: $diagnostics $($result -join [Environment]::NewLine)"
+    }
     return (($result | ForEach-Object { [string]$_ }) -join "`n").Replace([string][char]0, '')
 }
 function Docker {
