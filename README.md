@@ -2,7 +2,8 @@
 
 Windows POS for a smoothie bar: local selling, private recipe trials, menu and
 extras, opening counts and encrypted backups. The PC uses local Supabase
-(PostgreSQL/Auth/Storage); the iPad mirrors the same screen read-only over Wi-Fi.
+(PostgreSQL/Auth/Storage); the chef student operates that PC session from her iPad
+over the same local Wi-Fi. Interactive iPad access still needs device acceptance.
 Internet is needed for initial downloads and update checks, not local cash sales.
 
 **Status:** pre-launch. The owner identifies only Café as live. Historical signed
@@ -11,15 +12,19 @@ See [product progress and next milestones](docs/products/smoothies.md).
 
 ## Start here
 
-- [Install, daily operation, offline acceptance and iPad mirror](docs/smoothies-local.md).
+- [Install, daily operation, offline acceptance and iPad operation](docs/smoothies-local.md).
 - [Shared-source/profile decisions](docs/shared-pos-local.md).
 - [Backup and recovery contract](docs/business-backups.md).
 - [Development and independent review](AGENTS.md).
 
-The client completes the separate [intake form](https://jorgecantu276.github.io/formulario-smoothies/)
+The client completes this product's [menu intake form](https://jorgecantu276.github.io/formulario-smoothies/)
 and sends its JSON. Review menu/prices/extras before importing. Planned inventory
 is not physical stock; confirm opening counts explicitly. Recipe trials stay
 private until a product draft is deliberately activated.
+
+The family workspace has one `smoothies` product folder: `app` for this POS and
+`intake` for its form. Separate source/deployment histories do not create another
+product or client.
 
 ## Source and builds
 

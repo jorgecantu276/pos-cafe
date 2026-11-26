@@ -8,7 +8,11 @@ only Café is currently identified as live. Start with README.md and
 
 - Preserve local Windows Supabase/PostgreSQL/Auth/Storage and offline cash sales.
   Docker/WSL supports the local backend. Removing it is a separate accepted migration.
-- The iPad mirrors the exact PC screen read-only; it is not another cashier.
+- The chef student operates the PC-hosted POS from her iPad on the same LAN.
+  Use interactive access to the same PC session; the former read-only mirror
+  restriction is superseded. Keep one local backend and retained business state.
+- The menu intake form is a component of this single product. The family folder
+  groups app and intake; its separate Pages repository preserves URL/drafts/v1 JSON.
 - Preserve private recipe trials → inactive catalog draft → explicit activation,
   weekly special, product-specific extras and planned inventory/count distinction.
 - Use explicit product profiles, never backend URL heuristics. Café and Smoothies

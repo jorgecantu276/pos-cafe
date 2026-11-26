@@ -9,8 +9,13 @@ The owner currently identifies **only Café as live**. Smoothies is pre-launch.
 A chef student should run her own approachable smoothie bar, experiment privately,
 and move a recipe to the menu deliberately. It must feel like her business, not
 a Café copy. Selling continues without internet on a Windows PC; an iPad on the
-same Wi-Fi mirrors exactly that PC screen in read-only mode. The iPad is not a
-second cashier or a separately editable database.
+same Wi-Fi is her operating device, with interactive access to that PC's POS
+session. The PC owns the application, local backend and retained state.
+
+The owner's November 25 clarification supersedes the earlier read-only mirror
+guidance. One product includes both the POS and its menu intake form. The form
+has a separate Pages repository for its public link, not a separate client or
+business application. Both appear under `smoothies/app` and `smoothies/intake`.
 
 The owner considered direct PostgreSQL and then explicitly chose to keep the
 working local Supabase stack. Preserve PostgreSQL/Auth/Storage on the PC and
@@ -25,7 +30,7 @@ where source and API architecture are shared with Café.
 | Prepare inventory before opening | Planned inventory and opening-count workflow | Planned quantity is not real stock. Blank remains pending; explicit zero is confirmed only through a physical count. Recount after unit changes. |
 | Enjoy learning without accidentally changing sales | Private recipe book, saved trials/comparison, inactive catalog draft and explicit activation | Recipe notes stay private; exact recipe-to-product link and safe navigation preserve work. Do not create another trial to recover a transient success message. |
 | Make daily work clear and appealing | `lib/pos-profile.ts`, Smoothies register/admin, special-of-week and builder | Product-specific extras, responsive totals/color, visible folio/change and connected workflows; historical previews are not onsite usability acceptance. |
-| Work through internet loss | `scripts/smoothies/start-local.mjs`, provisioning and portable package | Historical local offline sale/restart/restore checks passed; destination Windows reboot and iPad mirror still need acceptance. |
+| Operate from her iPad, including internet loss | PC-local runtime plus interactive same-session LAN access | Historical PC offline sale/restart/restore checks passed. Real iPad control, touch input, reconnect and Windows reboot still need acceptance; read-only viewing does not satisfy this requirement. |
 | Preserve the whole business | `lib/smoothies-backup-assets.mjs`, restore-local/restore-contract tools | Encrypted database plus catalog photos and print journal; off-PC destination and separately retained key must be established. |
 | Receive compatible updates automatically | Signed pilot feed, `scripts/smoothies/auto-update.mjs`, `Launch-Smoothies.ps1` | Signature/hash/product/channel checks, no downgrade, unchanged database contract, closed-shift/payment/printing gate, failed-start fallback. Installed client enrollment is not evidenced. |
 
@@ -53,8 +58,10 @@ where source and API architecture are shared with Café.
    all-three family promotion contract.
 3. Enroll the actual PC once: local stack, branded shortcut, private settings,
    backup/key locations and update trust. Record actual installation identity.
-4. On destination equipment prove reboot, offline cash sale/reopen, same-screen
-   read-only iPad mirroring, and printers only if required. Confirm opening counts.
+4. On destination equipment prove reboot and interactive iPad operation of the PC
+   session: select products/extras, enter payment, save one sale, reconnect/reopen
+   without duplication and reconcile the saved record with internet disconnected
+   but LAN active. Accept printers if required and confirm opening counts.
 5. Demonstrate one compatible signed update and failed-start recovery with retained
    records, then enable the agreed automatic channel. Schema-changing packages
    remain deliberate maintenance, not automatic migration.

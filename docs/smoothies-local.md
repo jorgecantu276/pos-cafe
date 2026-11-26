@@ -1,6 +1,8 @@
 # POS Smoothies en Windows
 
-El POS, las ventas, el recetario y las fotos del catálogo quedan en la PC de caja. El iPad muestra esa misma pantalla por la red Wi‑Fi.
+> Procedimiento del paquete local, no prueba de una tienda desplegada. El propietario identifica solo Café como producto en vivo. Consultar [plan de Smoothies](products/smoothies.md) y verificar el paquete exacto antes de inscripción o actualización.
+
+El POS, las ventas, el recetario y las fotos del catálogo quedan en la PC de caja. La estudiante de chef opera esa misma sesión desde su iPad por la red Wi‑Fi del local. POS y formulario de menú son componentes del mismo producto Smoothies.
 
 ## Preparar la caja local
 
@@ -42,10 +44,14 @@ En **Catálogo → Especial de la semana**, elige un smoothie activo y guarda. L
 
 Abre **Recetario** desde caja y guarda la primera prueba. **Nueva prueba** copia los ingredientes y la preparación anterior para que puedas ajustar cantidades. **Preparar para venta** lleva el nombre y el precio a **Catálogo → Inactivos**. Desde allí puedes revisar la ficha, editarla y activarla. Las pruebas y notas quedan en el recetario.
 
-## Duplicar la pantalla en el iPad
+## Operar desde el iPad por la red local
 
-1. En la PC configura un servidor VNC que comparta la sesión de Windows y permita una contraseña de solo lectura, por ejemplo [TightVNC](https://www.tightvnc.com/winst.php). Usa esa contraseña para el iPad. Desactiva el portapapeles y la transferencia de archivos si el servidor ofrece esos controles.
-2. Reserva una IP privada para la PC en el router. Limita el acceso entrante al iPad en el perfil privado del firewall de Windows. Si el servidor VNC no cifra la sesión, usa un túnel SSH local y limita VNC al loopback. El router no necesita redirigir puertos.
-3. En el iPad, permite el acceso a la red local y crea una [conexión manual en Screens](https://support.edovia.com/en/screens-5/getting-started/connecting) con la IP de la PC y la contraseña de solo lectura. Si usas SSH, la IP de la PC va en los ajustes del túnel y `127.0.0.1` como destino VNC. Abre la caja en el monitor de Windows. El iPad verá esa misma pantalla.
+La indicación anterior de espejo de solo lectura queda sustituida: ella debe poder seleccionar productos, usar el recetario y cobrar desde el iPad. El paquete actual escucha en `127.0.0.1:3180` en la PC; escribir esa dirección en Safari del iPad no conecta con la PC. No basta con abrir ese puerto: las conexiones locales del navegador también pertenecen a la PC.
 
-Con los dos equipos en la red del local, desconecta la salida del router a internet sin apagar su Wi‑Fi. Vuelve a conectar el iPad a la pantalla, inicia sesión en la caja y prueba un cobro en efectivo. Comprueba el folio del pedido, el cambio, la persistencia al reabrir y que tocar el iPad no controle Windows. Pausa el espejo antes de abrir el recetario si hay alguien mirando el iPad, porque el espejo muestra toda la sesión. El pago con tarjeta se registra después de aprobarlo en la terminal.
+1. En la PC prepara acceso remoto **interactivo a la misma sesión de Windows**, con autenticación y transporte cifrado dentro de la red local. El acceso del iPad debe permitir controlar la sesión, no estar configurado como solo lectura. No instalar otra base de datos ni otra caja en el iPad.
+2. Reserva una IP privada para la PC. Durante la instalación, limita el acceso al iPad/red privada y comprueba los permisos necesarios. No publicar el escritorio ni la base de datos en internet ni redirigir puertos del router. La configuración del software de acceso, los certificados y el firewall se acepta en el equipo real; este documento no los configura automáticamente.
+3. En el iPad conecta a esa PC por la misma Wi‑Fi, abre el POS de Windows e inicia sesión con la cuenta de la operadora. Comprueba toques, desplazamiento, teclado y orientación. La PC debe permanecer encendida y sin suspensión durante la operación.
+
+Con los dos equipos en la red del local, desconecta la salida del router a internet sin apagar su Wi‑Fi. **Desde el iPad**, selecciona una bebida y sus extras, cobra en efectivo y comprueba el cambio y el folio guardado en la PC. Desconecta/reconecta el iPad y reabre la sesión: debe permanecer una sola venta y conservarse el inventario y el recetario. Prueba también el arranque después de reiniciar Windows. El pago con tarjeta se registra después de aprobarlo en la terminal.
+
+Esta aceptación en la PC y el iPad del negocio sigue pendiente. Los ensayos históricos de venta local no demuestran que el acceso interactivo esté instalado ni aceptado. Quien vea el monitor de la PC verá la misma sesión, incluido el recetario privado.
