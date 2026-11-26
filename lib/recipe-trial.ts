@@ -32,6 +32,11 @@ export async function writeRecipeTrial(client: Client, storage: Storage, actor: 
     if (!lock) throw new Error('Otra ventana está guardando una prueba.');
     const { data: { user }, error: authError } = await withDeadline(() => client.auth.getUser(), { timeoutMs });
     if (authError || user?.id !== actor) throw new Error('La sesión cambió. Actualiza la página.');
+    // This RPC predates actor arguments. Pin the checked account for the HTTP
+    // request even if another tab signs in before the SDK resolves its token.
+    // Tokens stay in memory; only the original payload is persisted below.
+    const { data: { session }, error: sessionError } = await withDeadline(() => client.auth.getSession(), { timeoutMs });
+    if (sessionError || session?.user.id !== actor || !session.access_token) throw new Error('La sesión cambió. Actualiza la página.');
     const existing = readRecipeTrial(storage, actor);
     if (input && existing) throw new Error('Revisa la prueba pendiente antes de guardar otra.');
     const pending = existing ?? (input ? { actor, recipeId: input.recipeId ?? crypto.randomUUID(), trialId: crypto.randomUUID(), values: { ...input.values } } : null);
@@ -42,7 +47,7 @@ export async function writeRecipeTrial(client: Client, storage: Storage, actor: 
     const { data, error } = await withDeadline(() => client.rpc('pos_save_smoothies_recipe_trial', {
       p_recipe: pending.recipeId, p_trial: pending.trialId, p_name: v.name, p_ingredients: v.ingredients,
       p_method: v.method, p_changes: v.changes,
-    }), { timeoutMs });
+    }).setHeader('Authorization', `Bearer ${session.access_token}`), { timeoutMs });
     if (error) {
       if (isDefinitiveWriteRejection(error.code) && storage.getItem(key) === raw) storage.removeItem(key);
       throw new Error(error.message);

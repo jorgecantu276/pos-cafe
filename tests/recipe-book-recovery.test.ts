@@ -25,10 +25,12 @@ test('recipe UI exposes lost-response recovery after reload and isolates another
   dom.window.localStorage.setItem(recovery.recipeTrialKey('a'), JSON.stringify(pending));
   let actor = 'a', changed: (_event: string, session: { user: { id: string } } | null) => void = () => {};
   let finish: ((value: unknown) => void) | undefined;
-  const client = { auth: { getUser: async () => ({ data: { user: { id: actor } }, error: null }), onAuthStateChange: (callback: typeof changed) => { changed = callback; return { data: { subscription: { unsubscribe() {} } } }; } },
+  const client = { auth: { getUser: async () => ({ data: { user: { id: actor } }, error: null }),
+    getSession: async () => ({ data: { session: { user: { id: actor }, access_token: `token-${actor}` } }, error: null }),
+    onAuthStateChange: (callback: typeof changed) => { changed = callback; return { data: { subscription: { unsubscribe() {} } } }; } },
     rpc: (name: string, args: Record<string, unknown>) => {
       const result = name === 'pos_save_smoothies_recipe_trial' ? (calls.push(args), new Promise(resolve => { finish = resolve; })) : Promise.resolve({ data: [], error: null });
-      return Object.assign(result, { abortSignal: () => result });
+      return Object.assign(result, { abortSignal: () => result, setHeader: (name: string, value: string) => { assert.equal(name, 'Authorization'); assert.equal(value, `Bearer token-${actor}`); return result; } });
     } };
   const require = createRequire(import.meta.url), exports: { default?: ComponentType } = {};
   const imports: Record<string, unknown> = { 'next/link': { default: ({ children }: { children: unknown }) => children, __esModule: true }, '@/lib/supabase': { supabase: client }, '@/lib/use-resource': resource,
