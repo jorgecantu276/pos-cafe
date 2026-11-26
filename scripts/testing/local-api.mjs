@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { Client } from 'pg';
 import { createClient } from '@supabase/supabase-js';
-import { root, work, run, dockerCheck } from '../staging/runtime.mjs';
+import { root, work, run, dockerCheck, ensureLoopbackNetwork } from '../staging/runtime.mjs';
 import { baselineStatements } from '../staging/safety.mjs';
 import { sourceFiles } from '../staging/bootstrap.mjs';
 import { randomUUID } from 'node:crypto';
@@ -47,10 +47,7 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
     env = { ...env, POS_CAFE_REAL_DOCKER: path.join(process.env.LOCALAPPDATA, 'Programs/DockerDesktop/resources/bin/docker.exe'), PATH: `${bin}${path.delimiter}${process.env.PATH}` };
   }
   const cliRun = args => run(process.execPath, [cli, ...args, '--workdir', directory], { env });
-  const names = (await run('docker', ['network', 'ls', '--format', '{{.Name}}'])).trim().split(/\r?\n/);
-  if (!names.includes(network)) await run('docker', ['network', 'create', '--subnet', `10.243.${parseInt(randomUUID().slice(0,2),16)}.0/24`, '--label', `pos-cafe.admin-test=${project}`, '--opt', 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1', network]);
-  const [net] = JSON.parse(await run('docker', ['network', 'inspect', network]));
-  assert.equal(net.Labels?.['pos-cafe.admin-test'], project); assert.equal(net.Options?.['com.docker.network.bridge.host_binding_ipv4'], '127.0.0.1');
+  await ensureLoopbackNetwork({ name: network, label: 'pos-cafe.admin-test', owner: project });
   const cleanupNetwork=async()=>{
     const [owned]=JSON.parse(await run('docker',['network','inspect',network]));
     assert.equal(owned.Labels?.['pos-cafe.admin-test'],project);
