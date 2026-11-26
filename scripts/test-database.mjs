@@ -237,6 +237,42 @@ try {
   assertions+=await deliveryReadinessDatabaseCases(db,connection,ids,await readFile(resolve(root,'supabase/migrations/202611020020_delivery_readiness.sql'),'utf8'));
   assertions+=await deliveryProjectionCases(db,connection,ids,await readFile(resolve(root,'supabase/migrations/202611020021_staff_revision_read.sql'),'utf8'));
   await db.query(await readFile(resolve(root,'supabase/migrations/202611050023_alternative_milk_choice.sql'),'utf8'));
+  await db.query(await readFile(resolve(root,'supabase/migrations/202611250025_windows_update_idle.sql'),'utf8'));
+  const idleSql = 'select public.pos_windows_update_idle() idle';
+  for (const client of [anon, cash, admin]) {
+    await assert.rejects(client.query(idleSql), { code: '42501' });
+    assertions++;
+  }
+  await db.query('begin');
+  try {
+    await db.query("update cafe_private.clip_payments set state='failed' where state not in ('failed','completed')");
+    await db.query('delete from cafe_private.drawer_handoffs where accepted_at is null');
+    await db.query("update public.cash_registers set status='closed' where status='open'");
+    const verifyIdle = async (expected, label) => {
+      await db.query('set local role service_role');
+      assert.equal((await db.query(idleSql)).rows[0].idle, expected, label);
+      await db.query('reset role');
+      assertions++;
+    };
+    const register = randomUUID();
+    await verifyIdle(true, 'The closed drawer is ready');
+    await db.query("insert into public.cash_registers(id, opened_by, initial_balance, status) values ($1, $2, 0, 'open')", [register, ids.cashier]);
+    await verifyIdle(false, 'An open shift defers the update');
+    await db.query("update public.cash_registers set status='closed' where id=$1", [register]);
+    const handoff = randomUUID();
+    await db.query("insert into cafe_private.drawer_handoffs(id,from_register,from_cashier,from_name,to_cashier,to_name,delivered,rate) values($1,$2,$3,'Caja A',$4,'Caja B',0,16)", [handoff, register, ids.cashier, ids.barista]);
+    await verifyIdle(false, 'A pending handoff defers the update');
+    await db.query('delete from cafe_private.drawer_handoffs where id=$1', [handoff]);
+    const payment = randomUUID();
+    await db.query("insert into cafe_private.clip_payments(request_id,actor_id,register_id,payload,quote) values($1,$2,$3,'{}','{}')", [payment, ids.cashier, register]);
+    for (const state of ['prepared', 'dispatching', 'pending', 'review', 'failed', 'completed']) {
+      await db.query('update cafe_private.clip_payments set state=$2 where request_id=$1', [payment, state]);
+      await verifyIdle(['failed', 'completed'].includes(state), 'CLIP state ' + state);
+    }
+  } finally {
+    await db.query('rollback');
+  }
+  console.log('PASS Windows update gate: service-only read, closed and open drawer, pending handoff and CLIP reconciliation');
   assertions+=await milkChoiceCases(db,connection);
   assertions+=await wholeUsdDatabaseCases(db,connection);
   if(process.env.POS_MENU_BASELINE&&process.env.POS_MENU_UPDATE_SQL)assertions+=await menuUpdateCases(db,connection,process.env.POS_MENU_BASELINE,process.env.POS_MENU_UPDATE_SQL);
