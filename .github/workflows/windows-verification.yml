@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      probe_rehearsal_host:
+        description: Inspect a fresh hosted Windows VM for isolated Linux-engine rehearsal capability
+        type: boolean
+        default: false
       run_installed_acceptance:
         description: Run final-ZIP LAN acceptance on an enrolled disposable Windows/Linux-Docker runner
         type: boolean
@@ -21,6 +25,7 @@ concurrency:
 
 jobs:
   integration:
+    if: ${{ !inputs.probe_rehearsal_host }}
     name: Auth and backend integration (${{ matrix.script }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -45,6 +50,7 @@ jobs:
       - name: Exercise one isolated Auth/backend scenario on its own runner
         run: npm run ${{ matrix.script }}
   verify:
+    if: ${{ !inputs.probe_rehearsal_host }}
     runs-on: windows-latest
     timeout-minutes: 20
     env:
@@ -86,6 +92,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows/smoke-release.mjs $releaseFolder
   smoothies-package:
+    if: ${{ !inputs.probe_rehearsal_host }}
     name: Portable Smoothies package (Windows)
     runs-on: windows-latest
     timeout-minutes: 25
@@ -169,6 +176,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   smoothies-backend:
+    if: ${{ !inputs.probe_rehearsal_host }}
     name: Smoothies import and cash recovery
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -187,6 +195,24 @@ jobs:
         run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55540-55569
       - run: node --import tsx scripts/smoothies/import-drill.mjs
       - run: node --import tsx scripts/smoothies/local-sale-drill.mjs
+  rehearsal-host-probe:
+    if: github.event_name == 'workflow_dispatch' && inputs.probe_rehearsal_host
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Inspect virtualization and boot a disposable WSL distribution
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_ComputerSystem | Select-Object HypervisorPresent,TotalPhysicalMemory
+          Get-CimInstance Win32_Processor | Select-Object VirtualizationFirmwareEnabled,SecondLevelAddressTranslationExtensions
+          foreach ($feature in 'VirtualMachinePlatform','Microsoft-Windows-Subsystem-Linux') { Get-WindowsOptionalFeature -Online -FeatureName $feature -ErrorAction Continue }
+          wsl.exe --status
+          wsl.exe --list --verbose
+          docker.exe info --format '{{.OSType}}'
+          wsl.exe --install --distribution Ubuntu-24.04 --no-launch --web-download
+          if ($LASTEXITCODE -ne 0) { throw 'Hosted WSL distribution provisioning failed.' }
+          wsl.exe --distribution Ubuntu-24.04 --user root -- uname -a
+          if ($LASTEXITCODE -ne 0) { throw 'Hosted WSL kernel boot failed; this VM cannot provide the required engine.' }
   smoothies-installed-lan:
     name: Final ZIP installation and LAN acceptance (disposable runner)
     if: github.event_name == 'workflow_dispatch' && inputs.run_installed_acceptance
