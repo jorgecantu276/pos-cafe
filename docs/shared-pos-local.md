@@ -13,6 +13,23 @@ Cada instalación configura su propia base de datos y sus propias cuentas. Café
 
 Las pruebas con Supabase levantan una instancia desechable con datos sintéticos. Ejecuta los ensayos de Smoothies uno a la vez, ya que comparten los puertos de prueba. Para los requisitos de la instalación real, consulta [la guía de Smoothies](smoothies-local.md).
 
+## Mapa de integración
+
+| Contrato | Código responsable | Comprobación |
+| --- | --- | --- |
+| Venta y pedido incierto | `app/register/Register.tsx`, `lib/checkout.ts`, `lib/cart-draft.ts` | `tests/pos-handlers.test.ts`, `tests/checkout-lock.test.ts`, `npm run test:db` |
+| Caja, gastos y entrega | `lib/drawer.ts`, `lib/shift-state.ts`, migraciones financieras | `tests/manager-cash-count.test.ts`, `tests/drawer.test.ts`, `npm run test:db` |
+| Documentos y recuperación de copias | `lib/sale-printing.ts`, `lib/print-dispatch-server.ts`, diario SQLite | `tests/print-recovery.test.ts`, `npm run test:printing` |
+| Respaldo y restauración | `lib/business-backup-server.ts`, `scripts/customer/recovery.mjs` | `tests/recovery.test.ts`, `npm run test:restore-business` |
+| Actualización Café | `scripts/windows/auto-update.mjs`, `docs/windows-auto-update.md` | `node --test scripts/windows/auto-update.test.mjs`; aceptación del predecesor y equipo real aparte |
+| Recetario privado Smoothies | `app/admin/recetario/RecipeBook.tsx`, `lib/recipe-trial.ts`, SQL dedicado de Smoothies | `tests/recipe-trial.test.ts`, `tests/recipe-book-recovery.test.ts`; no se habilita en Café |
+
+Los componentes `PrototypeRegister` y `WorkspaceRegister` son apariencias de los mismos handlers de `Register`, no flujos de cobro independientes. Mantener los contratos compartidos en esa capa evita duplicar arreglos por apariencia. Los actualizadores de Café y Smoothies conservan adaptadores y requisitos propios; no sustituir uno por el otro durante esta revisión.
+
+Un guardado incierto conserva cuenta, identidad y payload hasta confirmar el resultado. La recuperación es una acción explícita: guardar un dato nuevo no reproduce silenciosamente otro pendiente. El recetario persiste una prueba por cuenta antes del RPC y bloquea nuevas pruebas hasta reconciliarla. El descarte de una venta pendiente tiene un límite de espera y solo retira su marcador tras confirmar el abandono.
+
+La revisión local del 25 de noviembre de 2026 no integra las ramas distintas ni acredita publicación, instalación o papel físico. Los resultados frescos y los siguientes gates pertenecen al [plan de Café](products/cafe.md); los informes fechados anteriores siguen siendo históricos.
+
 ## Prueba local de Papelería
 
 El ensayo de Papelería ejecuta el carrito y el generador de tickets compartidos con una base SQLite sintética. Cubre lectura de códigos con ceros iniciales, venta en MXN, reintento, cancelación y restauración. La prueba evita archivos del negocio y no es un instalador de Papelería.

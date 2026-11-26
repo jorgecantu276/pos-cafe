@@ -41,6 +41,8 @@ Usar las versiones y comandos declarados por el proyecto. Los ensayos de base de
 
 Cada cambio tiene un implementador y una revisión independiente sobre la revisión final. Separar más trabajos solo cuando tengan responsabilidades propias. Las pruebas se eligen por el comportamiento afectado; los checks requeridos de GitHub siguen siendo obligatorios. Ver [AGENTS.md](AGENTS.md) y [flujo de calidad](docs/quality-workflow.md).
 
+El [mapa de código compartido](docs/shared-pos-local.md#mapa-de-integración) identifica los contratos de venta, caja, impresión, recuperación y actualización. Las apariencias de caja usan los mismos handlers; conservar una apariencia anterior no permite recuperar lógica financiera anterior. Café y Smoothies todavía tienen ramas de entrega distintas: una corrección común se integra y prueba en cada variante antes de promover la familia.
+
 ## Instalar, actualizar y recuperar
 
 El paquete de Windows incluye runtime y aplicación compilada. La preparación inicial verifica cliente, backend, versión previa, configuración privada y acceso de Caja. Los datos, diarios, claves y respaldos permanecen fuera del código reemplazable.

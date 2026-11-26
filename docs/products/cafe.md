@@ -47,6 +47,16 @@ The core cashier journey is: open or receive the drawer → identify products/op
 
 ## Next milestones, in order
 
+### Integration review — November 25, 2026
+
+The reviewed source starts at local `4a78f59` on top of delivery source `6eab492`. GitHub CLI confirmed that Café delivery PR #31 and the cumulative #29/#30 stack remain drafts; remote `main` is a separate revision. No stack was merged and no installed/provider configuration was changed.
+
+Two confirmed root causes were repaired in source: abandoning an uncertain checkout now bounds a stalled RPC wait and retains the original pending marker; the shared Smoothies recipe editor now persists the exact trial request by account before sending, exposes recovery after reload, and blocks new saves until reconciliation. Recipe capability remains disabled in Café. Its separate Smoothies branch needs the same behavioral fix while preserving its newer editor features.
+
+Fresh synthetic checks cover the actual checkout cancellation handler, committed recipe save with lost response/reload, exact replay, account separation, sign-out and late replies. The full suite passed 398 tests with zero skips; lint, TypeScript, an isolated Café production build, 3,171 PostgreSQL assertions and two signed Windows updater checks passed. These do not prove physical printing, live provider behavior or actual machine enrollment. Current required CI and retained customer/package acceptance remain delivery gates. The integration source map is in [shared-pos-local](../shared-pos-local.md#mapa-de-integración).
+
+The review retained both cashier appearances because they share current handlers. It found no reason to introduce another financial workflow or combine the distinct updater adapters. Direct iPad LAN access remains a Smoothies milestone with browser/backend/printing/import/backup/photo integration acceptance; it is not a completed Café feature.
+
 1. Obtain one read-only installation/report receipt from the actual Café machine: installed release, config/backend fingerprints, original journal, startup entry, update/report tasks and safe operating state. Keep secrets private. This selects the actual predecessor without trusting folder names or latest GitHub release.
 2. Finish the reviewed candidate containing the recovered updater and current Café features. Run current business/printing/recovery checks and required CI on the final revision. Verify the forward idle-RPC migration against the correct backend deliberately; never migrate automatically during update.
 3. Complete one supervised bootstrap/enrollment: retain original data/config/provider settings, install the fixed launcher and public update key, verify the first real report, and prove signed compatible update plus safe startup failure recovery. The automatic updater uses stricter closed-shift, pending handoff/payment and unresolved-print gates than a supervised manual maintenance update.

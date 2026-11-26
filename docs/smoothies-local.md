@@ -2,7 +2,7 @@
 
 > Procedimiento del paquete local, no prueba de una tienda desplegada. El propietario identifica solo Café como producto en vivo. Consultar [plan de Smoothies](products/smoothies.md) y verificar el paquete exacto antes de inscripción o actualización.
 
-El POS, las ventas, el recetario y las fotos del catálogo quedan en la PC de caja. La estudiante de chef opera esa misma sesión desde su iPad por la red Wi‑Fi del local. POS y formulario de menú son componentes del mismo producto Smoothies.
+El POS, las ventas, el recetario y las fotos del catálogo quedan en la PC de caja. El objetivo es que la estudiante de chef lo opere desde Safari en su iPad por la red Wi‑Fi del local. El paquete actual solo funciona desde la PC; el acceso web LAN aún requiere implementación y aceptación. POS y formulario de menú son componentes del mismo producto Smoothies.
 
 ## Preparar la caja local
 
@@ -44,14 +44,12 @@ En **Catálogo → Especial de la semana**, elige un smoothie activo y guarda. L
 
 Abre **Recetario** desde caja y guarda la primera prueba. **Nueva prueba** copia los ingredientes y la preparación anterior para que puedas ajustar cantidades. **Preparar para venta** lleva el nombre y el precio a **Catálogo → Inactivos**. Desde allí puedes revisar la ficha, editarla y activarla. Las pruebas y notas quedan en el recetario.
 
-## Operar desde el iPad por la red local
+## Acceso desde el iPad: pendiente de integración
 
-La indicación anterior de espejo de solo lectura queda sustituida: ella debe poder seleccionar productos, usar el recetario y cobrar desde el iPad. El paquete actual escucha en `127.0.0.1:3180` en la PC; escribir esa dirección en Safari del iPad no conecta con la PC. No basta con abrir ese puerto: las conexiones locales del navegador también pertenecen a la PC.
+Ella debe poder seleccionar productos, usar el recetario y cobrar desde Safari en el iPad. El paquete actual escucha en `127.0.0.1:3180` en la PC y el navegador se conecta a Supabase por loopback; esa dirección en el iPad apunta al propio iPad. Compartir el escritorio de Windows no completa el flujo web solicitado.
 
-1. En la PC prepara acceso remoto **interactivo a la misma sesión de Windows**, con autenticación y transporte cifrado dentro de la red local. El acceso del iPad debe permitir controlar la sesión, no estar configurado como solo lectura. No instalar otra base de datos ni otra caja en el iPad.
-2. Reserva una IP privada para la PC. Durante la instalación, limita el acceso al iPad/red privada y comprueba los permisos necesarios. No publicar el escritorio ni la base de datos en internet ni redirigir puertos del router. La configuración del software de acceso, los certificados y el firewall se acepta en el equipo real; este documento no los configura automáticamente.
-3. En el iPad conecta a esa PC por la misma Wi‑Fi, abre el POS de Windows e inicia sesión con la cuenta de la operadora. Comprueba toques, desplazamiento, teclado y orientación. La PC debe permanecer encendida y sin suspensión durante la operación.
+La siguiente entrega debe integrar el frente HTTPS local y el proxy del backend en el mismo POS, incluyendo sesiones, fotos, importación, respaldos y el diario de impresión de la PC. Consulta el [plan de implementación y aceptación](products/smoothies.md#complete-the-existing-browser-workflow-on-the-lan). La instalación acordará IP privada, certificado y acceso de la red local; la base seguirá en la PC. No se configura un segundo POS ni una segunda base en el iPad.
 
 Con los dos equipos en la red del local, desconecta la salida del router a internet sin apagar su Wi‑Fi. **Desde el iPad**, selecciona una bebida y sus extras, cobra en efectivo y comprueba el cambio y el folio guardado en la PC. Desconecta/reconecta el iPad y reabre la sesión: debe permanecer una sola venta y conservarse el inventario y el recetario. Prueba también el arranque después de reiniciar Windows. El pago con tarjeta se registra después de aprobarlo en la terminal.
 
-Esta aceptación en la PC y el iPad del negocio sigue pendiente. Los ensayos históricos de venta local no demuestran que el acceso interactivo esté instalado ni aceptado. Quien vea el monitor de la PC verá la misma sesión, incluido el recetario privado.
+Esta prueba se ejecuta después de integrar el acceso LAN. La implementación y la aceptación en la PC y el iPad del negocio siguen pendientes; los ensayos históricos de venta local no las sustituyen.
