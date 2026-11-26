@@ -1,5 +1,7 @@
 # POS Smoothies en Windows
 
+> Procedimiento del paquete local, no prueba de una tienda desplegada. El propietario identifica solo Café como producto en vivo. Consultar [plan de Smoothies](products/smoothies.md) y verificar el paquete exacto antes de inscripción o actualización.
+
 El POS, las ventas, el recetario y las fotos del catálogo quedan en la PC de caja. El iPad muestra esa misma pantalla por la red Wi‑Fi.
 
 ## Preparar la caja local

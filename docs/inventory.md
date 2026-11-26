@@ -2,7 +2,7 @@
 
 Integrado en **Catálogo → Inventario**, conservando las cuatro áreas principales de administración. Requiere `202611020017_inventory.sql`, después de las migraciones 001–016 retenidas. La migración 006 de la rama anterior no se publica: ese número ya corresponde a lealtad.
 
-**Estado inicial: apagado.** La integración y las pruebas se realizaron localmente. La migración 017 no está desplegada en el backend alojado del cliente. Instalar esta app requiere aplicar primero su contrato de base de datos; publicar en GitHub no lo despliega.
+**Estado inicial: apagado.** La activación de cada instalación requiere decisión explícita y conteos físicos. Comprobar el contrato real del backend; este documento no es un registro de migraciones aplicadas. Publicar código en GitHub no cambia el backend del cliente.
 
 ## Activación y operación
 
@@ -20,7 +20,7 @@ Los permisos de escritura son de administrador. Precios, extras, caja única, pu
 
 Una venta fallida revierte existencias y movimientos. Recuperar la misma venta o reimprimir no descuenta otra vez. Los comprobantes históricos no se modifican.
 
-Con inventario activo, preparar CLIP reserva las unidades antes del único POST al proveedor. Un resultado incierto conserva la reserva. Solo la liquidación verificada descuenta físicamente o un fallo verificado la libera; un aviso aislado no basta. Mientras un producto tenga reservas, sus ajustes se bloquean. No se puede activar o pausar el inventario con pagos CLIP pendientes. CLIP permanece apagado en esta versión hasta su habilitación y token privado.
+Con inventario activo, preparar CLIP reserva las unidades antes del único POST al proveedor. Un resultado incierto conserva la reserva. Solo la liquidación verificada descuenta físicamente o un fallo verificado la libera; un aviso aislado no basta. Mientras un producto tenga reservas, sus ajustes se bloquean. No se puede activar o pausar el inventario con pagos CLIP pendientes. El estado de CLIP se verifica por instalación y no se modifica al activar inventario.
 
 Cancelar una venta no repone automáticamente ni reembolsa dinero. En Ventas, abrir el ticket cancelado y seleccionar **Devolver a inventario** solo para piezas aptas para venderse. Las devoluciones parciales acumuladas no pueden superar lo realmente descontado. No se inventan devoluciones para ventas anteriores o sin conteo.
 

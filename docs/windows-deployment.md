@@ -1,128 +1,45 @@
 # Windows client deployment
 
-Keep the source repository and CI under the developer's GitHub account until
-final client acceptance. The owner authorized merging PR #1 after employee-flow checks pass. Repository transfer is
-the final handoff action, not a deployment prerequisite. The client can own its
-Free Supabase organization from the start; GitHub and Supabase ownership are
-independent. Do not place account passwords, management tokens, fiscal profiles
-or service-role keys in Git or GitHub release files.
+Build on the development PC; stores run an accepted prepared package. Source, release publication, installation and site acceptance are separate states. Current product status is in [Café](products/cafe.md); historical delivery evidence remains in [delivery-readiness](delivery-readiness.md).
 
-## Build here; run the prepared version on the café PC
+## Prepare the exact package
 
-On the development Windows x64 PC with Node 24.22.2 and `npm ci` completed,
-prepare a private target JSON outside Git with `supabaseUrl` and
-`supabaseAnonKey` (only the public anon/publishable key). Then run:
+Use the Node/runtime requirements declared by the project and packaging scripts on Windows x64. Run `npm ci` and required checks. Keep the target JSON outside Git; it contains `supabaseUrl` and the public `supabaseAnonKey`, never the service-role key.
 
-```
+```powershell
 npm run release:windows -- C:\private\target.json C:\releases\pos-cafe-VERSION
 ```
 
-This builds a separate source stage, produces Next's standalone server, bundles
-the pinned portable Node executable and license, copies static photos/assets,
-Windows print helpers and versioned SQL migrations, and writes SHA-256 hashes.
-No npm install/build is needed on the café PC. The target public values are
-compiled into the browser bundle: changing the local URL/key later requires a
-new build. The launcher refuses a mismatch. Loopback builds are marked fixture
-only and refuse physical printing. A source-dirty build is explicitly recorded;
-publish only a reviewed commit whose Windows checks pass.
+The builder stages source separately, compiles Next standalone, bundles Node/license, static assets, Windows helpers, SQL contract and recovery tools, then writes `release.json` and `SHA256.json`. Public backend values are compiled into browser files; changing runtime URL/key cannot retarget the build. Loopback `fixtureOnly` builds are test artifacts and cannot qualify a physical-print deployment. Publish only accepted clean source and exact verified bytes, through the family gate.
 
-Package the prepared directory as a ZIP in a GitHub release only after its
-target backend is configured and verified. Publishing/installing the final
-client release requires the matching client database and configuration; a test
-build using loopback is not that release.
+## First installation or supervised upgrade
 
-## Local machine setup
+1. Read the actual installed release, backend/configuration identity and supported predecessor. A latest GitHub release or old chat is not an installation receipt.
+2. Prepare a new local version folder. Stage and verify it before replacing active code; refuse unknown processes or locked files before copying. Preserve a compatible previous package.
+3. Keep configuration, issuer profile, original print journal/WAL/sidecars, backup archives/key and provider secrets outside all version folders. Example roots such as `C:\private` are placeholders, not discovered client paths. Set `RequireExistingPrintJournal: true` for an upgrade; a typo must not silently create an empty journal.
+4. Preserve existing accepted printer/provider settings. New installations start with simulated/disabled external capabilities until their device/site acceptance; old examples do not authorize disabling a working store.
+5. Verify staff login, one branded shortcut, the intended Caja window, startup/reopen, representative saved operations, backups and recovery. Changed paper/provider routes need their own actual acceptance.
 
-Use a separate local folder such as `D:\POS-Cafe-Test\releases\VERSION`.
-Leave the old POS and its records intact. Configure the sibling
-`D:\POS-Cafe-Test\releases\pos-cafe-config.json` from the generated example,
-outside the version folder. Store the print journal in a permanent local folder
-such as `D:\POS-Cafe-Test\data`, and the private issuer profile outside releases.
-The example starts with simulated printing; set `PrintMode` to `windows` only
-for a deliberate physical acceptance run. Confirm sticker stock separately.
-The service-role key for staff management, backups and optional CLIP belongs only
-in this local private configuration. It is not the public build key. Keep
-`ClipEnabled: false`; the real token goes in the external file referenced by
-`ClipTokenFile`, never in the release or Git. See [CLIP setup](clip-payments.md)
-and [integration readiness](integration-readiness.md).
+From the accepted package, the responsible installer can create the shortcut once:
 
-After the responsible person has prepared this machine's private configuration,
-the cashier double-clicks **Open-POS.cmd** inside the prepared release folder.
-The default configuration is the sibling `pos-cafe-config.json`, outside the
-version folder. No terminal commands, dependency installation or administrator
-account are needed each morning. Keep the **Caja - POS Cafe** window open; it
-can be minimized. Close that window, or press Ctrl+C there, to stop its server.
-
-For a configuration in another local folder, the responsible person can make
-an optional desktop shortcut once, from the prepared release folder:
-
-```
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-POS-shortcut.ps1 -ConfigPath D:\POS-Cafe-Test\private\pos-cafe-config.json
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-POS-shortcut.ps1 -ConfigPath C:\private\pos-cafe-config.json
 ```
 
-This explicit installer creates only **Caja POS Cafe** on the current user's
-desktop. It refuses to replace an existing shortcut. Recreate the shortcut
-deliberately when changing release folders; keep the same private configuration
-and current external print journal. It creates no scheduled task, service or
-automatic Windows startup entry.
+`Open-POS.cmd` directly starts the packaged server for supervised maintenance. The managed shortcut uses `Open-Caja.ps1` and the same external configuration. No npm/build is required on the store PC. Keep the correct stable launcher when enrolling automatic updates; do not choose whichever old extracted folder happens to exist.
 
-The launcher uses bundled Node and binds only to `127.0.0.1`. Opening it again
-reuses the same running release and unchanged configuration, after checking a
-per-configuration Windows lock, live process identities, the actual local
-listener and the server's launch identity. An occupied port belonging to an
-unrelated application, another release or an unverified old POS is refused;
-the other program is left running. Choose another local port in the private
-configuration if the old POS needs 3000.
+## Runtime and automatic updates
 
-If the server exits unexpectedly, the same launcher makes at most three
-restarts after 1, 2 and 4 seconds, with the same external print journal. It
-performs no sale submission or print replay. After the limit it leaves a clear
-message; the error log is `pos-cafe-config.json.server-error.log` beside the
-private configuration. The adjacent `.instance.json` is temporary ownership
-state, not a sales record or print journal. Do not copy it between PCs.
+The launcher binds to loopback, authenticates release/configuration/process/listener identity, and reuses only the matching instance. It leaves foreign listeners alone. Unexpected server exit allows bounded 1/2/4-second restarts using the same journal; after the limit, inspect the adjacent `.server-error.log`. `.instance.json` is transient ownership metadata, never customer data to copy between PCs.
 
-Run as the signed-in Windows cashier. The helpers install no drivers or services
-and change no global Node installation. Network browser access is not enabled;
-wireless HDMI can mirror this local screen. Actual Windows scaling, touch,
-startup/restart behavior on the café PC and printer output still require testing.
+Café automatic updating defaults OFF. One-time enrollment verifies the fixed launcher, exact device/configuration, public signing key, supported predecessor, idle RPC and first genuine report. Accepted signed packages stage separately and activate only under their safe gate. Missing/unresolved payment, handoff or printing evidence defers activation. No application updater applies SQL automatically. See [windows-auto-update](windows-auto-update.md).
 
-## Automatic business-data copies
+The actual cashier/desktop session is required for the current printing integration. This launcher does not install drivers, change global Node, enable a LAN listener or provide offline cloud-backed sales. Physical scaling, printers and reboot behavior require actual device evidence.
 
-With the matching server service-role key configured, the launcher enables a
-daily encrypted copy and a background checkpoint after a confirmed close or
-handoff. The defaults are `pos-cafe-backups` and the separate
-`pos-cafe-backup-recovery.key`, beside the private configuration. The owner
-can check the last result under **Administración > Respaldos**. Keep these paths
-outside all version folders, preserve the key, and copy the encrypted archive
-and key separately off this PC. Backup failures do not block cashier operations.
+## Backups, database compatibility and rollback
 
-The release includes the verifier under `backup-tools`. It checks and optionally
-decrypts an archive; it does not restore a hosted project. See
-[business-backups.md](business-backups.md) for the recovery limits and the
-separate local print journal. Rehearse a full recovery before live use.
+Configured service credentials enable encrypted daily business copies and close/handoff checkpoints; inspect confirmed success in Administración → Respaldos. Keep encrypted copies off the machine and the original recovery key separately. [business-backups](business-backups.md) defines what the archive omits, including the separate local print journal and provider setup.
 
-## Matching database and rollback
+Compare the exact package migration contract to the chosen client backend. [Supabase](../supabase/README.md) describes source ownership; historical applied counts are not current inventory. Optional finished-product stock requires explicit activation and new physical counts. Preserve current Clip state and unresolved payment identities. Never migrate a legacy development target to fix a configuration mismatch.
 
-Provision the chosen client test project, apply the retained migrations 001, 002 and 004–021 in order and
-create confirmed staff profiles. Review the legacy compatibility requirements
-before applying to any existing database. Test against a separate synthetic
-catalog and explicit test quantities, not live business records. Optional finished-product inventory requires migration 017 and starts OFF. Migration 018 requires a delivery control for new in-person sales. Migration 019 adds persistent phone orders prepared unpaid and charged at pickup without a pager; old sales and accepted-request recovery remain unchanged. Migrations 017–021 are deployed on the verified client after encrypted backups and preserved fingerprints of all 31 existing tables. Migration 020 adds recovery fixes and reversible activation; retain all five in the installed contract. Keep CLIP OFF until provisioned with its real token. Count/import fresh stock only after explicit activation. Legacy ingredient stock/recipes remain inert. See [phone orders](phone-orders.md), [inventory](inventory.md) and [quality review](quality-review.md). The app still
-requires internet for cloud sales; it has no offline sales queue.
-
-Keep every deployed release folder and the one current external print journal.
-For an app rollback use the previously verified compatible release with the
-same target and current journal. Never rewind/delete/replace that journal or
-automatically reverse database migrations after trading. Recover uncertain
-sales/print copies before changing versions. A same-disk D: folder is not an
-off-machine backup; verify a separate backup/restore procedure before live use.
-
-The delivery private configuration can set `RequireExistingPrintJournal: true`.
-The launcher then refuses to start if the configured `windows-jobs.sqlite` is
-missing; a typo must not silently create a fresh journal during this upgrade.
-Keep this requirement enabled for the café's existing journal, and retain the
-old POS until the [onsite acceptance](delivery-readiness.md) is complete.
-
-At final repository transfer review collaborator access, secrets and deploy
-keys that remain associated with the repository. Paid GitHub features do not
-transfer to a Free account; private-repository protected branches may be lost.
-The running local POS does not use GitHub Actions minutes.
+Rollback means selecting a verified compatible application while keeping current business/journal data. It is not reversing SQL or restoring an older database after new sales. Preserve failed artifacts and current evidence; use reviewed forward repair when necessary. Repository/account transfer is a separate owner decision, not an installation prerequisite.

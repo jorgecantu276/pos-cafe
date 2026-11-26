@@ -1,6 +1,6 @@
 # Revisión coordinada del POS
 
-Para cambios que cruzan interfaz y backend, el trabajo se divide en cuatro responsabilidades:
+Cada cambio tiene un implementador y una revisión independiente. Las responsabilidades siguientes se combinan según el alcance; no requieren cuatro agentes ni repetir una revisión completa por cada tarea. Se delegan áreas separables con archivos y criterios de aceptación concretos:
 
 | Responsable | Trabajo | Límite |
 | --- | --- | --- |
@@ -22,11 +22,11 @@ Cada implementador tiene archivos asignados. El responsable de integración resu
 
 ## Evidencia antes de integrar
 
-1. Pruebas funcionales y de recuperación, TypeScript y lint sobre el árbol final.
-2. Contratos UI/backend sobre una base local nueva y datos sintéticos. Ningún ensayo cobra tarjetas o envía papel.
-3. Navegador de producción: axe, tamaños touch y desbordamiento. Incluir ajustes cerrados/en edición, pendientes, formularios y pantallas de menor altura.
+1. Pruebas funcionales y de recuperación pertinentes al cambio; TypeScript, lint y comprobaciones obligatorias sobre el árbol final.
+2. Para cambios de contratos UI/backend, comprobarlos sobre una base local nueva y datos sintéticos. Ningún ensayo cobra tarjetas o envía papel.
+3. Para cambios visibles, comprobar las pantallas afectadas en build de producción: accesibilidad, tamaños touch y desbordamiento. Incluir sus estados pendientes y de edición cuando correspondan.
 4. Calidad revisa las capturas del mismo build y contrasta los resultados con los cambios. Un estado no probado se declara pendiente; no se inventa una puntuación global.
-5. GitHub repite las comprobaciones sobre el commit del PR. Integración publica a `main` cuando pasan y no quedan defectos que bloqueen la operación.
+5. GitHub repite las comprobaciones sobre el commit del PR. Integrar o publicar requiere el alcance autorizado de la tarea y las protecciones del repositorio; pasar pruebas por sí solo no autoriza un despliegue.
 
 ## Hallazgos de esta revisión
 

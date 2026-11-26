@@ -10,7 +10,7 @@ Un pedido recibido por teléfono se paga **al recoger**. Se guarda separado de u
 4. Al recoger, abrir el pedido y elegir **Cobrar**. Se usan el turno abierto, su cajero y su tipo de cambio. No se recalcula el precio con el catálogo del día ni se reemplaza otro carrito que tenga abierto el cajero.
 5. El cobro enlaza una sola venta con el pedido. Los reintentos recuperan esa identidad; un pago incierto debe comprobarse antes de volver a cobrar o cancelar.
 
-Los pedidos pendientes no bloquean el corte. Un cobro CLIP ya enviado conserva sus bloqueos habituales hasta resolverse. La integración automática CLIP permanece apagada; la tarjeta externa conserva la confirmación manual existente.
+Los pedidos pendientes no bloquean el corte. Un cobro CLIP ya enviado conserva sus bloqueos habituales hasta resolverse. La forma de tarjeta sigue la configuración aceptada de la instalación; no cambiar el proveedor para recuperar un pedido.
 
 ## Preparación e impresión
 
@@ -32,6 +32,6 @@ Con inventario apagado no se inventan cantidades ni movimientos. La activación 
 
 La migración `202611020019_phone_orders.sql` agrega pedidos, solicitudes recuperables, vínculo único a la venta y reservas. Guardar y cancelar conservan una identidad por operación; cobrar usa además el bloqueo global del pedido. Los respaldos nuevos incluyen pedidos, reservas, revisiones y secuencia de folios. Los archivos anteriores a esta migración siguen siendo legibles.
 
-Esta versión requiere las migraciones 017–021, ya desplegadas al cliente después de respaldo y comparación de huellas. Esto no instala el POS en el café ni certifica los nuevos documentos en papel; ver [entrega](delivery-readiness.md).
+La función depende del contrato retenido de teléfono/inventario/recuperación, incluidas las migraciones 017–021; verificar su instalación real, no inferirla de este documento. Esto no instala el POS en el café ni certifica los nuevos documentos en papel; ver [entrega](delivery-readiness.md).
 
 Verificación: `npm test`, `npm run test:db`, `npm run test:printing` y `POS_BROWSER_QUALITY=1 npm run test:phone-http`. El último ensayo usa una base nueva en loopback 55501/55502, producción aislada en 3112, cuentas ficticias y cola simulada; conserva la vista de prueba existente en 3111.
