@@ -8,6 +8,8 @@ import { errorMessage } from '@/lib/pos-types';
 import { normalizeMenuText } from '@/lib/menu-cards';
 import { supabase } from '@/lib/supabase';
 import { useResource } from '@/lib/use-resource';
+import { withDeadline } from '@/lib/request-deadline';
+import { readRecipeTrial, writeRecipeTrial, type TrialValues } from '@/lib/recipe-trial';
 
 type Recipe = { id: string; name: string; product_id: string | null; trial_count: number };
 type Trial = { id: string; number: number; ingredients: string; method: string; changes: string; created_at: string };
@@ -16,6 +18,45 @@ const blank: TrialForm = { name: '', ingredients: '', method: '', changes: '' };
 const date = new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeZone: 'America/Matamoros' });
 
 export default function RecipeBook() {
+  const [actor, setActor] = useState('');
+  const [failure, setFailure] = useState('');
+  useEffect(() => {
+    let active = true;
+    let authChanged = false;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      authChanged = true;
+      if (active) {
+        setActor(session?.user.id ?? '');
+        setFailure(session?.user ? '' : 'Inicia sesión para abrir el recetario.');
+      }
+    });
+    void withDeadline(() => supabase.auth.getUser()).then(({ data, error }) => {
+      if (active && !authChanged) { if (error || !data.user) setFailure('Inicia sesión para abrir el recetario.'); else setActor(data.user.id); }
+    }).catch(() => { if (active) setFailure('No se pudo comprobar la sesión. Actualiza la página.'); });
+    return () => { active = false; subscription.unsubscribe(); };
+  }, []);
+  return actor ? <ActorRecipeBook key={actor} actor={actor} /> : <p role="status">{failure || 'Comprobando sesión…'}</p>;
+}
+
+function ActorRecipeBook({ actor }: { actor: string }) {
+  const [pending, setPending] = useState(false);
+  const [recoveryFailure, setRecoveryFailure] = useState('');
+  const [recovering, setRecovering] = useState(false);
+  const recoveryLock = useRef(false);
+  const refreshPending = useCallback(() => {
+    try { setPending(Boolean(readRecipeTrial(localStorage, actor))); }
+    catch (error) { setPending(true); setRecoveryFailure(errorMessage(error)); }
+  }, [actor]);
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => { if (active) refreshPending(); });
+    window.addEventListener('storage', refreshPending);
+    return () => { active = false; window.removeEventListener('storage', refreshPending); };
+  }, [refreshPending]);
+  async function save(recipeId: string | undefined, values: TrialValues) {
+    try { return await writeRecipeTrial(supabase, localStorage, actor, { recipeId, values }); }
+    finally { refreshPending(); }
+  }
   const load = useCallback(async (signal: AbortSignal): Promise<Recipe[]> => {
     const { data, error } = await supabase.rpc('pos_smoothies_recipes').abortSignal(signal);
     if (error) throw new Error(error.message);
@@ -43,13 +84,25 @@ export default function RecipeBook() {
     setCreating(false);
   }
 
+  async function recover() {
+    if (recoveryLock.current) return;
+    recoveryLock.current = true; setRecovering(true); setRecoveryFailure('');
+    try {
+      await writeRecipeTrial(supabase, localStorage, actor);
+      setSelected(null); setCreating(false); await reload();
+    } catch (error) { setRecoveryFailure(errorMessage(error)); }
+    finally { refreshPending(); recoveryLock.current = false; setRecovering(false); }
+  }
+
   return <div className="recipe-book">
     <header className="recipe-book-heading">
       <div><h1>Recetario privado</h1><p><LockKeyhole size={15} aria-hidden="true" /> Solo tú puedes ver tus pruebas y notas con tu cuenta.</p></div>
-      <button type="button" className="admin-primary-button" disabled={loading || !!error || creating} onClick={() => open(null)}>
+      <button type="button" className="admin-primary-button" disabled={pending || recovering || loading || !!error || creating} onClick={() => open(null)}>
         <Plus size={18} aria-hidden="true" /> Nueva receta
       </button>
     </header>
+    {pending && <div className="recipe-book-message" role="status"><p>Hay una prueba sin confirmar. Revisa ese guardado antes de crear otra.</p><button type="button" disabled={recovering} onClick={() => void recover()}>{recovering ? 'Revisando…' : 'Revisar prueba pendiente'}</button></div>}
+    {recoveryFailure && <p role="alert">{recoveryFailure}</p>}
     {loading ? <p role="status">Cargando recetario…</p> : error ? <div role="alert" className="recipe-book-message">
       <p>No se pudo abrir el recetario.</p><button type="button" className="admin-secondary-button" onClick={() => void reload()}>Reintentar</button>
     </div> : <div className="recipe-book-grid">
@@ -61,7 +114,7 @@ export default function RecipeBook() {
           </button>
         </li>)}</ul> : <p>{recipes.length ? 'No hay recetas con ese nombre.' : 'Todavía no hay recetas.'}</p>}
       </aside>
-      {creating || recipe ? <RecipeDetail key={recipe?.id ?? 'new'} recipe={recipe} onChange={updateRecipe} onEditState={trackEdit} /> :
+      {creating || recipe ? <fieldset disabled={pending || recovering} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}><RecipeDetail key={recipe?.id ?? 'new'} recipe={recipe} onChange={updateRecipe} onEditState={trackEdit} save={save} /></fieldset> :
         <section className="recipe-book-panel recipe-book-empty"><BookOpen size={24} aria-hidden="true" />
           <h2>{recipes.length ? 'Elige una receta' : 'Guarda tu primera prueba'}</h2>
           <p>{recipes.length ? 'Abre una receta para ver lo que probaste y lo que quieres cambiar.' : 'Anota las cantidades y lo que ajustarías la próxima vez.'}</p>
@@ -70,8 +123,9 @@ export default function RecipeBook() {
   </div>;
 }
 
-function RecipeDetail({ recipe, onChange, onEditState }: {
+function RecipeDetail({ recipe, onChange, onEditState, save }: {
   recipe?: Recipe; onChange: (row: Recipe) => void; onEditState: (busy: boolean, dirty: boolean) => void;
+  save: (recipeId: string | undefined, values: TrialValues) => ReturnType<typeof writeRecipeTrial>;
 }) {
   const currentRecipeId = recipe?.id;
   const load = useCallback(async (signal: AbortSignal): Promise<Trial[]> => {
@@ -88,7 +142,6 @@ function RecipeDetail({ recipe, onChange, onEditState }: {
   const [busy, setBusy] = useState(false);
   const [comparison, setComparison] = useState<{ left: string; right: string } | null>(null);
   const lock = useRef(false);
-  const attempt = useRef<{ recipeId: string; trialId: string; values: TrialForm } | null>(null);
   const latest = trials[0];
   const dirty = Boolean((form && (form.name !== (recipe?.name ?? '') || form.ingredients !== (latest?.ingredients ?? '')
     || form.method !== (latest?.method ?? '') || form.changes)) || (publication && (publication.price || publication.name !== recipe?.name)));
@@ -121,27 +174,16 @@ function RecipeDetail({ recipe, onChange, onEditState }: {
     if (!form || lock.current) return;
     const values = { ...form, name: (recipe?.name ?? form.name).trim(), ingredients: form.ingredients.trim() };
     if (!values.name || !values.ingredients) { setFailure('Escribe el nombre y los ingredientes con sus cantidades.'); return; }
-    if (!attempt.current || JSON.stringify(attempt.current.values) !== JSON.stringify(values)) {
-      const priorId = attempt.current?.values.name === values.name ? attempt.current.recipeId : undefined;
-      attempt.current = { recipeId: recipe?.id ?? priorId ?? crypto.randomUUID(), trialId: crypto.randomUUID(), values };
-    }
-    const { recipeId, trialId } = attempt.current;
     lock.current = true;
     setBusy(true);
     setMessage('');
     setFailure('');
     try {
-      const { data, error } = await supabase.rpc('pos_save_smoothies_recipe_trial', {
-        p_recipe: recipeId, p_trial: trialId, p_name: values.name, p_ingredients: values.ingredients,
-        p_method: values.method, p_changes: values.changes,
-      }).abortSignal(AbortSignal.timeout(10_000));
-      if (error || data?.id !== trialId) throw new Error(error?.message ?? 'Intenta guardar de nuevo.');
-      const trial: Trial = data;
+      const { trial, pending: { recipeId } } = await save(recipe?.id, values);
       setData(previous => [trial, ...previous.filter(row => row.id !== trial.id)].sort((a, b) => b.number - a.number));
       onChange({ id: recipeId, name: values.name, product_id: recipe?.product_id ?? null, trial_count: Math.max(trial.number, recipe?.trial_count ?? 0) });
       setForm(null);
       setMessage('Prueba guardada.');
-      attempt.current = null;
     } catch (error) { setFailure(`No se confirmó el guardado. ${errorMessage(error)}`); }
     finally { lock.current = false; setBusy(false); }
   }
