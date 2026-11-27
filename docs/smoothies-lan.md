@@ -191,6 +191,10 @@ HTTPS, autoridad temporal y carpeta externa de respaldos. Valida montajes,
 transporte binario y puertos Docker antes de instalar. No requiere valores ni
 variables del repositorio del cliente. El certificado se acepta solo en esta
 VM y se retira al terminar; no se desactiva la validación TLS.
+La CLI oficial accede al motor WSL por TCP exclusivamente en loopback. Una
+comprobación compartida exige la identidad del runner desechable, recibo fresco
+y el ID/etiqueta/kernel del motor real. Los contextos remotos siguen rechazados;
+el servicio Docker Windows de la VM permanece intacto.
 
 Además verifica copia cifrada, medio ausente sin perder el respaldo local y
 reintento del mismo archivo al reiniciar. El artefacto `rehearsal.json` contiene

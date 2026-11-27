@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { localDocker, localSettings, project } from './safety.mjs';
 import assert from 'node:assert/strict';
+import { verifyHostedWslEngine } from '../testing/hosted-wsl-engine.mjs';
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const work = path.join(root, '.staging-local');
@@ -72,6 +73,10 @@ export async function cliRun(args) {
   return run(process.execPath, [cli, ...args, '--workdir', work], { env });
 }
 export async function dockerCheck() {
+  if (process.env.POS_TEST_WSL_ENGINE === '1') {
+    await verifyHostedWslEngine();
+    return;
+  }
   // Explicitly avoid environment redirects to another Docker host/context.
   if (process.env.DOCKER_HOST || process.env.DOCKER_CONTEXT) throw new Error('Unset DOCKER_HOST/DOCKER_CONTEXT before local staging');
   const context = JSON.parse(await run('docker', ['context', 'inspect']));

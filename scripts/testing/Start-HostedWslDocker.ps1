@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 # Never enroll an owner's PC, an existing WSL distro or a nonempty Docker host.
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
     $env:RUNNER_OS -cne 'Windows' -or $env:ImageOS -cnotmatch '^win25(?:-vs2026)?$' -or
-    $env:POS_ACCEPTANCE_DISPOSABLE -cne '1' -or !$env:GITHUB_RUN_ID -or !$env:RUNNER_TEMP -or !$env:GITHUB_ENV) {
+    $env:POS_ACCEPTANCE_DISPOSABLE -cne '1' -or !$env:GITHUB_RUN_ID -or !$env:RUNNER_TRACKING_ID -or !$env:RUNNER_TEMP -or !$env:GITHUB_ENV) {
     throw 'This bootstrap requires a fresh explicitly enrolled GitHub-hosted Windows 2025 job.'
 }
 $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
@@ -19,7 +19,7 @@ if (!$WorkDirectory.StartsWith($runnerTemp + '\', [StringComparison]::OrdinalIgn
 $docker = (Get-Command docker.exe -ErrorAction Stop).Source
 if (![IO.Path]::IsPathRooted($docker)) { throw 'The official installed Windows Docker CLI is required.' }
 $distribution = 'Ubuntu-24.04'
-$serviceStopped = $false; $createdDistro = $false; $bridge = $null; $keepAlive = $null
+$createdDistro = $false; $keepAlive = $null; $selectedLinux = $false
 
 function Native {
     param([Parameter(Position=0)][string]$Executable, [Parameter(Position=1,ValueFromRemainingArguments=$true)][string[]]$Arguments,
@@ -78,12 +78,14 @@ try {
     if ((Docker @('context', 'show')).Trim() -cne 'default') { throw 'Leave an existing nondefault Docker context intact.' }
     $endpoint = Docker @('context', 'inspect', 'default', '--format', '{{.Endpoints.docker.Host}}')
     if ($endpoint.Trim() -cne 'npipe:////./pipe/docker_engine') { throw 'The runner default Docker endpoint is unexpected.' }
-    if ((Docker @('info', '--format', '{{.OSType}}')).Trim() -cne 'windows') { throw 'An existing Linux engine must be left intact.' }
+    $windowsInfo = Docker @('--host', $endpoint.Trim(), 'info', '--format', '{{json .}}') | ConvertFrom-Json
+    if ($windowsInfo.OSType -cne 'windows' -or !$windowsInfo.ID) { throw 'An existing Linux engine must be left intact.' }
     if ((Docker @('ps', '-aq')).Trim() -or (Docker @('volume', 'ls', '-q')).Trim()) { throw 'The runner has existing containers or volumes; leave them intact.' }
     $networks = (Docker @('network', 'ls', '--format', '{{.Name}}')) -split '\r?\n'
     if (@($networks | Where-Object { $_ -and $_ -cnotin @('nat', 'none') }).Count) { throw 'The runner Docker host has a nondefault network.' }
     $windowsDocker = Get-CimInstance Win32_Service -Filter "Name='docker'"
-    if (!$windowsDocker -or $windowsDocker.PathName -notmatch 'dockerd\.exe') { throw 'The standard Windows Docker service was not identified.' }
+    if (!$windowsDocker -or $windowsDocker.PathName -notmatch 'dockerd\.exe' -or $windowsDocker.State -cne 'Running' -or !$windowsDocker.ProcessId) { throw 'The standard Windows Docker service was not identified.' }
+    $windowsServicePid = $windowsDocker.ProcessId
     Free-Ports @(2375, 3180, 58000, 55432, 55541, 55542, 55543, 55544)
     $listed = (& wsl.exe --list --quiet 2>&1 | Out-String).Replace([string][char]0, '').Trim()
     if ($LASTEXITCODE -eq 0 -and $listed) { throw 'An existing WSL distribution must be left intact.' }
@@ -122,19 +124,13 @@ docker info --format '{{.OSType}}'
     $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 2375 -ErrorAction Stop)
     if (@($listeners | Where-Object { $_.LocalAddress -notin @('127.0.0.1', '::1') }).Count) { throw 'The Docker API must not be exposed off Windows loopback.' }
 
-    # Only this fresh runner's identified empty Windows daemon is stopped.
-    Stop-Service -Name docker -ErrorAction Stop
-    (Get-Service docker).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
-    $serviceStopped = $true
-    if (@([IO.Directory]::GetFiles('\\.\pipe\') | Where-Object { [IO.Path]::GetFileName($_) -ceq 'docker_engine' }).Count) { throw 'Another process still owns the default Docker pipe.' }
+    # Use the official client's supported TCP transport. The existing Windows
+    # Docker service, default context and named pipe remain entirely untouched.
+    $env:DOCKER_HOST = 'tcp://127.0.0.1:2375'
+    $selectedLinux = $true
     $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-    $bridgeExe = Join-Path $WorkDirectory 'WslDockerPipe.exe'
-    [void](Native $compiler @('/nologo', '/target:exe', "/out:$bridgeExe", (Join-Path $PSScriptRoot 'WslDockerPipe.cs')))
-    $ready = Join-Path $WorkDirectory 'pipe-ready.txt'
-    $bridge = Start-Process -FilePath $bridgeExe -ArgumentList ('"{0}"' -f $ready) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $WorkDirectory 'pipe.log') -RedirectStandardError (Join-Path $WorkDirectory 'pipe-error.log')
-    [void](Wait-Native { if ($bridge.HasExited) { throw 'The owned Docker pipe process exited.' }; if (Test-Path -LiteralPath $ready) { (Get-Content -LiteralPath $ready -Raw).Trim() -eq [string]$bridge.Id } } 30 'Waiting for the owned Docker pipe relay.')
     $observed = Docker @('info', '--format', '{{json .}}') | ConvertFrom-Json
-    if ($observed.ID -cne $linuxInfo.ID -or $observed.OSType -cne 'linux') { throw 'Default Windows Docker CLI does not reach the owned Linux daemon.' }
+    if ($observed.ID -cne $linuxInfo.ID -or $observed.OSType -cne 'linux') { throw 'Official Windows Docker CLI does not reach the owned Linux daemon.' }
     $env:POS_CAFE_REAL_DOCKER = $docker
     $env:POS_TEST_WSL_ENGINE = '1'
     $env:COMPOSE_CONVERT_WINDOWS_PATHS = '1'
@@ -171,8 +167,11 @@ services:
     try {
         [void](Docker @('compose', '--project-name', $project, '-f', $composeFile, 'up', '-d'))
         $canaryId = (Docker @('compose', '--project-name', $project, '-f', $composeFile, 'ps', '-q', 'canary')).Trim()
-        $composeHash = (Docker @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt')).Split(' ')[0]
-        if ($composeHash -cne $expectedHash) { throw 'The actual Windows Compose bind does not expose the intended host bytes.' }
+        $composeOutput = Docker @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt')
+        $composeHash = $composeOutput.Split(' ')[0]
+        if ($composeHash -cne $expectedHash) {
+            throw ('The actual Windows Compose bind does not expose the intended host bytes. Expected ' + $expectedHash + '; actual stdout ' + (ConvertTo-Json -InputObject $composeOutput -Compress))
+        }
         [void](Docker @('cp', $canary, "${canaryId}:/tmp/pipe-copy.txt"))
         if ((Docker @('exec', $canaryId, 'sha256sum', '/tmp/pipe-copy.txt')).Split(' ')[0] -cne $expectedHash) { throw 'Binary Docker API transport changed the canary.' }
         foreach ($port in @(58000, 55432, 55541, 55542, 55543, 55544)) {
@@ -192,20 +191,28 @@ services:
         }
         if (Test-Path -LiteralPath $composeFile) { [void](Docker @('compose', '--project-name', $project, '-f', $composeFile, 'down', '--volumes')) }
     }
+    $windowsAfter = Docker @('--host', $endpoint.Trim(), 'info', '--format', '{{json .}}') | ConvertFrom-Json
+    $serviceAfter = Get-CimInstance Win32_Service -Filter "Name='docker'"
+    if ($windowsAfter.ID -cne $windowsInfo.ID -or $windowsAfter.OSType -cne 'windows' -or
+        $serviceAfter.ProcessId -ne $windowsServicePid -or $serviceAfter.State -cne 'Running' -or
+        (Docker @('--host', $endpoint.Trim(), 'ps', '-aq')).Trim() -or
+        (Docker @('--host', $endpoint.Trim(), 'volume', 'ls', '-q')).Trim()) {
+        throw 'The existing Windows Docker daemon did not remain unchanged and empty.'
+    }
     $receipt = Join-Path $WorkDirectory 'engine.json'
     @{ version = 1; owner = $owner; distribution = $distribution; kernel = $kernel.Trim(); daemonId = $observed.ID;
-       docker = $docker; pipe = 'npipe:////./pipe/docker_engine'; proxyPid = $bridge.Id; proxyExecutable = $bridgeExe;
+       docker = $docker; transport = 'tcp://127.0.0.1:2375'; windowsHostUnchanged = $true;
+       windowsDaemonId = $windowsInfo.ID; windowsServicePid = $windowsServicePid;
        keepAlivePid = $keepAlive.Id; completedAt = [DateTimeOffset]::UtcNow.ToString('o');
        parity = @{ composeBindSha256 = $composeHash; rawBindSha256 = $rawHash; binaryCopySha256 = $expectedHash; loopbackPorts = @(58000,55432,55541,55542,55543,55544) } } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $receipt -Encoding utf8NoBOM
-    foreach ($entry in @("POS_CAFE_REAL_DOCKER=$docker", 'POS_TEST_WSL_ENGINE=1', 'COMPOSE_CONVERT_WINDOWS_PATHS=1', "POS_TEST_WSL_RECEIPT=$receipt")) {
+    foreach ($entry in @("POS_CAFE_REAL_DOCKER=$docker", 'POS_TEST_WSL_ENGINE=1', 'COMPOSE_CONVERT_WINDOWS_PATHS=1', 'DOCKER_HOST=tcp://127.0.0.1:2375', "POS_TEST_WSL_RECEIPT=$receipt")) {
         Add-Content -LiteralPath $env:GITHUB_ENV -Value $entry -Encoding utf8NoBOM
     }
     Write-Host "Owned real WSL Docker engine ready; parity receipt: $receipt"
 } catch {
-    if ($bridge -and !$bridge.HasExited) { $bridge.Kill($true); $bridge.WaitForExit() }
     if ($keepAlive -and !$keepAlive.HasExited) { $keepAlive.Kill($true); $keepAlive.WaitForExit() }
     if ($createdDistro) { & wsl.exe --terminate $distribution | Out-Null }
-    if ($serviceStopped) { Start-Service docker -ErrorAction Continue }
+    if ($selectedLinux) { Remove-Item Env:DOCKER_HOST -ErrorAction SilentlyContinue }
     throw
 }

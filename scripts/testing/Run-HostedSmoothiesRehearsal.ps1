@@ -112,39 +112,13 @@ function Get-RehearsalJson {
 
 try {
     $phase = 'docker-validation'
-    $engineJson = & $docker 'info' '--format' '{{json .}}' 2>$null
-    if ($LASTEXITCODE -ne 0) { throw 'The owned WSL Docker daemon is unavailable.' }
-    $engine = ($engineJson -join "`n") | ConvertFrom-Json
-    if ($engine.OSType -cne 'linux') { throw 'The rehearsal requires the real Linux Docker engine.' }
-    if ($env:POS_TEST_WSL_ENGINE -cne '1' -or !$env:POS_TEST_WSL_RECEIPT) { throw 'The owned WSL engine parity receipt is required.' }
-    $engineReceiptPath = [IO.Path]::GetFullPath($env:POS_TEST_WSL_RECEIPT)
-    if (!$engineReceiptPath.StartsWith($runnerTemporary + '\',[StringComparison]::OrdinalIgnoreCase) -or
-        [IO.Path]::GetFileName($engineReceiptPath) -cne 'engine.json') { throw 'Use the owned runner-temporary engine receipt.' }
-    $ancestor = [IO.Path]::GetDirectoryName($engineReceiptPath)
-    while ($ancestor -ine $runnerTemporary) {
-        $item = Get-Item -LiteralPath $ancestor -Force
-        if (!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'The engine receipt cannot traverse redirected directories.' }
-        $ancestor = [IO.Path]::GetDirectoryName($ancestor)
-        if (!$ancestor) { throw 'The engine receipt escaped its runner-temporary owner.' }
+    $engineProofFile = Join-Path $work 'platform-proof.json'
+    & $node (Join-Path $source 'scripts\testing\hosted-wsl-engine.mjs') 1>$engineProofFile 2>(Join-Path $work 'engine-verification.private.log')
+    if ($LASTEXITCODE -ne 0) {
+        $failureDiagnostics = @(ConvertTo-SafeRehearsalDiagnostic (Get-Content -LiteralPath (Join-Path $work 'engine-verification.private.log') -Tail 25 | Out-String))
+        throw 'The owned hosted WSL Docker engine failed shared attestation.'
     }
-    $engineReceipt = Get-RehearsalJson $engineReceiptPath
-    if ($engineReceipt.version -ne 1 -or $engineReceipt.owner -cnotmatch '^[a-f0-9]{32}$' -or
-        $engineReceipt.daemonId -cne $engine.ID -or ('mx.pos-hosted-rehearsal=' + $engineReceipt.owner) -cnotin $engine.Labels -or
-        $engineReceipt.distribution -cne 'Ubuntu-24.04' -or $engineReceipt.pipe -cne 'npipe:////./pipe/docker_engine' -or
-        $engineReceipt.kernel -cnotmatch '^[A-Za-z0-9._+()-]{1,128}$' -or $engineReceipt.kernel -cne $engine.KernelVersion) {
-        throw 'The receipt does not identify the actual owned WSL Linux daemon.'
-    }
-    $completedAt = [DateTimeOffset]::MinValue
-    if (![DateTimeOffset]::TryParse([string]$engineReceipt.completedAt,[ref]$completedAt) -or
-        $completedAt -lt [DateTimeOffset]::UtcNow.AddHours(-1) -or $completedAt -gt [DateTimeOffset]::UtcNow.AddMinutes(5)) { throw 'The owned engine receipt must be fresh for this rehearsal.' }
-    $parity = $engineReceipt.parity
-    if ($parity.composeBindSha256 -cnotmatch '^[a-f0-9]{64}$' -or $parity.composeBindSha256 -cne $parity.rawBindSha256 -or
-        $parity.composeBindSha256 -cne $parity.binaryCopySha256) { throw 'Compose, raw-CLI bind and binary-copy parity must all be confirmed.' }
-    $requiredPorts = @(58000,55432,55541,55542,55543,55544)
-    if (@($parity.loopbackPorts).Count -ne $requiredPorts.Count -or @($requiredPorts | Where-Object { $parity.loopbackPorts -notcontains $_ }).Count) { throw 'Every required Windows loopback port must have completed genuine container parity.' }
-    $platformProof = @{ state = 'verified'; host = 'github-hosted-windows-2025'; image = $env:ImageOS;
-        engine = 'linux'; distribution = 'Ubuntu-24.04'; kernel = [string]$engineReceipt.kernel;
-        parity = @{ composeBind = 'verified'; rawCliBind = 'verified'; binaryCopy = 'verified'; windowsLoopbackPorts = $requiredPorts } }
+    $platformProof = Get-RehearsalJson $engineProofFile
 
     $phase = 'immutable-artifact-download'
     $runJson = & $gh 'run' 'view' ([string]$SourceRunId) '--repo' $repository '--json' 'headSha,status,conclusion' 2>$null
