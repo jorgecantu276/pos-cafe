@@ -72,7 +72,7 @@ const install = () => execFileSync(powershell, [...ps, path.join(packageRoot, 'a
 const base = 'http://127.0.0.1:3180';
 const start = () => spawn(powershell, [...ps, path.join(fixture, 'Launch-Smoothies.ps1'), '-Background'],
   { env, windowsHide: true, stdio: 'inherit' });
-const stop = () => execFileSync(powershell, [...ps, path.join(fixture, 'Launch-Smoothies.ps1'), '-Stop'],
+const stop = () => execFileSync(powershell, [...ps, path.join(fixture, 'Launch-Smoothies.ps1'), '-Stop', '-Background'],
   { env, windowsHide: true, stdio: 'inherit' });
 const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 async function waitForExit(child, timeout = 20_000) {
