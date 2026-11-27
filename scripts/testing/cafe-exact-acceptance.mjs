@@ -60,12 +60,12 @@ if(mode==='prepare'){
   assert.equal(candidate.sourceCommit,settings.sourceCommit);assert.equal(baseline.sourceCommit,'b776550a7a91ad1dafb21b2200a235dfe337bb6f');
   assert.equal(candidate.fixtureOnly,false);assert.equal(baseline.fixtureOnly,false);assert.equal(candidate.supabaseUrl,baseline.supabaseUrl);
   assert.equal(candidate.publicKeySha256,baseline.publicKeySha256);
-  const current=await createFixture(55541,settings.candidate,'nuevo');
+  const current=await createFixture(15541,settings.candidate,'nuevo');
   await current.db.query('begin');const plan=await applyBrownieSyrup(current.db,await planBrownieSyrup(current.db));await current.db.query('commit');
-  const retained=await createFixture(55561,settings.baseline,'conservado');
+  const retained=await createFixture(15561,settings.baseline,'conservado');
   // Reproduce the separately observed reviewed idle RPC; app predecessor remains rc.6.
   await install(retained.db,settings.candidate,['202611250025_windows_update_idle.sql']);
-  const recovery=await freshLocalApi({portBase:55521});
+  const recovery=await freshLocalApi({portBase:15521});
   const bootstrap=ok(await recovery.service.auth.admin.createUser({email:'cafe_recovery_bootstrap@carinitomio.local',password:randomBytes(24).toString('base64url'),email_confirm:true})).user;
   await recovery.db.query("insert into profiles(id,username,full_name,role) values($1,'cafe_recovery_bootstrap','Bootstrap','admin')",[bootstrap.id]);
   await install(recovery.db,settings.candidate);await recovery.db.query('delete from profiles where id=$1',[bootstrap.id]);ok(await recovery.service.auth.admin.deleteUser(bootstrap.id));

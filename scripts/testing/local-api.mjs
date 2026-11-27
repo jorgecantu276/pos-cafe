@@ -14,7 +14,7 @@ import { operationsLoopbackTool } from './operations-loopback.mjs';
 // are never read or reconciled. Each run owns a new project and test volumes.
 export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false, storage = false, runtimeDirectory } = {}) {
   const storageEnabled = storage || emptyWithStorage;
-  assert.ok([55471,55481,55501,55521,55541,55561,55901,55921].includes(portBase), 'Only dedicated loopback test/demo port families are allowed');
+  assert.ok([15521,15541,15561,55471,55481,55501,55521,55541,55561,55901,55921].includes(portBase), 'Only dedicated loopback test/demo port families are allowed');
   if ([55901,55921].includes(portBase)) {
     assert.ok(runtimeDirectory && path.isAbsolute(runtimeDirectory), 'Operations demos require their private runtime directory.');
     const relative = path.relative(root, runtimeDirectory);

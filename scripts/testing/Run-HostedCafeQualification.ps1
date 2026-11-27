@@ -34,10 +34,11 @@ function Native {
     $start=[Diagnostics.ProcessStartInfo]::new();$start.FileName=$Executable;$start.WorkingDirectory=$source;$start.UseShellExecute=$false;$start.CreateNoWindow=$true
     $start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
+    $start.Environment['SUPABASE_SERVICES_HOSTNAME']='127.0.0.1'
     $start.Environment.Remove('NODE_OPTIONS') | Out-Null;$start.Environment.Remove('POS_CAFE_TEST_TRANSPORT_FILE') | Out-Null
     if ([IO.Path]::GetFileName($Executable) -ieq 'node.exe') {
         $keep=@('SystemRoot','WINDIR','PATH','PATHEXT','TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA','ProgramFiles','ProgramFiles(x86)','ComSpec','NUMBER_OF_PROCESSORS','PROCESSOR_ARCHITECTURE','PSModulePath',
-            'GITHUB_ACTIONS','RUNNER_ENVIRONMENT','RUNNER_OS','ImageOS','GITHUB_RUN_ID','RUNNER_TRACKING_ID','RUNNER_TEMP','POS_ACCEPTANCE_DISPOSABLE','NEXT_TELEMETRY_DISABLED','POS_CAFE_REAL_DOCKER','POS_TEST_WSL_ENGINE','COMPOSE_CONVERT_WINDOWS_PATHS','POS_TEST_WSL_RECEIPT')
+            'GITHUB_ACTIONS','RUNNER_ENVIRONMENT','RUNNER_OS','ImageOS','GITHUB_RUN_ID','RUNNER_TRACKING_ID','RUNNER_TEMP','POS_ACCEPTANCE_DISPOSABLE','NEXT_TELEMETRY_DISABLED','POS_CAFE_REAL_DOCKER','POS_TEST_WSL_ENGINE','COMPOSE_CONVERT_WINDOWS_PATHS','POS_TEST_WSL_RECEIPT','SUPABASE_SERVICES_HOSTNAME')
         foreach ($key in @($start.Environment.Keys)) { if ($keep -inotcontains $key) { [void]$start.Environment.Remove($key) } }
     }
     $process=[Diagnostics.Process]::new();$process.StartInfo=$start
@@ -94,9 +95,8 @@ try {
     $settings=[ordered]@{work=$work;evidence=$evidence;candidate=$candidate;baseline=$baseline;browser=$browser;sourceCommit=$SourceCommit;
         candidateZip=$candidateZip;sourceTree=$inputRecord.sourceTree;operatorScript=$operatorScript;operatorScriptSha256=$inputRecord.operatorScriptSha256;
         harnessCommit=(& git -C $source rev-parse HEAD).Trim();candidateZipSha256=$CandidateSha256;baselineZipSha256=$baselineHash;engineId=$engineId;probesPassed=$false;
-        hostInfrastructure=@{commit=(& git -C (Join-Path $source 'host-infra') rev-parse HEAD).Trim();loopbackSha256=(Get-FileHash -LiteralPath (Join-Path $source 'scripts/staging/docker-loopback.cs')).Hash.ToLowerInvariant()}}
-    if ($settings.hostInfrastructure.commit -cne '8a151bd9d39144d46fd371ce527f37824a4e4a37' -or
-        (Get-FileHash -LiteralPath (Join-Path $source 'host-infra/scripts/staging/docker-loopback.cs')).Hash.ToLowerInvariant() -cne $settings.hostInfrastructure.loopbackSha256) { throw 'Pinned test transport changed.' }
+        hostInfrastructure=@{commit=(& git -C $source rev-parse HEAD).Trim();provisionerSha256=(Get-FileHash -LiteralPath (Join-Path $source 'scripts/testing/Start-CafeHostedDocker.ps1')).Hash.ToLowerInvariant();loopbackSha256=(Get-FileHash -LiteralPath (Join-Path $source 'scripts/staging/docker-loopback.cs')).Hash.ToLowerInvariant()}}
+    if ((Get-FileHash -LiteralPath (Join-Path $source 'scripts/testing/cafe-docker-loopback.cs')).Hash.ToLowerInvariant() -cne $settings.hostInfrastructure.loopbackSha256) { throw 'Pinned test transport changed.' }
     $settings | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configuration -Encoding utf8NoBOM
     $phase='prepare-synthetic-backends'
     [void](Native $orchestratorNode @((Join-Path $PSScriptRoot 'cafe-exact-acceptance.mjs'),'prepare',$configuration) 'prepare-backends' -Timeout 1500)
