@@ -130,6 +130,13 @@ $empty=Canary-Measurement $null ('a'*64)
 if($empty.characters -ne 0 -or $empty.exactCanaryBytes -or $empty.sha256 -cne 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'){throw 'empty stream measurement changed'}
 $privateFixture='synthetic-private-diagnostic-value'
 if((Canary-Measurement $privateFixture ('a'*64)|ConvertTo-Json -Compress).Contains($privateFixture)){throw 'stream measurement leaked raw diagnostic bytes'}
+$privateIpFunction=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Private-IPv4'},$true)
+if(!$privateIpFunction){throw 'Private-IPv4 function was not found'}
+Invoke-Expression $privateIpFunction.Extent.Text
+if((Private-IPv4 '172.24.1.2') -cne '172.24.1.2'){throw 'actual private IPv4 changed'}
+foreach($address in @('127.0.0.1','1.1.1.1','172.32.0.1','hostname','10.1','010.1.2.3','10.0.0.256','::1')){
+  $refused=$false;try{Private-IPv4 $address}catch{$refused=$true};if(!$refused){throw 'noncanonical/public network address accepted'}
+}
 $digest='a'*64
 if((Canary-Hash ($digest+"  /fixture/canary.txt"+[Environment]::NewLine) $digest 'Synthetic bind') -cne $digest){throw 'canary SHA parser changed the measured digest'}
 $mismatch=$false

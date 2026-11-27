@@ -72,6 +72,12 @@ function Canary-Measurement([string]$Output, [string]$Expected) {
     $exact = $Output.Trim() -cmatch '^([a-f0-9]{64})[ \t]+\*?/[^\r\n]+$' -and $Matches[1] -ceq $Expected
     return @{ characters = $Output.Length; sha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Output))).ToLowerInvariant(); exactCanaryBytes = [bool]$exact }
 }
+function Private-IPv4([string]$Value) {
+    $address = $null
+    if (![Net.IPAddress]::TryParse($Value, [ref]$address) -or $address.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork -or
+        $address.ToString() -cne $Value -or $Value -cnotmatch '^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)') { throw 'The diagnostic requires exact private WSL IPv4 addresses.' }
+    return $Value
+}
 function Free-Ports([int[]]$Ports) {
     foreach ($port in $Ports) {
         if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) {
@@ -244,6 +250,63 @@ services:
                 $diagnostic.client2992Stdout = Canary-Measurement $controlOutput $expectedHash
                 $diagnostic.client2992Stderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
             } catch { $diagnostic.client2992Stdout = 'unavailable' }
+            $guestControlPid = $null
+            try {
+                # Diagnostic only: compare Windows against the same WSL daemon
+                # without the localhost-forwarder. The temporary guest listener
+                # binds only its actual eth0 address and accepts only the exact
+                # Windows/WSL default gateway. No installed endpoint is changed.
+                $guestInterfaces = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'ip', '-j', '-4', 'address', 'show', 'eth0') -TimeoutSeconds 30 | ConvertFrom-Json
+                $guestRoutes = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'ip', '-j', '-4', 'route', 'show', 'default') -TimeoutSeconds 30 | ConvertFrom-Json
+                $guestAddresses = @($guestInterfaces[0].addr_info | Where-Object { $_.family -ceq 'inet' -and $_.scope -ceq 'global' })
+                if (@($guestInterfaces).Count -ne 1 -or $guestInterfaces[0].ifname -cne 'eth0' -or $guestAddresses.Count -ne 1 -or
+                    @($guestRoutes).Count -ne 1 -or $guestRoutes[0].dev -cne 'eth0') { throw 'The owned WSL network was not uniquely identified.' }
+                $guestAddress = Private-IPv4 ([string]$guestAddresses[0].local)
+                $windowsGateway = Private-IPv4 ([string]$guestRoutes[0].gateway)
+                if ($guestAddress -ceq $windowsGateway) { throw 'The WSL guest and its Windows gateway must differ.' }
+                $guestControlScript = Join-Path $WorkDirectory 'guest-transport-control.sh'
+                @'
+#!/bin/bash
+set -euo pipefail
+test "$(cat /etc/pos-hosted-rehearsal)" = "$3"
+pidfile="/run/pos-transport-$3.pid"
+if [ "$4" = start ]; then
+  test ! -e "$pidfile"
+  test -z "$(ss -ltnH 'sport = :2376')"
+  socat "TCP4-LISTEN:2376,bind=$1,range=$2/32,reuseaddr,fork" UNIX-CONNECT:/var/run/docker.sock </dev/null >"/run/pos-transport-$3.log" 2>&1 &
+  child=$!
+  printf '%s\n' "$child" > "$pidfile"
+  sleep 0.2
+  kill -0 "$child"
+  printf '%s\n' "$child"
+else
+  child=$(cat "$pidfile")
+  test "$child" = "$5"
+  test "$(cat "/proc/$child/comm")" = socat
+  arguments=$(tr '\0' ' ' < "/proc/$child/cmdline")
+  case "$arguments" in *"TCP4-LISTEN:2376,bind=$1,range=$2/32,reuseaddr,fork"*) ;; *) exit 8 ;; esac
+  kill -- "$child"
+  rm -- "$pidfile"
+fi
+'@.Replace("`r`n", "`n") | Set-Content -LiteralPath $guestControlScript -Encoding utf8NoBOM
+                $guestControlPid = (Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestControlScript), $guestAddress, $windowsGateway, $owner, 'start') -TimeoutSeconds 30).Trim()
+                if ($guestControlPid -cnotmatch '^[1-9][0-9]*$') { throw 'The temporary guest listener ownership is unavailable.' }
+                $directEndpoint = 'tcp://' + $guestAddress + ':2376'
+                $directEngine = Native -Executable $docker -Arguments @('--host', $directEndpoint, 'info', '--format', '{{json .}}') -TimeoutSeconds 30 | ConvertFrom-Json
+                if ($directEngine.ID -cne $observed.ID -or $directEngine.OSType -cne 'linux' -or "mx.pos-hosted-rehearsal=$owner" -cnotin $directEngine.Labels) { throw 'The direct diagnostic endpoint is not the exact owned daemon.' }
+                $directOutput = Native -Executable $docker -Arguments @('--host', $directEndpoint, 'exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30 -CloseInput
+                $diagnostic.directGuestDaemon = 'same-owned-daemon'
+                $diagnostic.directGuestStdout = Canary-Measurement $directOutput $expectedHash
+                $diagnostic.directGuestStderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
+            } catch { $diagnostic.directGuestStdout = 'unavailable' }
+            finally {
+                if ($guestControlPid -cmatch '^[1-9][0-9]*$') {
+                    try {
+                        [void](Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestControlScript), $guestAddress, $windowsGateway, $owner, 'stop', $guestControlPid) -TimeoutSeconds 30)
+                        $diagnostic.directGuestListenerRemoved = $true
+                    } catch { $diagnostic.directGuestListenerRemoved = $false }
+                }
+            }
             Write-Host ('Synthetic canary transport diagnostics: ' + ($diagnostic | ConvertTo-Json -Compress))
             [IO.File]::WriteAllText((Join-Path $WorkDirectory 'transport-diagnostic.json'), ($diagnostic | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
         }
