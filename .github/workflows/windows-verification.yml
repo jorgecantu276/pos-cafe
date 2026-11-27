@@ -65,7 +65,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      # Bound file-level contention between C# compilers, PowerShell and local
+      # PostgreSQL fixtures. Keep every test and its existing failure deadline.
+      - run: npm test -- --test-concurrency=2
       - name: Signed Cafe updater and immutable publication contracts
         run: |
           node --test scripts/windows/auto-update.test.mjs scripts/windows/cafe-enrollment.test.mjs
