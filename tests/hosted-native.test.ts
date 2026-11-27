@@ -69,6 +69,29 @@ try {
         if(!$rejected){throw 'A reused keepalive PID with a different start time was accepted'}
     }
 } finally { [Threading.Thread]::CurrentThread.CurrentCulture=$priorCulture }
+$quoteNode=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Quote-WindowsArguments'},$true)
+if(!$quoteNode){throw 'Windows argument helper was not found'}
+Invoke-Expression $quoteNode.Extent.Text
+$plainArguments=@('--distribution','Ubuntu-24.04','--user','root','--','/usr/bin/env',"POS_HOSTED_OWNER=$fixtureOwner",'sleep','infinity')
+if((Quote-WindowsArguments $plainArguments) -cne ($plainArguments -join ' ')){
+    throw 'WSL option names and plain values must remain unquoted'
+}
+$literalArguments=@('--distribution','Ubuntu-24.04','','path with spaces','embedded "quotes"','trailing path\','plain\','quote at end"')
+$argvStart=[Diagnostics.ProcessStartInfo]::new()
+$argvStart.FileName=$Node; $argvStart.UseShellExecute=$false; $argvStart.CreateNoWindow=$true
+$argvStart.RedirectStandardOutput=$true; $argvStart.RedirectStandardError=$true
+$argvStart.Arguments=Quote-WindowsArguments (@('-e','process.stdout.write(JSON.stringify(process.argv.slice(1)))','--')+$literalArguments)
+$argvProcess=[Diagnostics.Process]::Start($argvStart)
+try {
+    $argvOut=$argvProcess.StandardOutput.ReadToEndAsync(); $argvErr=$argvProcess.StandardError.ReadToEndAsync()
+    if(!$argvProcess.WaitForExit(5000)){$argvProcess.Kill($true);throw 'Offline argument echo exceeded its deadline'}
+    if($argvProcess.ExitCode -ne 0 -or $argvErr.GetAwaiter().GetResult()){throw 'Offline argument echo failed'}
+    $actualArguments=$argvOut.GetAwaiter().GetResult() | ConvertFrom-Json
+    if((ConvertTo-Json -InputObject $actualArguments -Compress) -cne (ConvertTo-Json -InputObject $literalArguments -Compress)){
+        throw 'Windows argument helper changed literal arguments'
+    }
+} finally {$argvProcess.Dispose()}
+'windows-argument-roundtrip-ok'
 'keepalive-json-roundtrip-ok'
 'native-regression-ok'
 `);
@@ -77,6 +100,7 @@ try {
         '-WorkDirectory', directory], { timeout: 12_000 });
       assert.match(result.stdout, /native-regression-ok/);
       assert.match(result.stdout, /keepalive-json-roundtrip-ok/);
+      assert.match(result.stdout, /windows-argument-roundtrip-ok/);
       assert.equal(result.stderr, '');
     } finally { await rm(directory, { recursive: true, force: true }); }
   });

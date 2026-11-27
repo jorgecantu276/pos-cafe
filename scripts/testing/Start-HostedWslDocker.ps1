@@ -12,6 +12,9 @@ if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hos
 $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
 function Quote-WindowsArguments([string[]]$Values) {
     ($Values | ForEach-Object {
+        # WSL parses its own option tokens before launching Linux. Leave plain
+        # flags/values unquoted; apply Windows escaping only when needed.
+        if ($_.Length -gt 0 -and $_ -notmatch '[\s"]') { $_; return }
         $quoted = [Text.StringBuilder]::new('"'); $slashes = 0
         foreach ($character in $_.ToCharArray()) {
             if ($character -eq '\') { $slashes++; continue }
