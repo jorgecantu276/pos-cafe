@@ -427,12 +427,13 @@ try {
       console.log('PASS: respaldo cifrado restaurado en otra base, con acceso, venta, corte, recetas, conteos, foto idéntica y dos impresiones registradas.');
     }
     await page.goto(`${base}/admin`);
-    const today = page.getByRole('region', { name: 'Hoy en la barra' });
+    const today = page.getByRole('region', { name: 'De tu receta a la barra', exact: true });
     await today.getByText('$89.50', { exact: true }).waitFor();
-    await today.getByRole('button', { name: 'Actualizar' }).click();
+    await today.getByRole('button', { name: 'Actualizar ventas', exact: true }).click();
     await today.getByText('$89.50', { exact: true }).waitFor();
     await page.screenshot({ path: path.join(artifacts, 'POS Smoothies - Hoy en la barra.png') });
-    await today.getByRole('link', { name: /Especial de la semana/ }).click();
+    await today.getByRole('link', { name: /^2\. Prepara tu menú/ }).click();
+    await page.locator('summary').filter({ hasText: 'Especial de la semana' }).click();
     await page.getByLabel('Smoothie destacado').waitFor();
     console.log('PASS: exact installed package completed import, catalog, recipe, sale, closing, and full backup restoration with external browser requests blocked.');
   }
