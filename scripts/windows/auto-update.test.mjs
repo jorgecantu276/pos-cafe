@@ -81,7 +81,7 @@ test('scheduled signed update is verified at 05:00; busy or missed runs never ca
   }
   let candidate = release(next, base), tampered = 'signature', zipDownloads = 0, sourceReads = 0;
   let clock = new Date('2026-11-27T11:00:00Z'), crossAfterManifest = false, crossAfterProbe = false;
-  let launchResult = { ready: true, code: 0 }, failActive = false;
+  let launchResult = { ready: true, code: 0 }, failActive = false, mutateDuringProbe = false;
   const launches = [], logs = [];
   const source = {
     async latest() { sourceReads++; return { draft: false, prerelease: false, tag_name: candidate.tag, assets: [{ name: 'pos-update.json' }, { name: candidate.name }] }; },
@@ -110,6 +110,7 @@ test('scheduled signed update is verified at 05:00; busy or missed runs never ca
         if (scheduled) { assert.equal(options.probe, true); assert.ok(options.signal); }
         if (failActive && commit === next) return { ready: false, code: 1 };
         if (launchResult.ready) ready();
+        if (scheduled && mutateDuringProbe) writeFileSync(path.join(directory, 'app/server.js'), 'startup changed signed bytes');
         if (crossAfterProbe) clock = new Date('2026-11-27T11:15:00Z');
         return launchResult;
       },
@@ -137,7 +138,13 @@ test('scheduled signed update is verified at 05:00; busy or missed runs never ca
   assert.equal(await run(), 0); assert.equal(zipDownloads, downloadsBeforeRepair + 1, 'damaged staged bytes are downloaded and reverified');
   assert.throws(state, /ENOENT/, 'a race with Caja never rejects the candidate');
   launchResult = { ready: true, code: 0 };
+  mutateDuringProbe = true;
+  assert.equal(await run(), 1); assert.throws(state, /ENOENT/, 'successful startup cannot activate changed signed bytes or blacklist the repairable package');
+  assert.ok(logs.some(value => value.startsWith('El paquete cambio durante')));
+  mutateDuringProbe = false;
+  const downloadsBeforePostProbeRepair = zipDownloads;
   assert.equal(await run(), 0); assert.deepEqual(state(), { active: next, previous: base, rejected: [], bootstrapCommit: base }, 'the deadline-deferred candidate is accepted on the next day');
+  assert.equal(zipDownloads, downloadsBeforePostProbeRepair + 1, 'startup mutation is repaired from the signed ZIP before retry');
   const downloadsBefore = zipDownloads, readsBefore = sourceReads;
   clock = new Date('2026-11-27T14:00:00Z');
   assert.equal(await run(), 0); assert.equal(sourceReads, readsBefore, 'no late catch-up');

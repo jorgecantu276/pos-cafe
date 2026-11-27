@@ -392,6 +392,11 @@ export async function runAutoUpdate({
       log('La version nueva no abrio. Se conserva la version anterior.');
       return result.busy ? 0 : 1;
     }
+    try { await verifyPackage(directory(prepared.commit), prepared, directory(active), baseline); }
+    catch {
+      log('El paquete cambio durante la comprobacion. Se conserva la version anterior.');
+      return 1;
+    }
     if (!inCafeUpdateWindow(now()) || !await closedShift(config) || !printJournalIdle(config) || !await isPortUnused(config.Port || 3000) || !inCafeUpdateWindow(now())) {
       log('Actualizacion aplazada: termino la ventana o cambio el estado de Caja.');
       return 0;
