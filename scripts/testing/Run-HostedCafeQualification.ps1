@@ -41,15 +41,76 @@ function Native {
             'GITHUB_ACTIONS','RUNNER_ENVIRONMENT','RUNNER_OS','ImageOS','GITHUB_RUN_ID','GITHUB_JOB','RUNNER_TRACKING_ID','RUNNER_TEMP','POS_ACCEPTANCE_DISPOSABLE','NEXT_TELEMETRY_DISABLED','POS_CAFE_REAL_DOCKER','POS_TEST_WSL_ENGINE','COMPOSE_CONVERT_WINDOWS_PATHS','POS_TEST_WSL_RECEIPT','SUPABASE_SERVICES_HOSTNAME')
         foreach ($key in @($start.Environment.Keys)) { if ($keep -inotcontains $key) { [void]$start.Environment.Remove($key) } }
     }
+    # Progress contains a controlled label only, never arguments or output.
+    if ($Label -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,160}$') { throw 'Unexpected hosted command label.' }
+    $stamp=$Label+'.'+[guid]::NewGuid().ToString('N')
+    $outFile=Join-Path $work ($stamp+'.stdout.private.log')
+    $errFile=Join-Path $work ($stamp+'.stderr.private.log')
+    $outStream=$null;$errStream=$null;$copyOut=$null;$copyErr=$null
     $process=[Diagnostics.Process]::new();$process.StartInfo=$start
+    $timedOut=$false;$drained=$false;$exited=$false;$nativeId=$null;$code=$null;$terminationFailure=$null
+    $timer=[Diagnostics.Stopwatch]::StartNew()
+    Write-Host ('Hosted command begin: '+$Label)
     try {
-        [void]$process.Start();$nativeId=$process.Id;$stdout=$process.StandardOutput.ReadToEndAsync();$stderr=$process.StandardError.ReadToEndAsync()
-        if (!$process.WaitForExit($Timeout*1000)) { $process.Kill($true);$process.WaitForExit();throw "Hosted command timed out: $Label" }
-        $text=$stdout.GetAwaiter().GetResult();$diagnostics=$stderr.GetAwaiter().GetResult()
-        [IO.File]::WriteAllText((Join-Path $work ($Label+'.stdout.private.log')),$text);[IO.File]::WriteAllText((Join-Path $work ($Label+'.stderr.private.log')),$diagnostics)
-        if ($process.ExitCode -ne 0 -and !$AllowFailure) { throw "Hosted command failed: $Label (private diagnostics retained on the disposable VM)." }
-        return @{text=$text;code=$process.ExitCode;pid=$nativeId}
-    } finally { $process.Dispose() }
+        $outStream=[IO.FileStream]::new($outFile,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::Asynchronous)
+        $errStream=[IO.FileStream]::new($errFile,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,4096,[IO.FileOptions]::Asynchronous)
+        [void]$process.Start();$nativeId=$process.Id
+        # CLR tasks write bytes directly; no PowerShell event or script callbacks.
+        $copyOut=$process.StandardOutput.BaseStream.CopyToAsync($outStream)
+        $copyErr=$process.StandardError.BaseStream.CopyToAsync($errStream)
+        $exited=$process.WaitForExit($Timeout*1000)
+        if (!$exited) {
+            $timedOut=$true
+            try { $process.Kill($true) } catch { $terminationFailure=$_.Exception.GetType().Name }
+            $exited=$process.WaitForExit(5000)
+        }
+        if ($exited) { $code=$process.ExitCode }
+        $copies=[Threading.Tasks.Task]::WhenAll([Threading.Tasks.Task[]]@($copyOut,$copyErr))
+        try { $drained=$copies.Wait(5000) } catch { $drained=$false }
+        if (!$drained) {
+            # A surviving descendant must not hold the parent drain indefinitely.
+            $process.StandardOutput.Close();$process.StandardError.Close()
+            try { [void]$copies.Wait(2000) } catch { }
+        }
+        try { $outStream.Flush() } catch { };try { $errStream.Flush() } catch { }
+        $outStream.Dispose();$outStream=$null;$errStream.Dispose();$errStream=$null
+        $failed=$timedOut -or !$exited -or !$drained -or $code -ne 0
+        if ($failed) {
+            function Read-HostedPrivateTail([string]$File) {
+                $stream=[IO.File]::Open($File,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+                try {
+                    $offset=[Math]::Max(0,$stream.Length-8192)
+                    [void]$stream.Seek($offset,[IO.SeekOrigin]::Begin)
+                    $reader=[IO.StreamReader]::new($stream,[Text.Encoding]::UTF8,$true,4096,$true)
+                    try { if ($offset -gt 0) { [void]$reader.ReadLine() };return $reader.ReadToEnd() } finally { $reader.Dispose() }
+                } finally { $stream.Dispose() }
+            }
+            function Protect-HostedTail([string]$Value) {
+                $safe=$Value -replace '(?i)(?:https?|postgres(?:ql)?):\/\/[^\s<>"'']+','[origin]'
+                $safe=$safe -replace 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+','[token]'
+                $safe=$safe -replace 'sb_secret_[A-Za-z0-9_-]+','[token]'
+                $safe=$safe -replace '(?i)(authorization\s*[:=]?\s*)(?:(?:Bearer|Basic)\s+)?[^\s,"'']+','$1[redacted]'
+                $safe=$safe -replace '(?i)([\w.-]*(?:password|passwd|pwd|token|api[_-]?key|service[_-]?role[_-]?key|anon[_-]?key|secret)[\w.-]*["'']?\s*[:=]\s*)(?:"[^"\r\n]*"|''[^''\r\n]*''|[^\s,;]+)','$1[redacted]'
+                $safe=$safe -replace '(?i)(--(?:password|token|api-key)\s+)[^\s]+','$1[redacted]'
+                return $safe
+            }
+            $failureFile=Join-Path $evidence 'hosted-command-failure.json'
+            if (Test-Path -LiteralPath $failureFile) { $failureFile=Join-Path $evidence ('hosted-command-failure-'+[guid]::NewGuid().ToString('N')+'.json') }
+            $record=[ordered]@{format='cafe-hosted-command-failure-v1';label=$Label;timedOut=$timedOut;exited=$exited;drainsCompleted=$drained;exitCode=$code;terminationFailureClass=$terminationFailure;
+                elapsedSeconds=[Math]::Round($timer.Elapsed.TotalSeconds,2);stdoutTail=(Protect-HostedTail (Read-HostedPrivateTail $outFile));stderrTail=(Protect-HostedTail (Read-HostedPrivateTail $errFile));rawLogsUploaded=$false}
+            [IO.File]::WriteAllText($failureFile,($record | ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
+        }
+        Write-Host ('Hosted command completed: '+$Label+'; exit='+$code+'; timedOut='+$timedOut+'; drainsCompleted='+$drained)
+        if ($timedOut) { throw "Hosted command timed out: $Label (sanitized evidence retained)." }
+        if (!$exited -or !$drained) { throw "Hosted command did not terminate and drain within its bounded cleanup: $Label" }
+        if ($code -ne 0 -and !$AllowFailure) { throw "Hosted command failed: $Label (sanitized evidence retained)." }
+        # Same complete successful stdout as ReadToEndAsync, decoded by StreamReader.
+        $text=[IO.File]::ReadAllText($outFile,$process.StandardOutput.CurrentEncoding)
+        return @{text=$text;code=$code;pid=$nativeId}
+    } finally {
+        if ($outStream) { $outStream.Dispose() };if ($errStream) { $errStream.Dispose() }
+        $process.Dispose()
+    }
 }
 function Extract-Verified([string]$Zip,[string]$Destination) {
     if (Test-Path -LiteralPath $Destination) { throw 'Never overwrite an extracted package.' }
@@ -99,7 +160,7 @@ try {
     if ((Get-FileHash -LiteralPath (Join-Path $source 'scripts/testing/cafe-docker-loopback.cs')).Hash.ToLowerInvariant() -cne $settings.hostInfrastructure.loopbackSha256) { throw 'Pinned test transport changed.' }
     $settings | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configuration -Encoding utf8NoBOM
     $phase='prepare-synthetic-backends'
-    [void](Native $orchestratorNode @((Join-Path $PSScriptRoot 'cafe-exact-acceptance.mjs'),'prepare',$configuration) 'prepare-backends' -Timeout 1500)
+    [void](Native $orchestratorNode @((Join-Path $PSScriptRoot 'cafe-exact-acceptance.mjs'),'prepare',$configuration) 'prepare-backends' -Timeout 300)
     $phase='prepare-independent-probes'
     $wsl=(Native 'wsl.exe' @('--distribution',$engine.distribution,'--user','root','--','hostname','-I') 'wsl-address').text.Replace([string][char]0,'').Trim().Split(' ',[StringSplitOptions]::RemoveEmptyEntries)
     $wslIp=@($wsl | Where-Object { $_ -match '^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)\d' } | Select-Object -First 1)
