@@ -40,12 +40,43 @@ $fixtureKey=Join-Path $WorkDirectory 'fixture-key-with-spaces test'
 if(!(Test-Path -LiteralPath $fixtureKey) -or (Get-Content -LiteralPath ($fixtureKey+'.pub') -Raw).Trim() -notmatch '^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$'){
     throw 'OpenSSH fixture key generation failed'
 }
+$guardNode=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Assert-OwnedKeepAlive'},$true)
+if(!$guardNode){throw 'Keepalive ownership guard was not found'}
+Invoke-Expression $guardNode.Extent.Text
+$created=[DateTime]::new(2026,11,27,1,2,3,[DateTimeKind]::Utc).AddTicks(1234567)
+$fixtureExecutable='C:\Windows\System32\wsl.exe'
+$fixtureOwner='0123456789abcdef0123456789abcdef'
+$fixtureProcess=[pscustomobject]@{
+    ProcessId=123456; ExecutablePath=$fixtureExecutable; CreationDate=$created
+    CommandLine="wsl.exe --distribution Ubuntu-24.04 --user root -- /usr/bin/env POS_HOSTED_OWNER=$fixtureOwner sleep infinity"
+}
+$fixtureReceipt=[pscustomobject]@{
+    owner=$fixtureOwner; distribution='Ubuntu-24.04'; keepAlivePid=123456; keepAliveExecutable=$fixtureExecutable
+    keepAliveStartedTicks=$created.Ticks.ToString([Globalization.CultureInfo]::InvariantCulture)
+}
+$receiptFile=Join-Path $WorkDirectory 'synthetic-engine.json'
+$fixtureReceipt | ConvertTo-Json | Set-Content -LiteralPath $receiptFile -Encoding utf8NoBOM
+$priorCulture=[Threading.Thread]::CurrentThread.CurrentCulture
+try {
+    foreach($culture in @('en-US','es-MX')) {
+        [Threading.Thread]::CurrentThread.CurrentCulture=[Globalization.CultureInfo]::GetCultureInfo($culture)
+        $roundTrip=Get-Content -LiteralPath $receiptFile -Raw | ConvertFrom-Json
+        if($roundTrip.keepAliveStartedTicks -isnot [string]){throw 'Keepalive start identity must remain a decimal string'}
+        Assert-OwnedKeepAlive $fixtureProcess $roundTrip $fixtureExecutable
+        $roundTrip.keepAliveStartedTicks=($created.Ticks+1).ToString([Globalization.CultureInfo]::InvariantCulture)
+        $rejected=$false
+        try{Assert-OwnedKeepAlive $fixtureProcess $roundTrip $fixtureExecutable}catch{$rejected=$true}
+        if(!$rejected){throw 'A reused keepalive PID with a different start time was accepted'}
+    }
+} finally { [Threading.Thread]::CurrentThread.CurrentCulture=$priorCulture }
+'keepalive-json-roundtrip-ok'
 'native-regression-ok'
 `);
       const result = await run('pwsh.exe', ['-NoProfile', '-File', script, '-Bootstrap',
         path.resolve('scripts/testing/Start-HostedWslDocker.ps1'), '-Node', process.execPath,
         '-WorkDirectory', directory], { timeout: 12_000 });
       assert.match(result.stdout, /native-regression-ok/);
+      assert.match(result.stdout, /keepalive-json-roundtrip-ok/);
       assert.equal(result.stderr, '');
     } finally { await rm(directory, { recursive: true, force: true }); }
   });

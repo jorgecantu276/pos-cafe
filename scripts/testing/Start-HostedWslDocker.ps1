@@ -29,7 +29,7 @@ function Assert-OwnedKeepAlive($Process, $Receipt, [string]$ExpectedExecutable) 
         !$Process.CommandLine.Contains('POS_HOSTED_OWNER=' + $Receipt.owner) -or
         !$Process.CommandLine.Contains('--distribution') -or !$Process.CommandLine.Contains($Receipt.distribution) -or
         !$Process.CommandLine.Contains('/usr/bin/env') -or !$Process.CommandLine.Contains('sleep') -or !$Process.CommandLine.Contains('infinity') -or
-        ([DateTimeOffset]::Parse($Receipt.keepAliveStartedAt)).UtcTicks -ne $Process.CreationDate.ToUniversalTime().Ticks) {
+        [Int64]::Parse($Receipt.keepAliveStartedTicks, [Globalization.CultureInfo]::InvariantCulture) -ne $Process.CreationDate.ToUniversalTime().Ticks) {
         throw 'Refusing to stop a reused or unowned WSL keepalive PID.'
     }
 }
@@ -231,7 +231,7 @@ docker info --format '{{.OSType}}'
         -RedirectStandardError (Join-Path $WorkDirectory 'keepalive.stderr.log')
     $keepAliveIdentity = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $keepAlive.Id)
     if (!$keepAliveIdentity) { throw 'The owned WSL keepalive exited before its identity was captured.' }
-    $keepAliveStartedAt = $keepAliveIdentity.CreationDate.ToUniversalTime().ToString('o')
+    $keepAliveStartedTicks = $keepAliveIdentity.CreationDate.ToUniversalTime().Ticks.ToString([Globalization.CultureInfo]::InvariantCulture)
     $hostPublicKey = (Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'cat', '/etc/ssh/ssh_host_ed25519_key.pub')).Trim()
     if ($hostPublicKey -notmatch '^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$') { throw 'The owned guest host key was not obtained.' }
     [IO.File]::WriteAllText($knownHostsFile, "[$guestAddress]:22222 $hostPublicKey`n", [Text.UTF8Encoding]::new($false))
@@ -335,7 +335,7 @@ services:
        tunnelPid = $tunnel.Id; sshExecutable = $ssh; keyFile = $keyFile; knownHostsFile = $knownHostsFile;
        windowsHostUnchanged = $true;
        windowsDaemonId = $windowsInfo.ID; windowsServicePid = $windowsServicePid;
-       keepAlivePid = $keepAlive.Id; keepAliveExecutable = $wslExecutable; keepAliveStartedAt = $keepAliveStartedAt;
+       keepAlivePid = $keepAlive.Id; keepAliveExecutable = $wslExecutable; keepAliveStartedTicks = $keepAliveStartedTicks;
        completedAt = [DateTimeOffset]::UtcNow.ToString('o');
        parity = @{ composeBindSha256 = $composeHash; rawBindSha256 = $rawHash; binaryCopySha256 = $expectedHash; loopbackPorts = @(58000,55432,55541,55542,55543,55544) } } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $receipt -Encoding utf8NoBOM
