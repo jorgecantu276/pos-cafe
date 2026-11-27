@@ -99,6 +99,7 @@ function recoveryDependency(name, parent = path.join(root, 'package.json')) {
 }
 recoveryDependency('pg');
 writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: 1, ...versionMetadata,
+  catalogRules: ['brownie-syrup-v1'],
   node: process.version, supabaseUrl: url.origin, publicKeySha256: createHash('sha256').update(key).digest('hex'),
   fixtureOnly: url.protocol === 'http:',
 }, null, 2));

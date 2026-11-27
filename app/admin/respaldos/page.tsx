@@ -3,29 +3,42 @@ import { posProfile } from '@/lib/pos-profile';
 
 import { useCallback, useEffect, useState } from 'react';
 import type { BackupStatus } from '@/lib/business-backup-server';
+import { useResource } from '@/lib/use-resource';
 import { SettingsGroup, SettingsRow, SettingsNotice } from '../Settings';
 
 const date = (value: string) => new Date(value).toLocaleString('es-MX', { timeZone: 'America/Matamoros' });
 export default function BackupsPage() {
-  const [status, setStatus] = useState<BackupStatus | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  const load = useCallback(async () => {
-    const response = await fetch('/api/backups', { cache: 'no-store', signal: AbortSignal.timeout(12_000) });
+  const [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const readStatus = useCallback(async (signal: AbortSignal): Promise<BackupStatus> => {
+    const response = await fetch('/api/backups', { cache: 'no-store', signal });
     const result = await response.json(); if (!response.ok) throw Error(result.error || 'No se pudieron cargar los respaldos.');
-    setStatus(result);
+    return result;
   }, []);
-  useEffect(() => { void Promise.resolve().then(load).catch(() => setError('No se pudieron cargar los respaldos.')); }, [load]);
+  const { data: status, setData: setStatus, error: readError, reload: load } = useResource<BackupStatus | null>(readStatus, null);
+  const failure = error || (readError ? 'No se pudieron cargar los respaldos.' : '');
+  useEffect(() => {
+    if (!status?.running || busy) return;
+    let active = true;
+    const poll = async () => {
+      await load();
+      if (active) timer = window.setTimeout(poll, 1_000);
+    };
+    let timer = window.setTimeout(poll, 1_000);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [status?.running, busy, load]);
   const run = async () => {
     if (busy) return; setBusy(true); setError('');
     try {
       const response = await fetch('/api/backups', { method: 'POST', headers: { 'X-Pos-Backup': '1' }, signal: AbortSignal.timeout(90_000) });
       const result = await response.json(); if (!response.ok) throw Error(result.error || 'No se confirmó el respaldo. Actualiza para comprobarlo.');
       setStatus(result);
+      await load();
     } catch { setError('No se confirmó el respaldo. Actualiza para comprobarlo.'); await load().catch(() => {}); }
     finally { setBusy(false); }
   };
   return <div className="settings-page"><div className="settings-page-heading"><h1>Respaldos</h1><button type="button" className="settings-button" disabled={busy} onClick={() => void load().then(() => setError('')).catch(() => setError('No se pudieron cargar los respaldos.'))}>Actualizar</button></div>
-    {error && <SettingsNotice error>{error}</SettingsNotice>}
-    {!status && !error && <p role="status">Cargando respaldos…</p>}
+    {failure && <SettingsNotice error>{failure}</SettingsNotice>}
+    {!status && !failure && <p role="status">Cargando respaldos…</p>}
     {status && <>
       <SettingsGroup title="Copias de seguridad">
         <SettingsRow label="Respaldo automático" detail={status.enabled ? 'Diario y al terminar turno' : undefined}><span className={`settings-badge${status.enabled ? ' is-on' : ''}`}>{status.enabled ? 'Activado' : 'Sin configurar'}</span></SettingsRow>

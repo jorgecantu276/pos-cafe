@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 // These checks exercise the runner's actual fail-closed target validation.
-import { localSettings, localDocker, baselineStatements } from '../scripts/staging/safety.mjs';
+import { localSettings, localDocker, hostedDockerContext, baselineStatements } from '../scripts/staging/safety.mjs';
 
 const local = { API_URL: 'http://127.0.0.1:55451', DB_URL: 'postgresql://postgres:test@127.0.0.1:55452/postgres',
   ANON_KEY: 'synthetic-local-anon-key-only', SERVICE_ROLE_KEY: 'synthetic-local-service-key-only' };
@@ -23,10 +23,34 @@ test('staging runner refuses all hosted, redirected, wrong-port and credential-b
 
 test('staging runner refuses remote Docker engines and reconstructs only catalog definitions', () => {
   localDocker('npipe:////./pipe/dockerDesktopLinuxEngine');
-  for (const endpoint of ['tcp://example.com:2375', 'ssh://host', 'unix:///tmp/other.sock']) assert.throws(() => localDocker(endpoint));
+  for (const endpoint of ['tcp://example.com:2375', 'tcp://127.0.0.1:2375', 'ssh://host', 'unix:///tmp/other.sock']) assert.throws(() => localDocker(endpoint));
   const snapshot = JSON.parse(readFileSync(new URL('../supabase/schema.snapshot.json', import.meta.url), 'utf8'));
   const statements: string[] = baselineStatements(snapshot);
   assert.equal(statements.filter(sql => sql.startsWith('create table public.')).length, 18);
   assert.ok(!statements.some(sql => /\b(?:insert into|copy)\b/i.test(sql)));
   assert.ok(statements.some(sql => /references auth\.users/i.test(sql)));
+});
+
+test('only exact current-run hosted WSL context proof permits only the owned private WSL peer transport', () => {
+  const owner = 'a'.repeat(32), name = 'pos-hosted-' + owner, endpoint = 'tcp://172.28.2.5:2376';
+  const env = { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Windows', ImageOS: 'win25',
+    POS_ACCEPTANCE_DISPOSABLE: '1', POS_TEST_WSL_ENGINE: '1', GITHUB_RUN_ID: '1234', GITHUB_JOB: 'smoothies-installed-lan' };
+  const context = { Name: name, Endpoints: { docker: { Host: endpoint } } };
+  const engine = { ID: 'synthetic-daemon', OSType: 'linux', KernelVersion: '6.6.1-microsoft-standard-WSL2', Labels: ['mx.pos-hosted-rehearsal=' + owner] };
+  const receipt = { version: 3, owner, runId: '1234', job: 'smoothies-installed-lan', distribution: 'Ubuntu-24.04',
+    proxy: { guestAddress: '172.28.2.5', windowsGateway: '172.28.0.1', guestPrefixLength: 20, gatewayInterfaceIndex: 12, pid: 456, unit: 'pos-transport-' + owner + '.service', scriptSha256: 'd'.repeat(64), endpoint },
+    daemonId: engine.ID, kernel: engine.KernelVersion, context: name, endpoint, completedAt: new Date().toISOString(),
+    parity: { composeBindSha256: 'b'.repeat(64), rawBindSha256: 'b'.repeat(64), binaryCopySha256: 'b'.repeat(64), loopbackPorts: [58000, 55432, 55541, 55542, 55543, 55544] } };
+  const inspect = (change = {}) => hostedDockerContext(context, engine, { ...receipt, ...change }, env, 'win32', Date.now(), ['172.28.0.1']);
+  inspect();
+  for (const change of [{ guestAddress: '8.8.8.8' }, { windowsGateway: '172.28.0.2' }, { guestPrefixLength: 32 }, { guestAddress: '172.29.2.5' }, { unit: 'foreign.service' }, { pid: 0 }, { scriptSha256: '' }]) assert.throws(() => inspect({ proxy: { ...receipt.proxy, ...change } }));
+  assert.throws(() => hostedDockerContext(context, engine, receipt, env, 'win32', Date.now(), []));
+  for (const field of Object.keys(env)) assert.throws(() => hostedDockerContext(context, engine, receipt, { ...env, [field]: '' }, 'win32', Date.now(), ['172.28.0.1']));
+  for (const change of [{ owner: 'c'.repeat(32) }, { runId: '999' }, { job: 'another-job' }, { daemonId: 'foreign-daemon' },
+    { version: 1 }, { endpoint: 'tcp://example.com:2375' }, { context: 'default' }, { completedAt: '2001-01-01T00:00:00Z' },
+    { parity: { ...receipt.parity, binaryCopySha256: 'c'.repeat(64) } }, { parity: { ...receipt.parity, loopbackPorts: [58000] } }]) assert.throws(() => inspect(change));
+  assert.throws(() => hostedDockerContext(context, { ...engine, Labels: [] }, receipt, env, 'win32', Date.now(), ['172.28.0.1']));
+  assert.throws(() => hostedDockerContext(context, engine, receipt, { ...env, DOCKER_HOST: endpoint }, 'win32'));
+  assert.throws(() => hostedDockerContext(context, engine, receipt, env, 'linux'));
+  assert.throws(() => hostedDockerContext({ ...context, Name: 'default' }, engine, receipt, env, 'win32', Date.now(), ['172.28.0.1']));
 });

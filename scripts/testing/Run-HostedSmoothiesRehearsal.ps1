@@ -9,6 +9,8 @@ param(
     [string]$EvidenceDirectory
 )
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'Hosted-LanTrust.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'HostedProcess.psm1') -Force -DisableNameChecking
 
 # This driver is intentionally unavailable on an operator's or development PC.
 # The workflow owns a new hosted Windows 2025 VM and its WSL Docker daemon.
@@ -49,8 +51,7 @@ $privateEvidence = Join-Path $work 'acceptance-private'
 $null = New-Item -ItemType Directory -Path $privateEvidence
 $phase = 'host-validation'
 $result = 'fail'
-$temporaryThumbprint = $null
-$temporaryCertificateHash = $null
+$temporaryTrustIdentity = $null
 $temporaryTrustChanged = $false
 $temporaryTrustRemoved = $true
 $acceptance = $null
@@ -63,12 +64,21 @@ $failureScript = $null
 $failureLine = $null
 $failureExitCode = $null
 $failureDiagnostics = @()
+$ownedEngineValidated = $false
+$ownedProxyRemoved = $false
+$ownedContextRemoved = $false
+$imageCacheProof = $null
 $requiredChecks = @('zip-build-equality','complete-file-index','exact-zip-install','private-config','launch-reuse','browser-offline','json-import',
     'opening-counts','photos','private-recipes','extra-scope','weekly-special','cash-sale','closing','gzip','backup-attachment','full-restore','signed-live-update','docker-restart','installer-repair',
     'external-ciphertext-copy','external-copy-failure-local-preserved','external-copy-restart-retry')
 
 function ConvertTo-SafeRehearsalDiagnostic {
     param([string]$Text)
+    # Retain only allowlisted basenames/numeric lines before redacting paths.
+    # These frames can distinguish a route assertion from a later UI await.
+    $frames = @([regex]::Matches([string]$Text, '(?<file>acceptance(?:-ui|-update)?\.mjs|auto-update\.mjs|prepare-local\.mjs|start-local\.mjs|restore-local\.mjs):(?<line>[1-9][0-9]{0,6}):[0-9]{1,6}(?![0-9])') | ForEach-Object {
+        '[acceptance frame] ' + $_.Groups['file'].Value + ':' + $_.Groups['line'].Value
+    } | Select-Object -Unique | Select-Object -First 32)
     $safe = $Text -replace '(?im)^.*(?:password|passwd|secret|service.?role|jwt|authorization|api.?key|access_token|refresh_token|SMOOTHIES_(?:ANON|SERVICE|DATABASE|ADMIN)|p_payload).*$','[redacted sensitive log line]'
     $safe = $safe -replace '(?i)\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b','[redacted token]'
     $safe = $safe -replace '(?i)\bpostgres(?:ql)?://[^\s"''<>]+','[redacted database URL]'
@@ -76,21 +86,40 @@ function ConvertTo-SafeRehearsalDiagnostic {
     $safe = $safe -replace '(?i)(?:https?|file)://[^\s"''<>]+','[redacted URL]'
     $safe = $safe -replace '(?i)/(?:home|mnt|root|tmp|run)/[^\s"''<>]+','[redacted runner path]'
     $safe = $safe -replace '[A-Za-z0-9_+/=\-]{32,}','[redacted long value]'
-    return @($safe -split '\r?\n' | Where-Object { $_.Trim() } | Select-Object -Last 45 | ForEach-Object {
+    $lines = @($safe -split '\r?\n' | Where-Object { $_.Trim() } | ForEach-Object {
         if ($_.Length -gt 300) { $_.Substring(0,300) + ' [truncated]' } else { $_ }
     })
+    $primary = @()
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match '(?i)(?:^\s*(?:AssertionError|TimeoutError|Error[: ]|locator\.(?:click|fill|waitFor))|\b(?:ERR_ASSERTION|Rate exceeded|failed to|unexpected status|panic:|FATAL:))') {
+            $primary += $index
+            if ($primary.Count -eq 4) { break }
+        }
+    }
+    if ($primary.Count) {
+        $windows = @(foreach ($position in $primary) {
+            $first = [Math]::Max(0, $position - 2); $last = [Math]::Min($lines.Count - 1, $position + 7)
+            $lines[$first..$last]
+        })
+        return @($windows + $frames + @($lines | Select-Object -Last 10) | Select-Object -Unique | Select-Object -First 60)
+    }
+    return @($frames + @($lines | Select-Object -Last 45) | Select-Object -Unique | Select-Object -First 60)
 }
 
 function Invoke-PrivateRehearsalCommand {
-    param([string]$Executable, [string[]]$Arguments, [string]$LogName)
+    param([string]$Executable, [string[]]$Arguments, [string]$LogName, [ValidateRange(1,3600)][int]$TimeoutSeconds = 1800)
     # Never upload or print these private synthetic setup/server logs. The only
     # exported artifact is the explicitly projected acceptance JSON below.
-    $exitCode = 0
-    try { & $Executable @Arguments *> (Join-Path $work $LogName); $exitCode = $LASTEXITCODE }
-    catch { $exitCode = if ($LASTEXITCODE) { $LASTEXITCODE } else { 1 } }
+    $stdoutFile = Join-Path $work ($LogName + '.stdout.log')
+    $stderrFile = Join-Path $work ($LogName + '.stderr.log')
+    Write-Host ('Starting hosted rehearsal phase ' + $phase + ' (owned command deadline ' + $TimeoutSeconds + 's).')
+    $completed = Invoke-HostedProcess -Executable $Executable -Arguments $Arguments -StdoutFile $stdoutFile -StderrFile $stderrFile -TimeoutSeconds $TimeoutSeconds
+    $exitCode = if ($completed.TimedOut) { -1 } else { $completed.ExitCode }
+    Write-Host ('Completed owned command during ' + $phase + ' (root exit ' + $exitCode + '; deadline exceeded ' + $completed.TimedOut + '; output drain bounded ' + $completed.DrainTimedOut + ').')
     if ($exitCode -ne 0) {
         $script:failureExitCode = $exitCode
-        $log = Get-Content -LiteralPath (Join-Path $work $LogName) -Tail 250 -ErrorAction SilentlyContinue | Out-String
+        $log = (@(Get-Content -LiteralPath $stdoutFile -Tail 512 -ErrorAction SilentlyContinue) +
+            @(Get-Content -LiteralPath $stderrFile -Tail 512 -ErrorAction SilentlyContinue)) -join "`n"
         foreach ($knownCode in @('ERR_ASSERTION','EADDRINUSE','ECONNREFUSED','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE','DEPTH_ZERO_SELF_SIGNED_CERT')) {
             if ($log.Contains($knownCode)) { $script:failureCode = $knownCode; break }
         }
@@ -99,6 +128,8 @@ function Invoke-PrivateRehearsalCommand {
             $script:failureLine = [int]$Matches.line
         }
         $script:failureDiagnostics = @(ConvertTo-SafeRehearsalDiagnostic $log)
+        Write-Host ('Hosted rehearsal command failed during ' + $phase + ' (exit ' + $exitCode + ').')
+        foreach ($line in $script:failureDiagnostics) { Write-Host $line }
         throw 'The bounded rehearsal command did not complete successfully.'
     }
 }
@@ -108,6 +139,55 @@ function Get-RehearsalJson {
     $item = Get-Item -LiteralPath $Path -Force
     if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -gt 65536) { throw 'Unexpected rehearsal receipt.' }
     return (Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json)
+}
+
+function Invoke-HostedImagePrefetch([string]$Docker, [string]$ComposeFile) {
+    foreach ($attempt in 1..3) {
+        $logName = 'image-prefetch-attempt-' + $attempt + '.private.log'
+        try {
+            Invoke-PrivateRehearsalCommand $Docker @('compose','--parallel','1','--project-name','smoothies-rehearsal-image-prefetch','-f',$ComposeFile,'pull','--policy','missing') $logName
+            # A genuine successful pull supersedes only prior warmup failures.
+            $script:failureExitCode = $null; $script:failureCode = $null; $script:failureScript = $null
+            $script:failureLine = $null; $script:failureDiagnostics = @()
+            return
+        } catch {
+            $privateTail = (@(Get-Content -LiteralPath (Join-Path $work ($logName + '.stdout.log')) -Tail 125 -ErrorAction SilentlyContinue) +
+                @(Get-Content -LiteralPath (Join-Path $work ($logName + '.stderr.log')) -Tail 125 -ErrorAction SilentlyContinue)) -join "`n"
+            $throttled = $privateTail -match '(?im)(?:error from registry:\s*Rate exceeded|HTTP(?:/[0-9.]+)?\s+429\b|(?:unexpected status|status code)[^\r\n]*\b429\b)'
+            $otherFailure = $privateTail -match '(?im)(?:unauthorized|authentication required|failed to authorize|no basic auth credentials|access denied|denied:|HTTP(?:/[0-9.]+)?\s+40[13]\b|(?:unexpected status|status code)[^\r\n]*\b40[13]\b|manifest unknown|manifest[^\r\n]*not found|no matching manifest|context deadline exceeded|i/o timeout|TLS handshake timeout|timed? out)'
+            if ($script:failureExitCode -gt 0 -and !$otherFailure -and $privateTail -match '(?im)error from registry:\s*Data limit exceeded\b') {
+                $cacheReceipt = Join-Path $work 'image-cache-proof.json'
+                Write-Host 'Original registry data quota exhausted; verifying exact official image equivalence before a CI-only cache fill.'
+                Invoke-PrivateRehearsalCommand $node @((Join-Path $source 'scripts\testing\hosted-image-cache.mjs'),$ComposeFile,$cacheReceipt) 'image-cache.private.log'
+                $cache = Get-RehearsalJson $cacheReceipt
+                if ($cache.protocol -ne 1 -or $cache.result -cne 'pass' -or $cache.sourceCommit -cne $env:GITHUB_SHA -or
+                    $cache.runId -cne $env:GITHUB_RUN_ID -or $cache.job -cne $env:GITHUB_JOB -or
+                    $cache.owner -cne $engineReceipt.owner -or $cache.daemonId -cne $engineReceipt.daemonId -or @($cache.images).Count -ne 5) { throw 'The exact-image cache receipt differs from this owned hosted job.' }
+                # Cache equivalence never substitutes for the original command.
+                Invoke-PrivateRehearsalCommand $Docker @('compose','--parallel','1','--project-name','smoothies-rehearsal-image-prefetch','-f',$ComposeFile,'pull','--policy','missing') 'image-prefetch-after-cache.private.log'
+                $script:imageCacheProof = $cache
+                $script:failureExitCode = $null; $script:failureCode = $null; $script:failureScript = $null
+                $script:failureLine = $null; $script:failureDiagnostics = @()
+                return
+            }
+            if ($attempt -eq 3 -or $script:failureExitCode -le 0 -or !$throttled -or $otherFailure) { throw }
+            $delaySeconds = 15 * $attempt
+            Write-Host ('Original image registry throttled warmup attempt ' + $attempt + '; retrying missing original tags in ' + $delaySeconds + 's.')
+            Start-Sleep -Seconds $delaySeconds
+        }
+    }
+}
+
+function Invoke-OwnedProxy([ValidateSet('check','stop')][string]$Action) {
+    $proxy = $engineReceipt.proxy
+    $helper = Join-Path ([IO.Path]::GetDirectoryName($engineReceiptPath)) 'guest-transport-control.sh'
+    $item = Get-Item -LiteralPath $helper -Force
+    if ($proxy.script -cne $helper -or $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+        $proxy.scriptSha256 -cnotmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash.ToLowerInvariant() -cne $proxy.scriptSha256) { throw 'The owned transport helper changed.' }
+    if ($helper -notmatch '^([A-Za-z]):[\\/](.*)$') { throw 'The helper must use a local runner drive.' }
+    $guestHelper = '/mnt/' + $Matches[1].ToLowerInvariant() + '/' + $Matches[2].Replace('\','/')
+    $output = & wsl.exe --distribution Ubuntu-24.04 --user root -- bash $guestHelper $proxy.guestAddress $proxy.windowsGateway $engineReceipt.owner $Action ([string]$proxy.pid)
+    if ($LASTEXITCODE -ne 0 -or ($Action -ceq 'check' -and ($output | Out-String).Trim() -cne 'owned-listener-active')) { throw 'The owned transport unit did not confirm its exact live identity.' }
 }
 
 try {
@@ -128,12 +208,30 @@ try {
         if (!$ancestor) { throw 'The engine receipt escaped its runner-temporary owner.' }
     }
     $engineReceipt = Get-RehearsalJson $engineReceiptPath
-    if ($engineReceipt.version -ne 1 -or $engineReceipt.owner -cnotmatch '^[a-f0-9]{32}$' -or
+    $selectedContext = (& $docker 'context' 'inspect' | Out-String) | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) { throw 'The actual Docker context is unavailable.' }
+    if ($engineReceipt.version -ne 3 -or $engineReceipt.owner -cnotmatch '^[a-f0-9]{32}$' -or
         $engineReceipt.daemonId -cne $engine.ID -or ('mx.pos-hosted-rehearsal=' + $engineReceipt.owner) -cnotin $engine.Labels -or
-        $engineReceipt.distribution -cne 'Ubuntu-24.04' -or $engineReceipt.pipe -cne 'npipe:////./pipe/docker_engine' -or
+        $engineReceipt.distribution -cne 'Ubuntu-24.04' -or $engineReceipt.endpoint -cne ('tcp://' + $engineReceipt.proxy.guestAddress + ':2376') -or
+        $engineReceipt.context -cne ('pos-hosted-' + $engineReceipt.owner) -or $engineReceipt.runId -cne $env:GITHUB_RUN_ID -or
+        $engineReceipt.job -cne $env:GITHUB_JOB -or @($selectedContext).Count -ne 1 -or
+        $selectedContext[0].Name -cne $engineReceipt.context -or $selectedContext[0].Endpoints.docker.Host -cne $engineReceipt.endpoint -or
         $engineReceipt.kernel -cnotmatch '^[A-Za-z0-9._+()-]{1,128}$' -or $engineReceipt.kernel -cne $engine.KernelVersion) {
         throw 'The receipt does not identify the actual owned WSL Linux daemon.'
     }
+    if ($env:DOCKER_HOST -or $env:DOCKER_CONTEXT -or $env:POS_ACCEPTANCE_DISPOSABLE -cne '1') { throw 'The current fresh-host transport cannot be overridden.' }
+    $proxy = $engineReceipt.proxy
+    foreach ($address in @($proxy.guestAddress,$proxy.windowsGateway)) {
+        $parsed = $null
+        if (![Net.IPAddress]::TryParse($address,[ref]$parsed) -or $parsed.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork -or
+            $parsed.ToString() -cne $address -or $address -cnotmatch '^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)') { throw 'Only exact private same-host WSL addresses are accepted.' }
+    }
+    $gateway = @(Get-NetIPAddress -AddressFamily IPv4 -IPAddress $proxy.windowsGateway -ErrorAction SilentlyContinue)
+    if ($proxy.guestAddress -ceq $proxy.windowsGateway -or $gateway.Count -ne 1 -or $gateway[0].InterfaceIndex -ne $proxy.gatewayInterfaceIndex -or
+        $proxy.unit -cne ('pos-transport-' + $engineReceipt.owner + '.service') -or $proxy.pid -le 0 -or
+        $proxy.endpoint -cne $engineReceipt.endpoint -or $proxy.guestPrefixLength -lt 1 -or $proxy.guestPrefixLength -gt 30) { throw 'The private transport ownership differs.' }
+    Invoke-OwnedProxy 'check'
+    $ownedEngineValidated = $true
     $completedAt = [DateTimeOffset]::MinValue
     if (![DateTimeOffset]::TryParse([string]$engineReceipt.completedAt,[ref]$completedAt) -or
         $completedAt -lt [DateTimeOffset]::UtcNow.AddHours(-1) -or $completedAt -gt [DateTimeOffset]::UtcNow.AddMinutes(5)) { throw 'The owned engine receipt must be fresh for this rehearsal.' }
@@ -143,7 +241,7 @@ try {
     $requiredPorts = @(58000,55432,55541,55542,55543,55544)
     if (@($parity.loopbackPorts).Count -ne $requiredPorts.Count -or @($requiredPorts | Where-Object { $parity.loopbackPorts -notcontains $_ }).Count) { throw 'Every required Windows loopback port must have completed genuine container parity.' }
     $platformProof = @{ state = 'verified'; host = 'github-hosted-windows-2025'; image = $env:ImageOS;
-        engine = 'linux'; distribution = 'Ubuntu-24.04'; kernel = [string]$engineReceipt.kernel;
+        engine = 'linux'; distribution = 'Ubuntu-24.04'; kernel = [string]$engineReceipt.kernel; transport = 'owned-wsl-private-peer'; peerRestriction = 'windows-gateway-only';
         parity = @{ composeBind = 'verified'; rawCliBind = 'verified'; binaryCopy = 'verified'; windowsLoopbackPorts = $requiredPorts } }
 
     $phase = 'immutable-artifact-download'
@@ -227,11 +325,11 @@ console.log('Original candidate manifest, full file index and every file verifie
     $null = New-Item -ItemType Directory -Path $warmDirectory
     $warmSettings = Join-Path $warmDirectory 'instalacion.env'
     Invoke-PrivateRehearsalCommand $bundledNode @((Join-Path $reference 'app\scripts\smoothies\provision-supabase.mjs'),$warmSettings) 'image-config.private.log'
-    Invoke-PrivateRehearsalCommand $docker @('compose','--project-name','smoothies-rehearsal-image-prefetch','-f',
-        (Join-Path $warmDirectory 'supabase\compose.yml'),'pull') 'image-prefetch.private.log'
+    Invoke-HostedImagePrefetch $docker (Join-Path $warmDirectory 'supabase\compose.yml')
     Write-Host 'Prefetched the original local-backend images before the offline installer rehearsal.'
 
-    $phase = 'synthetic-lan-trust'
+    $phase = 'synthetic-lan-certificate'
+    Write-Host 'Starting bounded synthetic LAN certificate generation.'
     $routes = @(Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop | Sort-Object RouteMetric,InterfaceMetric)
     $address = $null
     foreach ($route in $routes) {
@@ -243,8 +341,9 @@ console.log('Original candidate manifest, full file index and every file verifie
     $origin = 'https://' + $address + ':3443'
     $certificateDirectory = Join-Path $work 'https'
     $certificateLog = Join-Path $work 'certificate.json'
-    & $bundledNode (Join-Path $reference 'app\scripts\smoothies\provision-lan.mjs') $origin $certificateDirectory 1>$certificateLog 2>(Join-Path $work 'certificate.private.log')
-    if ($LASTEXITCODE -ne 0) { throw 'The synthetic LAN certificate could not be provisioned.' }
+    $certificateJson = Invoke-HostedBoundedProcess -Executable $bundledNode -Arguments @((Join-Path $reference 'app\scripts\smoothies\provision-lan.mjs'),$origin,$certificateDirectory) -Seconds 120
+    [IO.File]::WriteAllText($certificateLog, $certificateJson, [Text.UTF8Encoding]::new($false))
+    Write-Host 'Bounded synthetic LAN certificate generation completed.'
     $certificate = Get-RehearsalJson $certificateLog
     if ($certificate.origin -cne $origin) { throw 'The certificate origin differs from the selected host interface.' }
     foreach ($file in @($certificate.certFile,$certificate.keyFile,$certificate.publicCertificate)) {
@@ -253,15 +352,13 @@ console.log('Original candidate manifest, full file index and every file verifie
     }
     $publicPem = [IO.Path]::ChangeExtension([string]$certificate.publicCertificate, '.pem')
     if (!(Test-Path -LiteralPath $publicPem -PathType Leaf)) { throw 'The generated public CA PEM is missing.' }
-    $ca = New-Object Security.Cryptography.X509Certificates.X509Certificate2([string]$certificate.publicCertificate)
-    $thumbprint = $ca.Thumbprint
-    if ($thumbprint -cnotmatch '^[A-F0-9]{40}$' -or (Test-Path -LiteralPath ('Cert:\CurrentUser\Root\' + $thumbprint))) { throw 'The synthetic authority must be new on this disposable VM.' }
-    $temporaryThumbprint = $thumbprint
-    $hash = [Security.Cryptography.SHA256]::Create()
-    try { $temporaryCertificateHash = [Convert]::ToBase64String($hash.ComputeHash($ca.RawData)) } finally { $hash.Dispose() }
+    $temporaryTrustIdentity = New-HostedLanTrustIdentity $certificate.publicCertificate
     $temporaryTrustRemoved = $false
-    Import-Certificate -FilePath $certificate.publicCertificate -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+    $phase = 'synthetic-lan-machine-trust'
+    Write-Host 'Starting bounded exact synthetic machine-root import.'
+    Add-HostedLanTrust $temporaryTrustIdentity
     $temporaryTrustChanged = $true
+    Write-Host 'Bounded exact synthetic machine-root import completed.'
 
     $env:NODE_EXTRA_CA_CERTS = $publicPem
     $env:POS_TEST_LAN_ORIGIN = $origin
@@ -300,17 +397,23 @@ console.log('Original candidate manifest, full file index and every file verifie
     $result = 'fail'
     if (!$failureDiagnostics.Count) { $failureDiagnostics = @(ConvertTo-SafeRehearsalDiagnostic $_.Exception.Message) }
 } finally {
-    if ($temporaryThumbprint) {
+    if ($ownedEngineValidated) {
         try {
-            $certificatePath = 'Cert:\CurrentUser\Root\' + $temporaryThumbprint
-            if (Test-Path -LiteralPath $certificatePath) {
-                $stored = Get-Item -LiteralPath $certificatePath
-                $hash = [Security.Cryptography.SHA256]::Create()
-                try { $storedHash = [Convert]::ToBase64String($hash.ComputeHash($stored.RawData)) } finally { $hash.Dispose() }
-                if ($storedHash -cne $temporaryCertificateHash) { throw 'The temporary certificate identity changed.' }
-                Remove-Item -LiteralPath $certificatePath -Force
-            }
-            $temporaryTrustRemoved = !(Test-Path -LiteralPath $certificatePath)
+            Invoke-OwnedProxy 'stop'
+            $ownedProxyRemoved = $true
+            $context = (& $docker context inspect $engineReceipt.context | Out-String) | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or @($context).Count -ne 1 -or $context[0].Name -cne $engineReceipt.context -or $context[0].Endpoints.docker.Host -cne $engineReceipt.endpoint) { throw 'The owned context changed before cleanup.' }
+            if ((& $docker context show).Trim() -ceq $engineReceipt.context) { & $docker context use default | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'Could not restore default context.' } }
+            & $docker context rm $engineReceipt.context | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not remove the exact owned context.' }
+            $ownedContextRemoved = $true
+        } catch { $result = 'fail'; $phase = 'owned-transport-cleanup' }
+    }
+    if ($temporaryTrustIdentity) {
+        try {
+            Remove-HostedLanTrust $temporaryTrustIdentity
+            $temporaryTrustRemoved = $true
+            Write-Host 'Exact temporary synthetic machine root removed.'
         } catch { $temporaryTrustRemoved = $false }
         if (!$temporaryTrustRemoved) { $result = 'fail'; $phase = 'temporary-trust-cleanup' }
     }
@@ -321,11 +424,14 @@ console.log('Original candidate manifest, full file index and every file verifie
         originalCandidateModified = $originalCandidateModified; candidateIntegrity = @{ before = $candidateIntegrityBefore; after = $candidateIntegrityAfter }
         platform = $platformProof; tlsVerification = 'enabled'; actualDeviceAcceptance = 'pending'
         temporaryTrustChanged = $temporaryTrustChanged; temporaryTrustRemoved = $temporaryTrustRemoved
+        temporaryTrustStore = 'LocalMachine\Root'
+        ownedProxyRemoved = $ownedProxyRemoved; ownedContextRemoved = $ownedContextRemoved
     }
     if ($failureExitCode -ne $null) { $proof.childExitCode = $failureExitCode }
     if ($failureCode) { $proof.failureCode = $failureCode }
     if ($failureScript) { $proof.failureScript = $failureScript; $proof.failureLine = $failureLine }
     if ($failureDiagnostics.Count) { $proof.failureDiagnostics = $failureDiagnostics }
+    if ($imageCacheProof) { $proof.imageCache = $imageCacheProof }
     if ($result -ceq 'pass') {
         $proof.checks = @($acceptance.checks | Where-Object { $requiredChecks -ccontains [string]$_ })
     }

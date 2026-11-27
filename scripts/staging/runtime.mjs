@@ -1,10 +1,10 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { localDocker, localSettings, project } from './safety.mjs';
+import { hostedDockerContext, localDocker, localSettings, project } from './safety.mjs';
 import assert from 'node:assert/strict';
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -29,16 +29,54 @@ export function realDockerExecutable() {
 export function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd: root, windowsHide: true, ...options, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '';
-    child.stdout.on('data', data => { stdout = (stdout + data).slice(-2_000_000); });
-    child.stderr.on('data', data => { stderr = (stderr + data).slice(-2_000_000); });
-    child.on('error', reject);
-    child.on('exit', code => code === 0 ? resolve(stdout) : reject(new Error(`${path.basename(command)} failed (${code}): ${redact(stderr || stdout)}`)));
+    const stdout = outputCapture(), stderr = outputCapture();
+    let settled = false, drain;
+    const complete = (code, incomplete = false) => {
+      if (settled) return;
+      settled = true; clearTimeout(drain);
+      if (incomplete) { child.stdout.destroy(); child.stderr.destroy(); }
+      finishCapture(stdout); finishCapture(stderr);
+      if (code === 0 && !incomplete) return resolve(stdout.tail);
+      const details = [diagnosticCapture(stderr, 'stderr'), diagnosticCapture(stdout, 'stdout')].filter(Boolean).join('\n');
+      reject(new Error(`${path.basename(command)} failed (${code}): ${details}${incomplete ? '\n[owned output drain exceeded 1000ms]' : ''}`));
+    };
+    child.stdout.on('data', data => appendCapture(stdout, data));
+    child.stderr.on('data', data => appendCapture(stderr, data));
+    child.once('error', error => { if (!settled) { settled = true; clearTimeout(drain); reject(error); } });
+    // 'exit' can precede final pipe bytes, while an inherited writer can keep
+    // 'close' pending indefinitely. Wait for close under a post-root deadline.
+    child.once('exit', code => { drain = setTimeout(() => complete(code, true), 1000); });
+    child.once('close', code => complete(code));
   });
+}
+function outputCapture() { return { tail: '', pending: '', critical: [], following: 0 }; }
+function captureLine(capture, line) {
+  if (/\b(?:error|fatal|panic|failed to|rate exceeded|unexpected status|ERR_ASSERTION)\b/i.test(line) && capture.critical.length < 4) {
+    capture.critical.push([redact(line).slice(0, 512)]); capture.following = 2;
+  } else if (capture.following > 0) {
+    capture.critical[capture.critical.length - 1].push(redact(line).slice(0, 512)); capture.following--;
+  }
+}
+function appendCapture(capture, data) {
+  const text = data.toString();
+  capture.tail = (capture.tail + text).slice(-2_000_000);
+  const lines = (capture.pending + text).split(/\r?\n/);
+  capture.pending = lines.pop() || '';
+  for (const line of lines) captureLine(capture, line);
+  while (capture.pending.length > 16_384) {
+    captureLine(capture, capture.pending.slice(0, 16_384)); capture.pending = capture.pending.slice(16_384);
+  }
+}
+function finishCapture(capture) { if (capture.pending) captureLine(capture, capture.pending); capture.pending = ''; }
+function diagnosticCapture(capture, name) {
+  if (!capture.tail && !capture.critical.length) return '';
+  // Keep early critical lines before the bounded tail evicts them. Redact each
+  // retained window and the tail BEFORE truncating their projected text.
+  return `[${name}]\n${capture.critical.map(window => window.join('\n')).join('\n')}\n${redact(capture.tail).slice(-2500)}`;
 }
 function redact(value) {
   return value.replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[token]')
-    .replace(/postgres(?:ql)?:\/\/\S+/g, '[database URL]').slice(-5000);
+    .replace(/postgres(?:ql)?:\/\/\S+/g, '[database URL]');
 }
 export async function prepare(allowStoppedConfigDrift = false) {
   await mkdir(path.join(work, 'supabase'), { recursive: true });
@@ -75,7 +113,23 @@ export async function dockerCheck() {
   // Explicitly avoid environment redirects to another Docker host/context.
   if (process.env.DOCKER_HOST || process.env.DOCKER_CONTEXT) throw new Error('Unset DOCKER_HOST/DOCKER_CONTEXT before local staging');
   const context = JSON.parse(await run('docker', ['context', 'inspect']));
-  localDocker(context[0].Endpoints.docker.Host);
+  assert.equal(context.length, 1, 'One explicit Docker context is required.');
+  if (context[0].Endpoints.docker.Host.startsWith('tcp://')) {
+    const temporary = path.resolve(process.env.RUNNER_TEMP || '');
+    const file = process.env.POS_TEST_WSL_RECEIPT;
+    assert.ok(file && path.isAbsolute(file) && path.basename(file) === 'engine.json');
+    const relative = path.relative(temporary, file);
+    assert.ok(relative && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep));
+    let ancestor = path.resolve(file);
+    for (;;) {
+      const stat = await lstat(ancestor); assert.equal(stat.isSymbolicLink(), false, 'Redirected hosted Docker receipt refused.');
+      if (ancestor === path.resolve(file)) assert.ok(stat.isFile() && stat.size <= 65536);
+      if (ancestor.toLowerCase() === temporary.toLowerCase()) break;
+      const parent = path.dirname(ancestor); assert.notEqual(parent, ancestor); ancestor = parent;
+    }
+    const engine = JSON.parse(await run('docker', ['info', '--format', '{{json .}}']));
+    hostedDockerContext(context[0], engine, JSON.parse(await readFile(file, 'utf8')));
+  } else localDocker(context[0].Endpoints.docker.Host);
   if ((await run('docker', ['info', '--format', '{{.OSType}}'])).trim() !== 'linux') throw new Error('Docker Linux containers must be running');
 }
 export async function ensureLoopbackNetwork({ name, label, owner }, execute = run) {

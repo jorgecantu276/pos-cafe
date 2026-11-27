@@ -195,17 +195,17 @@ try {
     const recipeName = 'Mango con coco';
     const privateNote = 'Probar con menos hielo para que quede más cremoso.';
     await page.goto(`${base}/admin/productos`);
-    await page.getByRole('link', { name: 'Recetario privado', exact: true }).click();
+    await page.getByRole('link', { name: 'Ir a mis recetas', exact: true }).click();
     await page.getByRole('button', { name: 'Nueva receta' }).click();
     await page.getByLabel('Nombre de la receta').fill(recipeName);
     await page.getByLabel('Ingredientes y cantidades').fill('150 g de mango\n120 ml de leche de coco\n40 g de hielo');
-    await page.getByLabel('Cómo la preparaste').fill('Licuar primero el mango con la leche de coco. Agregar hielo al final.');
-    await page.getByLabel('Qué cambiarías').fill(privateNote);
+    await page.getByLabel('Pasos de preparación (opcional)').fill('Licuar primero el mango con la leche de coco. Agregar hielo al final.');
+    await page.getByLabel('Resultado y próximo ajuste (opcional)').fill(privateNote);
     if (audit) {
       page.once('dialog', dialog => dialog.dismiss());
       await page.getByRole('link', { name: 'Volver a caja' }).click();
       assert.match(page.url(), /\/admin\/recetario/);
-      assert.equal(await page.getByLabel('Qué cambiarías').inputValue(), privateNote);
+      assert.equal(await page.getByLabel('Resultado y próximo ajuste (opcional)').inputValue(), privateNote);
       console.log('PASS: navegar fuera del recetario avisa y permite conservar el borrador.');
     }
     await page.getByRole('button', { name: 'Guardar prueba' }).click();
@@ -214,10 +214,10 @@ try {
     assert.equal(card.product_id, null);
     assert.equal(ok(await admin.from('products').select('id').eq('name', recipeName)).length, 0);
 
-    await page.getByRole('button', { name: 'Nueva prueba' }).click();
+    await page.getByRole('button', { name: 'Hacer otra prueba' }).click();
     assert.match(await page.getByLabel('Ingredientes y cantidades').inputValue(), /40 g de hielo/);
     await page.getByLabel('Ingredientes y cantidades').fill('150 g de mango\n120 ml de leche de coco\n25 g de hielo');
-    await page.getByLabel('Qué cambiarías').fill('Me gustó la textura. La próxima vez probaría una pizca de canela.');
+    await page.getByLabel('Resultado y próximo ajuste (opcional)').fill('Me gustó la textura. La próxima vez probaría una pizca de canela.');
     await page.getByRole('button', { name: 'Guardar prueba' }).click();
     await page.getByText('Prueba 2', { exact: true }).waitFor();
 
@@ -248,11 +248,12 @@ try {
     assert.equal((await staff.rpc('pos_smoothies_recipes')).error?.code, '42501');
     assert.ok((await createClient(config.api, config.anon, { auth }).rpc('pos_smoothies_recipes')).error);
 
-    await page.getByRole('button', { name: 'Preparar para venta', exact: true }).click();
+    await page.getByRole('button', { name: 'Llevar al menú', exact: true }).click();
+    await page.getByRole('heading', { name: 'Crear borrador del menú', exact: true }).waitFor();
     await page.getByLabel('Nombre en el menú').fill(`${recipeName} 16 oz`);
     await page.getByLabel('Precio de venta (MXN)').fill('89.50');
-    await page.getByRole('button', { name: 'Guardar en catálogo' }).click();
-    await page.getByText(/Bebida preparada en Catálogo/).waitFor();
+    await page.getByRole('button', { name: 'Crear borrador', exact: true }).click();
+    await page.getByText('Tu producto está fuera de venta. Revisa el nombre y el precio antes de activarlo.', { exact: true }).waitFor();
     const trials = ok(await admin.rpc('pos_smoothies_recipe_trials', { p_recipe: card.id }));
     const productId = ok(await admin.rpc('pos_publish_smoothies_recipe', { p_recipe: card.id, p_trial: trials[0].id, p_name: `${recipeName} 16 oz`, p_price: 89.5 }));
     const products = ok(await admin.from('products').select('id, name, price, description, is_active').eq('name', `${recipeName} 16 oz`));
@@ -261,7 +262,7 @@ try {
     assert.equal(Number(products[0].price), 89.5);
     assert.ok(!products[0].description);
     assert.equal(products[0].is_active, false);
-    await page.getByRole('link', { name: 'Revisar en catálogo' }).click();
+    await page.getByRole('link', { name: 'Revisar y poner en venta', exact: true }).click();
     if (audit) {
       await page.getByRole('button', { name: 'Extras', exact: true }).click();
       await page.getByRole('button', { name: 'Nuevo extra', exact: true }).click();
@@ -274,9 +275,9 @@ try {
       assert.deepEqual(savedScope.applicable_product_ids,[productId]);
       await page.getByRole('button', { name: 'Productos', exact: true }).click();
     }
-    await page.getByRole('button', { name: 'Inactivos', exact: true }).click();
+    await page.getByRole('button', { name: 'Fuera de venta', exact: true }).click();
     await page.getByRole('button', { name: `Editar ${recipeName} 16 oz` }).waitFor();
-    await page.getByRole('button', { name: `Reactivar ${recipeName} 16 oz` }).click();
+    await page.getByRole('button', { name: `Poner en venta ${recipeName} 16 oz`, exact: true }).click();
     await page.getByText('Cambios guardados.', { exact: true }).waitFor();
     await page.getByRole('link', { name: 'Volver a caja' }).click();
     await page.getByRole('button', { name: /Mango con coco 16 oz,.*89\.50/ }).waitFor();
@@ -426,12 +427,13 @@ try {
       console.log('PASS: respaldo cifrado restaurado en otra base, con acceso, venta, corte, recetas, conteos, foto idéntica y dos impresiones registradas.');
     }
     await page.goto(`${base}/admin`);
-    const today = page.getByRole('region', { name: 'Hoy en la barra' });
+    const today = page.getByRole('region', { name: 'De tu receta a la barra', exact: true });
     await today.getByText('$89.50', { exact: true }).waitFor();
-    await today.getByRole('button', { name: 'Actualizar' }).click();
+    await today.getByRole('button', { name: 'Actualizar ventas', exact: true }).click();
     await today.getByText('$89.50', { exact: true }).waitFor();
     await page.screenshot({ path: path.join(artifacts, 'POS Smoothies - Hoy en la barra.png') });
-    await today.getByRole('link', { name: /Especial de la semana/ }).click();
+    await today.getByRole('link', { name: /^2\. Prepara tu menú/ }).click();
+    await page.locator('summary').filter({ hasText: 'Especial de la semana' }).click();
     await page.getByLabel('Smoothie destacado').waitFor();
     console.log('PASS: exact installed package completed import, catalog, recipe, sale, closing, and full backup restoration with external browser requests blocked.');
   }

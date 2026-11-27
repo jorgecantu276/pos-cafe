@@ -9,7 +9,7 @@ import path from 'node:path';
 const run = promisify(execFile);
 
 test('real message pipe preserves binary bytes and drains TCP response after Docker-style CloseWrite',
-  { skip: process.platform !== 'win32', timeout: 25_000 }, async () => {
+  { skip: process.platform !== 'win32', timeout: 35_000 }, async context => {
     const directory = await mkdtemp(path.join(tmpdir(), 'pos-pipe-regression-'));
     try {
       const harness = path.join(directory, 'Harness.cs');
@@ -96,8 +96,13 @@ internal static class Harness {
 }
 `);
       const compiler = path.join(process.env.WINDIR || 'C:/Windows', 'Microsoft.NET/Framework64/v4.0.30319/csc.exe');
-      await run(compiler, ['/nologo', '/target:exe', '/main:Harness', `/out:${executable}`,
-        path.resolve('scripts/testing/WslDockerPipe.cs'), harness], { timeout: 10_000 });
+      const compilerStarted = performance.now();
+      try {
+        await run(compiler, ['/nologo', '/target:exe', '/main:Harness', `/out:${executable}`,
+          path.resolve('scripts/testing/WslDockerPipe.cs'), harness], { timeout: 20_000 });
+      } finally {
+        context.diagnostic(`C# compiler phase elapsed ${Math.round(performance.now() - compilerStarted)}ms (setup budget 20000ms).`);
+      }
       const result = await run(executable, [], { timeout: 10_000 });
       assert.equal(result.stdout.trim(), 'binary-and-half-close-ok');
       assert.equal(result.stderr, '');
@@ -123,6 +128,27 @@ Invoke-Expression $functionNode.Extent.Text
 $canaryFunction=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Canary-Hash'},$true)
 if(!$canaryFunction){throw 'Canary-Hash function was not found'}
 Invoke-Expression $canaryFunction.Extent.Text
+$measurementFunction=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Canary-Measurement'},$true)
+if(!$measurementFunction){throw 'Canary-Measurement function was not found'}
+Invoke-Expression $measurementFunction.Extent.Text
+$empty=Canary-Measurement $null ('a'*64)
+if($empty.characters -ne 0 -or $empty.exactCanaryBytes -or $empty.sha256 -cne 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'){throw 'empty stream measurement changed'}
+$privateFixture='synthetic-private-diagnostic-value'
+if((Canary-Measurement $privateFixture ('a'*64)|ConvertTo-Json -Compress).Contains($privateFixture)){throw 'stream measurement leaked raw diagnostic bytes'}
+$privateIpFunction=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Private-IPv4'},$true)
+if(!$privateIpFunction){throw 'Private-IPv4 function was not found'}
+Invoke-Expression $privateIpFunction.Extent.Text
+if((Private-IPv4 '172.24.1.2') -cne '172.24.1.2'){throw 'actual private IPv4 changed'}
+foreach($address in @('127.0.0.1','1.1.1.1','172.32.0.1','hostname','10.1','010.1.2.3','10.0.0.256','::1')){
+  $refused=$false;try{Private-IPv4 $address}catch{$refused=$true};if(!$refused){throw 'noncanonical/public network address accepted'}
+}
+$writerFunction=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Write-LinuxScript'},$true)
+if(!$writerFunction){throw 'Write-LinuxScript function was not found'}
+Invoke-Expression $writerFunction.Extent.Text
+$linuxScript=Join-Path $WorkDirectory 'linux-script.sh'
+Write-LinuxScript $linuxScript ("#!/bin/bash"+[char]13+[char]10+"if true; then"+[char]13+[char]10+" :"+[char]13+[char]10+"fi")
+$scriptBytes=[IO.File]::ReadAllBytes($linuxScript)
+if($scriptBytes -contains 13 -or $scriptBytes[-1] -ne 10 -or $scriptBytes[0] -ne 35){throw 'Linux scripts must contain LF-only bytes with no BOM, including the final keyword/newline'}
 $digest='a'*64
 if((Canary-Hash ($digest+"  /fixture/canary.txt"+[Environment]::NewLine) $digest 'Synthetic bind') -cne $digest){throw 'canary SHA parser changed the measured digest'}
 $mismatch=$false
@@ -134,8 +160,13 @@ if(!$invalid){throw 'canary SHA parser accepted extra command output'}
 $actual=Native -Executable $Node -Arguments @('-e','process.stderr.write("pull progress");process.stdout.write(process.argv[1])','container id with spaces')
 if($actual -cne 'container id with spaces'){throw 'stdout or argument corruption'}
 if((Get-Content (Join-Path $WorkDirectory 'native-stderr.log') -Raw).Trim() -cne 'pull progress'){throw 'stderr lost'}
+$eof=Native -Executable $Node -Arguments @('-e','process.stdin.resume();process.stdin.on("end",()=>process.stdout.write("valid-eof"))') -CloseInput -TimeoutSeconds 3
+if($eof -cne 'valid-eof'){throw 'explicit redirected stdin did not deliver valid EOF'}
+$originalApi=$env:DOCKER_API_VERSION
+$childApi=Native -Executable $Node -Arguments @('-e','process.stdout.write(process.env.DOCKER_API_VERSION)') -ApiVersion '1.44'
+if($childApi -cne '1.44' -or $env:DOCKER_API_VERSION -cne $originalApi){throw 'API version must affect only the explicit child process'}
 $failed=$false
-try{Native -Executable $Node -Arguments @('-e','process.stderr.write("synthetic command failed");process.exit(7)')}catch{$failed=$_.Exception.Message.Contains('synthetic command failed')}
+try{Native -Executable $Node -Arguments @('-e','process.stderr.write("synthetic command failed");process.exit(7)')}catch{$failed=$_.Exception.Message.Contains('synthetic command failed') -and $_.Exception.Data['ExitCode'] -eq 7}
 if(!$failed){throw 'nonzero exit not reported'}
 $bounded=$false; $timer=[Diagnostics.Stopwatch]::StartNew()
 try{Native -Executable $Node -Arguments @('-e','setInterval(()=>{},1000)') -TimeoutSeconds 1}catch{$bounded=$_.Exception.Message.Contains('deadline')}

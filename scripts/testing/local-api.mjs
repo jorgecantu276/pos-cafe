@@ -56,7 +56,7 @@ export async function freshLocalApi({ portBase = 55471, emptyWithStorage = false
   };
   let db;
   try {
-    const excluded = ['realtime','imgproxy','edge-runtime','logflare','vector','supavisor','studio','inbucket'];
+    const excluded = ['realtime','imgproxy','edge-runtime','logflare','vector','supavisor','studio','mailpit'];
     if (!storageEnabled) excluded.push('storage-api');
     await cliRun(['start', '--exclude', excluded.join(',')]);
     const status = JSON.parse(await cliRun(['status', '-o', 'json']));

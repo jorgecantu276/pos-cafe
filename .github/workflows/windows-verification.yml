@@ -1,4 +1,5 @@
 name: Windows verification
+run-name: ${{ inputs.run_transport_diagnostics && 'DIAGNOSTIC ONLY - hosted Docker transport' || format('Windows verification - {0}', github.ref_name) }}
 
 on:
   push:
@@ -10,13 +11,17 @@ on:
         description: Run final-ZIP LAN acceptance on a fresh hosted Windows/WSL2 VM
         type: boolean
         default: false
+      run_transport_diagnostics:
+        description: Run transport immediately; source checks still run; no installation acceptance
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-verification-${{ github.ref }}
-  cancel-in-progress: true
+  group: windows-verification-${{ github.ref }}-${{ github.event_name }}-i${{ inputs.run_installed_acceptance || false }}-d${{ inputs.run_transport_diagnostics || false }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   integration:
@@ -60,7 +65,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      # Bound file-level contention between C# compilers, PowerShell and local
+      # PostgreSQL fixtures. Keep every test and its existing failure deadline.
+      - run: npm test -- --test-concurrency=2
       - name: Signed Cafe updater and immutable publication contracts
         run: |
           node --test scripts/windows/auto-update.test.mjs scripts/windows/cafe-enrollment.test.mjs
@@ -197,7 +204,7 @@ jobs:
       - run: node --import tsx scripts/smoothies/local-sale-drill.mjs
   smoothies-installed-lan:
     name: Final ZIP installation and LAN acceptance (hosted Windows/WSL2)
-    if: github.event_name == 'workflow_dispatch' && inputs.run_installed_acceptance
+    if: github.event_name == 'workflow_dispatch' && inputs.run_installed_acceptance && !inputs.run_transport_diagnostics
     needs: [verify, smoothies-package, smoothies-backend, integration]
     runs-on: windows-2025
     timeout-minutes: 60
@@ -227,6 +234,49 @@ jobs:
         if: always()
         with:
           name: smoothies-installed-acceptance-${{ github.sha }}
-          path: ${{ runner.temp }}/smoothies-rehearsal-evidence/rehearsal.json
+          path: |
+            ${{ runner.temp }}/smoothies-rehearsal-evidence/rehearsal.json
+            ${{ runner.temp }}/pos-wsl-engine-*/bootstrap-events.jsonl
+            ${{ runner.temp }}/pos-wsl-engine-*/transport-diagnostic.json
+            ${{ runner.temp }}/pos-wsl-engine-*/canary-forwarding.json
+          if-no-files-found: warn
+          retention-days: 14
+  transport-diagnostics:
+    name: Hosted Docker transport diagnostics (no release qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.run_transport_diagnostics
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      POS_ACCEPTANCE_DISPOSABLE: '1'
+    steps:
+      - name: Refuse mixed diagnostic and installation scope
+        shell: pwsh
+        run: |
+          if ('${{ inputs.run_installed_acceptance }}' -ceq 'true') { throw 'Choose transport diagnostics or installed acceptance, never both.' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24.22.2
+      - name: Test transport helpers without installing product dependencies
+        run: node --experimental-strip-types --test tests/hosted-docker-pipe.test.ts tests/hosted-wsl-docker.test.ts tests/staging-safety.test.ts tests/hosted-lan-trust.test.ts tests/hosted-rehearsal-process.test.ts
+      - name: Probe bounded synthetic trust and exact cleanup before WSL
+        shell: pwsh
+        timeout-minutes: 5
+        run: ./scripts/testing/Test-HostedLanTrust.ps1
+      - name: Probe genuine isolated hosted WSL Docker transport only
+        shell: pwsh
+        run: ./scripts/testing/Start-HostedWslDocker.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: hosted-docker-diagnostics-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/pos-wsl-engine-*/transport-diagnostic.json
+            ${{ runner.temp }}/pos-wsl-engine-*/canary-forwarding.json
+            ${{ runner.temp }}/pos-wsl-engine-*/engine.json
+            ${{ runner.temp }}/pos-lan-trust-*/trust-probe.json
+            ${{ runner.temp }}/pos-wsl-engine-*/bootstrap-events.jsonl
           if-no-files-found: warn
           retention-days: 14
