@@ -639,13 +639,13 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
     const steps = product.wizard_steps.map((phaseName: string) => {
        const phaseOptions = dbExtras.filter(e => e.phase === phaseName && e.active && extraAppliesToProduct(e, product.id)).map(e => e.name);
        const phaseLabel = phaseName === 'Leche alternativa Matcha' ? 'Leche alternativa'
-          : phaseName === 'Cold foam Matcha' ? 'Cold foam' : phaseName;
+          : phaseName === 'Cold foam Matcha' ? 'Cold foam' : phaseName === 'Jarabe Brownie' ? 'jarabe' : phaseName;
        return {
           id: phaseName,
           title: `Seleccionar ${phaseLabel}`,
           options: phaseOptions,
-          exclusive: ['Tamaño', 'Tipo de Leche', 'Leche alternativa', 'Leche alternativa Matcha', 'Creamer', 'Helado gourmet', 'Temperatura'].includes(phaseName),
-          required: ['Helado gourmet', 'Temperatura'].includes(phaseName)
+          exclusive: ['Tamaño', 'Tipo de Leche', 'Leche alternativa', 'Leche alternativa Matcha', 'Creamer', 'Helado gourmet', 'Temperatura', 'Jarabe Brownie'].includes(phaseName),
+          required: ['Helado gourmet', 'Temperatura', 'Jarabe Brownie'].includes(phaseName)
        };
     }).filter((step) => step.options.length > 0);
     return steps.length ? [...steps,{id:'notes',title:'Notas',options:[],exclusive:false}] : steps;
