@@ -7,6 +7,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { printJournalIdle, readSignedUpdate, verifyPackage } from './auto-update.mjs';
+import { legacyCafeCommit } from './legacy-route-cache.mjs';
 
 const execute = promisify(execFile);
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -146,8 +147,10 @@ export async function inspectEnrollment(options, dependencies = {}) {
   assert.equal(signed.commit, candidate.sourceCommit);
   assert.ok(signed.from.includes(baseline.sourceCommit), 'The actual installed predecessor is not signed as supported.');
   await verifyPackage(inputs.bootstrap, signed, inputs.bootstrap, baseline);
-  await verifyPackage(inputs.installed, { commit: baseline.sourceCommit, filesSha256: hash(await readFile(path.join(inputs.installed, 'SHA256.json'))) }, inputs.installed, baseline);
-  for (const file of ['Open-Caja.ps1', 'auto-update.mjs', 'Extract-POS-Update.ps1', 'Cafe-UpdateTask.ps1']) await normalPath(path.join(inputs.bootstrap, file));
+  assert.equal(await services.portUnused(config.Port || 3000), true, 'Close Caja through its owner before enrollment.');
+  const predecessor = await verifyPackage(inputs.installed, { commit: baseline.sourceCommit, filesSha256: hash(await readFile(path.join(inputs.installed, 'SHA256.json'))) }, inputs.installed, baseline,
+    {legacyInstalledPredecessor: baseline.sourceCommit === legacyCafeCommit});
+  for (const file of ['Open-Caja.ps1', 'auto-update.mjs', 'Extract-POS-Update.ps1', 'Cafe-UpdateTask.ps1', 'legacy-route-cache.mjs']) await normalPath(path.join(inputs.bootstrap, file));
   const privateFiles = [inputs.config, inputs.key, inputs.support, inputs.approval, inputs.manifest, inputs.reporter, inputs.shortcut,
     await normalPath(config.PrintDataDirectory, true), await normalPath(config.ReceiptIssuerFile),
     await normalPath(config.BackupDirectory || path.join(path.dirname(inputs.config), 'pos-cafe-backups'), true),
@@ -230,7 +233,7 @@ export async function inspectEnrollment(options, dependencies = {}) {
   const scheduledTask = await services.inspectUpdateTask(inputs);
   return { format: 'pos-cafe-enrollment-plan-v1', createdAt: new Date(now).toISOString(), inputs, bindings,
     ...expected, changedDatabaseContract, reportUrl: approval.reportUrl, enabling: options.enabling === true,
-    shortcut, desiredShortcut: desired, scheduledTask, autoUpdate: config.AutoUpdate === true, actions: options.enabling ? ['install-owned-05:00-Central-task', 'enable-compatible-updates'] : ['bind-fixed-shortcut', 'keep-auto-update-off'],
+    shortcut, desiredShortcut: desired, scheduledTask, legacyRuntimeCache: predecessor.legacyRuntimeCache, autoUpdate: config.AutoUpdate === true, actions: options.enabling ? ['install-owned-05:00-Central-task', 'enable-compatible-updates'] : ['bind-fixed-shortcut', 'keep-auto-update-off'],
     scope: 'Procedural independent acceptance is supplied separately; no database migration, download, launch or business data change.' };
 }
 
@@ -260,6 +263,7 @@ export async function applyEnrollment(plan, receiptFile, dependencies = {}) {
     assert.deepEqual(current.bindings, plan.bindings, 'Bound inputs changed after review.');
     assert.deepEqual(current.desiredShortcut, plan.desiredShortcut, 'The shortcut changed after review.');
     assert.deepEqual(current.scheduledTask, plan.scheduledTask, 'The scheduled task changed after review.');
+    assert.deepEqual(current.legacyRuntimeCache, plan.legacyRuntimeCache, 'The preserved legacy runtime cache changed after review.');
     for (const field of ['machineSha256', 'backendIdentitySha256', 'installedCommit', 'bootstrapCommit', 'bootstrapFilesSha256', 'publicKeySha256', 'reportUrl', 'changedDatabaseContract']) {
       assert.equal(current[field], plan[field], `The plan ${field} changed after review.`);
     }
@@ -292,7 +296,7 @@ export async function applyEnrollment(plan, receiptFile, dependencies = {}) {
       completedAt: new Date().toISOString(), machineSha256: plan.machineSha256, backendIdentitySha256: plan.backendIdentitySha256,
       installedCommit: plan.installedCommit, bootstrapCommit: plan.bootstrapCommit, publicKeySha256: plan.publicKeySha256,
       reportUrl: plan.reportUrl, configSha256: changedConfigHash, shortcutSha256: shortcutChanged ? changedShortcutHash : plan.bindings.shortcut,
-      backup, scheduledTask: installedTask, nextGate: plan.enabling ? 'Observe the daily 05:00 Central task, one exact signed compatible update and recovery. No late catch-up.' : 'Use the existing support installer -ActualizarRutaCaja to bind this bootstrap, run the fixed shortcut, accept its genuine verified report, then inspect an enable plan.' };
+      backup, scheduledTask: installedTask, legacyRuntimeCache: plan.legacyRuntimeCache, nextGate: plan.enabling ? 'Observe the daily 05:00 Central task, one exact signed compatible update and recovery. No late catch-up.' : 'Use the existing support installer -ActualizarRutaCaja to bind this bootstrap, run the fixed shortcut, accept its genuine verified report, then inspect an enable plan.' };
     await writeFile(receipt, JSON.stringify(result, null, 2) + '\n', { mode: 0o600 });
     return result;
   } catch (error) {

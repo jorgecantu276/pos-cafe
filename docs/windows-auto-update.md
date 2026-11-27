@@ -8,6 +8,8 @@ Antes de descargar o probar una versión, debe estar cerrada la aplicación y Su
 
 Los paquetes se guardan en carpetas separadas. La configuración, el diario de impresión, los respaldos y los archivos privados permanecen en sus rutas externas. El actualizador compara el contrato de base de datos con la versión activa. Si la lista de migraciones o sus hashes difieren, esa versión requiere el procedimiento habitual de mantenimiento.
 
+La compilación standalone conserva la caché acotada en memoria de Next y desactiva su escritura de caché de respuestas en la carpeta inmutable. La prueba de Windows comprueba todos los archivos y sus hashes después de abrir, consultar login/favicon y detener el servidor. Una versión nueva que crea o cambia archivos dentro del paquete no pasa esa comprobación.
+
 Durante una actualización manual, apunta el acceso directo al lanzador nuevo. Si la versión del lanzador cambió, la primera apertura confirmada usa ese paquete y desvincula la selección automática anterior. Conserva la carpeta anterior; no reemplaces el diario para volver de versión.
 
 ## Preparación inicial

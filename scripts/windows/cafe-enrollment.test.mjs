@@ -42,7 +42,7 @@ async function fixture() {
     const files = { 'node.exe': 'synthetic executable marker', 'release.json': JSON.stringify(metadata),
       'Start-POS.ps1': '# synthetic no execution', 'app/server.js': '// synthetic no execution',
       'database-migrations/schema.snapshot.json': '{}', 'Open-Caja.ps1': '# synthetic fixed launcher',
-      'auto-update.mjs': '// synthetic updater', 'Extract-POS-Update.ps1': '# synthetic extraction', 'Cafe-UpdateTask.ps1': '# synthetic task' };
+      'auto-update.mjs': '// synthetic updater', 'Extract-POS-Update.ps1': '# synthetic extraction', 'Cafe-UpdateTask.ps1': '# synthetic task', 'legacy-route-cache.mjs': '// synthetic legacy verifier' };
     for (const [file, value] of Object.entries(files)) { await mkdir(path.dirname(path.join(folder, file)), { recursive: true }); await writeFile(path.join(folder, file), value); }
     const index = Object.entries(files).map(([file, value]) => ({ file, sha256: digest(value) }));
     await writeFile(path.join(folder, 'SHA256.json'), JSON.stringify(index));
@@ -133,6 +133,7 @@ test('unknown report/machine, busy backend, changed source and changed plan all 
   await assert.rejects(inspectEnrollment(f.options, f.dependencies), /fresh actual-PC report/);
   f.report.checkedAtUtc = new Date().toISOString();
   const plan = await inspectEnrollment(f.options, f.dependencies);
+  await assert.rejects(applyEnrollment({...plan,legacyRuntimeCache:[{file:'forged-cache',sha256:'0'.repeat(64)}]},path.join(f.root,'forged-cache.json'),f.dependencies),/legacy runtime cache changed/);
   await assert.rejects(applyEnrollment({ ...plan, machineSha256: '7'.repeat(64) }, path.join(f.root, 'forged.json'), f.dependencies), /plan machineSha256/);
   await writeFile(f.options.config, JSON.stringify({ ...f.configuration, ClipEnabled: false }));
   await assert.rejects(applyEnrollment(plan, path.join(f.root, 'refused.json'), f.dependencies), /inputs changed/);

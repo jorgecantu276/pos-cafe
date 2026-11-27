@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import net from 'node:net';
+import {inspectLegacyRouteCache, legacyCafeCommit} from './legacy-route-cache.mjs';
 import { DatabaseSync } from 'node:sqlite';
 
 const repo = 'jorgecantu276/pos-cafe';
@@ -80,19 +81,26 @@ async function packageFiles(directory) {
   return expected;
 }
 
-export async function verifyPackage(directory, update, currentDirectory, baseline) {
+export async function verifyPackage(directory, update, currentDirectory, baseline, {legacyInstalledPredecessor = false} = {}) {
+  if (legacyInstalledPredecessor) {
+    if (update.commit !== legacyCafeCommit || baseline.sourceCommit !== legacyCafeCommit || path.resolve(directory) !== path.resolve(currentDirectory)) {
+      throw new Error('Legacy cache verification requires the exact installed rc.6 predecessor.');
+    }
+  }
   if (!(await lstat(directory)).isDirectory() ||
       await sha256(path.join(directory, 'SHA256.json')) !== update.filesSha256) {
     throw new Error('La carpeta del paquete no es valida.');
   }
   const expected = await packageFiles(directory);
   const seen = new Set();
+  const legacyExtras = [];
   for (const entry of await readdir(directory, { recursive: true, withFileTypes: true })) {
     const full = path.join(entry.parentPath, entry.name);
     const file = path.relative(directory, full).replaceAll('\\', '/').toLowerCase();
     if (entry.isDirectory()) continue;
     if (!entry.isFile() || seen.has(file)) throw new Error('Archivo de actualizacion inesperado.');
     if (file === 'sha256.json') continue;
+    if (legacyInstalledPredecessor && !expected.has(file)) { legacyExtras.push(path.relative(directory, full).replaceAll('\\', '/')); continue; }
     if (!expected.has(file) || await sha256(full) !== expected.get(file)) throw new Error('Hash de archivo invalido.');
     seen.add(file);
   }
@@ -105,6 +113,8 @@ export async function verifyPackage(directory, update, currentDirectory, baselin
   if (JSON.stringify(migrations(expected)) !== JSON.stringify(migrations(await packageFiles(currentDirectory)))) {
     throw new Error('Esta version requiere revisar la compatibilidad de la base de datos.');
   }
+  const legacyRuntimeCache = legacyExtras.length ? await inspectLegacyRouteCache(directory, update.commit, expected, legacyExtras) : [];
+  return {legacyRuntimeCache};
 }
 
 function command(file, args, signal) {

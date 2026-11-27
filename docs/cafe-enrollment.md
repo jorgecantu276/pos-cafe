@@ -70,6 +70,18 @@ backup folder/key, matching target configuration, known shortcut ownership,
 GitHub access and a closed application/backend. Unknown or unresolved state
 refuses. Application and key folders cannot contain private client files.
 
+The observed rc.6 predecessor `b776550a7a91ad1dafb21b2200a235dfe337bb6f`
+can contain Next runtime route-cache copies created by ordinary login/favicon
+requests. Only this installed predecessor has a bounded compatibility check:
+every indexed file remains hash-verified, and each extra must derive exactly from
+an indexed immutable prerender seed and its source-route ownership metadata.
+Payloads must match their seed bytes; metadata may differ only by the numeric
+runtime timestamp. The plan/receipt preserves every accepted cache path/hash and
+rechecks that inventory before application. Nothing is deleted or moved. Unknown
+files, dynamic responses, altered seeds, links or other predecessor commits refuse.
+New bootstrap/candidate packages keep strict complete-file verification; they do
+not receive this compatibility exception.
+
 Application rechecks all probes and exact input hashes under an exclusive local
 enrollment lock. It saves the original config and shortcut to the private
 receipt's `.previous.json`, stages files with their original ACLs, then switches

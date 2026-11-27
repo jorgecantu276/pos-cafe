@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash, generateKeyPairSync, sign, randomUUID } from 'node:crypto';
-import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { runAutoUpdate, printJournalIdle, inCafeUpdateWindow } from './auto-update.mjs';
+import { runAutoUpdate, printJournalIdle, inCafeUpdateWindow, verifyPackage } from './auto-update.mjs';
+import { legacyCafeCommit } from './legacy-route-cache.mjs';
 import { DatabaseSync } from 'node:sqlite';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -210,4 +211,62 @@ test('actual maintenance probe verifies an owned synthetic server, closes it, an
     });
     assert.equal(await (await fetch(origin)).text(), 'untouched synthetic listener');
   } finally { await new Promise(resolve => foreign.close(resolve)); }
+});
+
+test('only installed rc.6 accepts exact immutable seed-derived legacy cache; new candidates stay strict', windowsOnly, async t => {
+  const root = mkdtempSync(path.join(tmpdir(), 'cafe-legacy-seed-'));
+  t.after(() => rmSync(root, {recursive:true,force:true}));
+  const folder = path.join(root,'release'); mkdirSync(folder);
+  const release = {sourceCommit:legacyCafeCommit,sourceDirty:false,fixtureOnly:false,supabaseUrl:'https://synthetic.invalid',publicKeySha256:hash('synthetic-public')};
+  const files = {'node.exe':'synthetic marker','release.json':JSON.stringify(release),'Start-POS.ps1':'# synthetic only','app/server.js':'// synthetic only','database-migrations/schema.snapshot.json':'{}'};
+  const routes = {}, appPaths = {}, promotions = [];
+  function seed(pathname, kind, segments=[]) {
+    const sourceRoute = pathname + (kind==='APP_PAGE'?'/page':'/route');
+    const key = '/route-cache/'+kind+'/'+hash(sourceRoute)+'/$'+pathname;
+    const stem = 'app/.next/server/app'+pathname, base = 'app/.next/server'+key;
+    const meta = {headers:{'x-next-cache-tags':'synthetic '+pathname},...(kind==='APP_PAGE'?{segmentPaths:segments}:{}),routeCache:{key,owner:{kind,sourceRoute},isFallback:false}};
+    files[stem+'.meta']=JSON.stringify(meta);
+    files['app/.next/server/app'+sourceRoute+'.js']='// indexed synthetic module '+sourceRoute;
+    routes[pathname]={compute:'static',response:'complete',initialRevalidateSeconds:false,srcRoute:pathname,routeType:kind==='APP_PAGE'?'page':'route',dataRoute:kind==='APP_PAGE'?pathname+'.rsc':null};
+    appPaths[sourceRoute]='app'+sourceRoute+'.js';
+    promotions.push({file:base+'.meta',seedFile:stem+'.meta',metadata:true});
+    if(kind==='APP_ROUTE'){files[stem+'.body']='synthetic route body '+pathname;promotions.push({file:base+'.body',seedFile:stem+'.body'});}
+    else {
+      files[stem+'.html']='<!doctype html>synthetic '+pathname;files[stem+'.rsc']='synthetic RSC '+pathname;
+      promotions.push({file:base+'.html',seedFile:stem+'.html'},{file:base+'.rsc',seedFile:stem+'.rsc'});
+      for(const segment of segments){files[stem+'.segments'+segment+'.segment.rsc']='synthetic segment '+segment;promotions.push({file:base+'.segments'+segment+'.segment.rsc',seedFile:stem+'.segments'+segment+'.segment.rsc'});}
+    }
+  }
+  seed('/login','APP_PAGE',['/_tree','/_full','/login/__PAGE__']);seed('/favicon.ico','APP_ROUTE');seed('/_not-found','APP_PAGE');
+  files['app/.next/prerender-manifest.json']=JSON.stringify({routes});files['app/.next/server/app-paths-manifest.json']=JSON.stringify(appPaths);
+  for(const [file,bytes] of Object.entries(files)){mkdirSync(path.dirname(path.join(folder,file)),{recursive:true});writeFileSync(path.join(folder,file),bytes);}
+  writeFileSync(path.join(folder,'SHA256.json'),JSON.stringify(Object.entries(files).map(([file,bytes])=>({file,sha256:hash(bytes)}))));
+  const identity={commit:legacyCafeCommit,filesSha256:fileHash(path.join(folder,'SHA256.json'))};
+  const verify=()=>verifyPackage(folder,identity,folder,release,{legacyInstalledPredecessor:true});
+  for(const promotion of promotions.slice(0,8)){
+    mkdirSync(path.dirname(path.join(folder,promotion.file)),{recursive:true});
+    writeFileSync(path.join(folder,promotion.file),promotion.metadata?JSON.stringify({...JSON.parse(files[promotion.seedFile]),routeCacheLastModified:123456789}):files[promotion.seedFile]);
+  }
+  const known=await verify();assert.equal(known.legacyRuntimeCache.length,8,'the eight observed login/favicon copy shapes are authenticated');
+  for(const entry of known.legacyRuntimeCache){assert.equal(entry.sha256,fileHash(path.join(folder,entry.file)));assert.equal(entry.seedSha256,hash(files[entry.seedFile]));}
+  await assert.rejects(verifyPackage(folder,identity,folder,release),/Hash de archivo invalido/, 'candidate/default verification never accepts legacy extras');
+  await assert.rejects(verifyPackage(folder,{...identity,commit:next},folder,{...release,sourceCommit:next},{legacyInstalledPredecessor:true}),/exact installed rc.6/);
+  await assert.rejects(verifyPackage(folder,identity,path.join(root,'another'),release,{legacyInstalledPredecessor:true}),/exact installed rc.6/);
+  for(const promotion of promotions.slice(8)){
+    mkdirSync(path.dirname(path.join(folder,promotion.file)),{recursive:true});writeFileSync(path.join(folder,promotion.file),promotion.metadata?JSON.stringify({...JSON.parse(files[promotion.seedFile]),routeCacheLastModified:123456789}):files[promotion.seedFile]);
+  }
+  assert.equal((await verify()).legacyRuntimeCache.length,11,'another indexed immutable prerender route derives its own bounded mapping');
+  const payload=promotions.find(entry=>entry.file.endsWith('.html')),payloadFile=path.join(folder,payload.file),payloadBytes=readFileSync(payloadFile);
+  writeFileSync(payloadFile,'foreign HTML');await assert.rejects(verify(),/payload differs/);writeFileSync(payloadFile,payloadBytes);
+  const metadata=promotions.find(entry=>entry.metadata),metaFile=path.join(folder,metadata.file),metaBytes=readFileSync(metaFile);
+  writeFileSync(metaFile,JSON.stringify({...JSON.parse(metaBytes),status:299}));await assert.rejects(verify(),/metadata differs/);
+  writeFileSync(metaFile,JSON.stringify({...JSON.parse(metaBytes),routeCacheLastModified:null}));await assert.rejects(verify(),/timestamp is invalid/);writeFileSync(metaFile,metaBytes);
+  const wrongOwner=payload.file.replace(hash('/login/page'),'0'.repeat(64)),wrongOwnerFile=path.join(folder,wrongOwner);mkdirSync(path.dirname(wrongOwnerFile),{recursive:true});writeFileSync(wrongOwnerFile,payloadBytes);
+  await assert.rejects(verify(),/Unexpected file outside/);rmSync(wrongOwnerFile);
+  const executable=path.join(folder,'app/.next/server/route-cache/unsafe.js');writeFileSync(executable,'throw Error("never execute")');await assert.rejects(verify(),/Unexpected file outside/);rmSync(executable);
+  const external=path.join(root,'external');mkdirSync(external);writeFileSync(path.join(external,'data'),'synthetic');const junction=path.join(folder,'app/.next/server/route-cache/link');symlinkSync(external,junction,'junction');
+  await assert.rejects(verify(),/Archivo de actualizacion inesperado/);rmSync(junction,{recursive:true});
+  const indexedMeta=path.join(folder,metadata.seedFile),seedBytes=readFileSync(indexedMeta);writeFileSync(indexedMeta,'{}');await assert.rejects(verify(),/Hash de archivo invalido/);writeFileSync(indexedMeta,seedBytes);
+  const preserved=await verify();assert.equal(preserved.legacyRuntimeCache.length,11);
+  for(const entry of preserved.legacyRuntimeCache)assert.equal(entry.sha256,fileHash(path.join(folder,entry.file)),'inspection preserves every legacy cache byte');
 });
