@@ -11,6 +11,7 @@ on:
       - scripts/testing/Run-HostedCafeQualification.ps1
       - scripts/testing/Invoke-CafeHostedManualFixture.ps1
       - scripts/testing/Invoke-CafeManualUpdate.ps1
+      - scripts/testing/Get-CafeHostedArtifacts.ps1
   workflow_dispatch:
 
 permissions:
@@ -23,9 +24,15 @@ jobs:
     env:
       POS_ACCEPTANCE_DISPOSABLE: '1'
       NEXT_TELEMETRY_DISABLED: '1'
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Retrieve exact unpublished candidate before provisioning
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/testing/Get-CafeHostedArtifacts.ps1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.2
@@ -37,6 +44,7 @@ jobs:
         with:
           ref: 8a151bd9d39144d46fd371ce527f37824a4e4a37
           path: host-infra
+          persist-credentials: false
       - name: Provision a new independently owned Windows and WSL test boundary
         timeout-minutes: 20
         shell: pwsh

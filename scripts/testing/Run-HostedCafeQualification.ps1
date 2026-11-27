@@ -26,7 +26,7 @@ $evidence=Join-Path $env:RUNNER_TEMP 'cafe-exact-evidence'
 if (Test-Path -LiteralPath $evidence) { throw 'Never overwrite previous exact-ZIP evidence.' }
 $null=New-Item -ItemType Directory -Path $work,$evidence
 [void](Assert-CafeOwnedDirectory $work)
-$node=(Get-Command node.exe).Source;$gh=(Get-Command gh.exe).Source;$docker=(Get-Command docker.exe).Source
+$node=(Get-Command node.exe).Source;$docker=(Get-Command docker.exe).Source
 $configuration=Join-Path $work 'lab.private.json';$boundary=$null;$audit=$null;$canaryId=$null;$phase='setup';$failure=$null;$completed=$false
 $driver=[ordered]@{format='cafe-hosted-driver-v1';sourceCommit=$SourceCommit;candidateZipSha256=$CandidateSha256;inputSha256=(Get-FileHash -LiteralPath $InputFile).Hash.ToLowerInvariant();state='running';checks=@();qualified=$false;productionAcceptance=$false}
 function Native {
@@ -71,8 +71,10 @@ try {
     $engineId=(Native $docker @('info','--format','{{.ID}}') 'docker-identity').text.Trim()
     if ($engineId -cne $engine.daemonId) { throw 'The independently provisioned Docker engine changed.' }
     $candidateName='POS-Cafe-'+$SourceCommit.Substring(0,7)+'.zip'
-    [void](Native $gh @('release','download',$CandidateTag,'--repo','jorgecantu276/pos-cafe','--pattern',$candidateName,'--dir',$work) 'candidate-download')
-    [void](Native $gh @('release','download','cafe-v1.0.0-rc.6','--repo','jorgecantu276/pos-cafe','--pattern','Caja-Cobro-Integrado-rc6.zip','--dir',$work) 'baseline-download')
+    if ($env:GH_TOKEN -or $env:GITHUB_TOKEN) { throw 'Qualification must receive no repository API token.' }
+    $downloads=Assert-CafeOwnedDirectory $env:POS_CAFE_HOSTED_ARTIFACTS
+    Copy-Item -LiteralPath (Join-Path $downloads $candidateName) -Destination $work
+    Copy-Item -LiteralPath (Join-Path $downloads 'Caja-Cobro-Integrado-rc6.zip') -Destination $work
     # The data-plane runtime and all later children have no repository credential.
     Remove-Item Env:GH_TOKEN,Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
     $candidateZip=Join-Path $work $candidateName;$baselineZip=Join-Path $work 'Caja-Cobro-Integrado-rc6.zip'
