@@ -8,16 +8,25 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 
 internal static class WslDockerPipe {
-  private static async Task Relay(NamedPipeServerStream pipe) {
+  internal static async Task Relay(NamedPipeServerStream pipe, int port) {
     using (pipe)
     using (var client = new TcpClient()) {
       try {
         client.NoDelay = true;
-        await client.ConnectAsync("127.0.0.1", 2375);
+        await client.ConnectAsync("127.0.0.1", port);
         using (var network = client.GetStream()) {
           var outbound = pipe.CopyToAsync(network);
           var inbound = network.CopyToAsync(pipe);
-          await Task.WhenAny(outbound, inbound);
+          var completed = await Task.WhenAny(outbound, inbound);
+          if (completed == outbound) {
+            // Docker's message-pipe CloseWrite is a zero-byte message. Forward
+            // that EOF as TCP FIN without truncating the daemon's response.
+            await outbound;
+            client.Client.Shutdown(SocketShutdown.Send);
+            await inbound;
+          } else {
+            await inbound;
+          }
           client.Close(); pipe.Dispose();
           try { await Task.WhenAll(outbound, inbound); } catch (IOException) { } catch (ObjectDisposedException) { }
         }
@@ -27,11 +36,20 @@ internal static class WslDockerPipe {
     }
   }
 
+  internal static NamedPipeServerStream CreatePipe(string name) {
+    var pipe = new NamedPipeServerStream(name, PipeDirection.InOut,
+      NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Message,
+      PipeOptions.Asynchronous, 65536, 65536);
+    // Message reads retain zero-byte CloseWrite markers. NamedPipeStream still
+    // returns partial messages as ordinary bytes, so payload framing is untouched.
+    pipe.ReadMode = PipeTransmissionMode.Message;
+    return pipe;
+  }
+
   private static async Task Listen(string readyFile) {
     bool first = true;
     for (;;) {
-      var pipe = new NamedPipeServerStream("docker_engine", PipeDirection.InOut,
-        NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+      var pipe = CreatePipe("docker_engine");
       if (first) {
         File.WriteAllText(readyFile, Process.GetCurrentProcess().Id.ToString());
         first = false;
@@ -40,7 +58,7 @@ internal static class WslDockerPipe {
       catch { pipe.Dispose(); throw; }
       // Relay contains its own error handling; each accepted connection remains
       // independent, including Docker attach/exec and binary tar streams.
-      var ownedConnection = Relay(pipe);
+      var ownedConnection = Relay(pipe, 2375);
       GC.KeepAlive(ownedConnection);
     }
   }

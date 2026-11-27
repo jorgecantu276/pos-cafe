@@ -22,16 +22,31 @@ $distribution = 'Ubuntu-24.04'
 $serviceStopped = $false; $createdDistro = $false; $bridge = $null; $keepAlive = $null
 
 function Native {
-    param([Parameter(Position=0)][string]$Executable, [Parameter(Position=1,ValueFromRemainingArguments=$true)][string[]]$Arguments)
+    param([Parameter(Position=0)][string]$Executable, [Parameter(Position=1,ValueFromRemainingArguments=$true)][string[]]$Arguments,
+        [ValidateRange(1,900)][int]$TimeoutSeconds = 600)
     # Docker emits pull progress on stderr even when create succeeds. Keep its
     # machine-readable stdout (IDs/hashes/JSON) separate from diagnostics.
-    $stderrFile = Join-Path $WorkDirectory 'native-stderr.log'
-    $result = & $Executable @Arguments 2> $stderrFile
-    if ($LASTEXITCODE -ne 0) {
-        $diagnostics = Get-Content -LiteralPath $stderrFile -Raw -ErrorAction SilentlyContinue
-        throw "$(Split-Path -Leaf $Executable) failed: $diagnostics $($result -join [Environment]::NewLine)"
+    $label = (Split-Path -Leaf $Executable) + ' ' + (($Arguments | Select-Object -First 2) -join ' ')
+    Write-Host "Owned host check: $label"
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $Executable; $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+    $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+    foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
+    $process = [Diagnostics.Process]::new(); $process.StartInfo = $start
+    try {
+        [void]$process.Start()
+        $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync()
+        if (!$process.WaitForExit($TimeoutSeconds * 1000)) {
+            $process.Kill($true); $process.WaitForExit()
+            throw "Owned host command exceeded its ${TimeoutSeconds}s deadline: $label"
+        }
+        $result = $stdout.GetAwaiter().GetResult(); $diagnostics = $stderr.GetAwaiter().GetResult()
+        [IO.File]::WriteAllText((Join-Path $WorkDirectory 'native-stderr.log'), $diagnostics)
+        if ($process.ExitCode -ne 0) { throw "$(Split-Path -Leaf $Executable) failed: $diagnostics $result" }
+        return $result.Replace([string][char]0, '').TrimEnd("`r", "`n")
+    } finally {
+        $process.Dispose()
     }
-    return (($result | ForEach-Object { [string]$_ }) -join "`n").Replace([string][char]0, '')
 }
 function Docker {
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
