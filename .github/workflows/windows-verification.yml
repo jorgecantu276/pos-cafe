@@ -258,7 +258,7 @@ jobs:
         with:
           node-version: 24.22.2
       - name: Test transport helpers without installing product dependencies
-        run: node --experimental-strip-types --test tests/hosted-docker-pipe.test.ts tests/hosted-wsl-docker.test.ts tests/staging-safety.test.ts tests/hosted-lan-trust.test.ts
+        run: node --experimental-strip-types --test tests/hosted-docker-pipe.test.ts tests/hosted-wsl-docker.test.ts tests/staging-safety.test.ts tests/hosted-lan-trust.test.ts tests/hosted-rehearsal-process.test.ts
       - name: Probe bounded synthetic trust and exact cleanup before WSL
         shell: pwsh
         timeout-minutes: 5
