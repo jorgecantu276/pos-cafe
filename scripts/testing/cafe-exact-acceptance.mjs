@@ -113,7 +113,8 @@ async function start(folder,fixture,label,journalSource,existing){
   const example=await json(path.join(folder,'pos-cafe-config.example.json'));
   config={...example,SupabaseUrl:release.supabaseUrl,SupabaseServiceRoleKey:fixture.config.service,Port:3193,PrintMode:'mock',ClipEnabled:false,AutoUpdate:false,
     PrintDataDirectory:path.join(runtime,'printing'),BackupDirectory:path.join(runtime,'backups'),BackupRecoveryKeyFile:path.join(runtime,'keys/recovery.key'),ReceiptIssuerFile:path.join(runtime,'keys/issuer.private.json'),RequireExistingPrintJournal:!!journalSource};
-  await writeFile(config.ReceiptIssuerFile,JSON.stringify({testOnly:true,fixture:'synthetic-cafe-hosted'}),{flag:'wx',mode:0o600});
+  await writeFile(config.ReceiptIssuerFile,JSON.stringify({testOnly:true,fixture:'synthetic-cafe-hosted',legalName:'CAFÉ LABORATORIO SINTÉTICO',rfc:'XAXX010101000',
+    taxRegime:'601 - PRUEBA SINTÉTICA',establishmentAddress:'DOMICILIO DE PRUEBA',postalCode:'00000',city:'CIUDAD DE PRUEBA'}),{flag:'wx',mode:0o600});
   assert.equal(hash(Buffer.from(config.SupabaseAnonKey)),release.publicKeySha256);
   configFile=path.join(runtime,'config.private.json');transportFile=path.join(runtime,'transport.private.json');
   await writeFile(configFile,JSON.stringify(config),{flag:'wx',mode:0o600});
