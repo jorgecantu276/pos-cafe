@@ -67,6 +67,7 @@ $failureDiagnostics = @()
 $ownedEngineValidated = $false
 $ownedProxyRemoved = $false
 $ownedContextRemoved = $false
+$imageCacheProof = $null
 $requiredChecks = @('zip-build-equality','complete-file-index','exact-zip-install','private-config','launch-reuse','browser-offline','json-import',
     'opening-counts','photos','private-recipes','extra-scope','weekly-special','cash-sale','closing','gzip','backup-attachment','full-restore','signed-live-update','docker-restart','installer-repair',
     'external-ciphertext-copy','external-copy-failure-local-preserved','external-copy-restart-retry')
@@ -154,6 +155,21 @@ function Invoke-HostedImagePrefetch([string]$Docker, [string]$ComposeFile) {
                 @(Get-Content -LiteralPath (Join-Path $work ($logName + '.stderr.log')) -Tail 125 -ErrorAction SilentlyContinue)) -join "`n"
             $throttled = $privateTail -match '(?im)(?:error from registry:\s*Rate exceeded|HTTP(?:/[0-9.]+)?\s+429\b|(?:unexpected status|status code)[^\r\n]*\b429\b)'
             $otherFailure = $privateTail -match '(?im)(?:unauthorized|authentication required|failed to authorize|no basic auth credentials|access denied|denied:|HTTP(?:/[0-9.]+)?\s+40[13]\b|(?:unexpected status|status code)[^\r\n]*\b40[13]\b|manifest unknown|manifest[^\r\n]*not found|no matching manifest|context deadline exceeded|i/o timeout|TLS handshake timeout|timed? out)'
+            if ($script:failureExitCode -gt 0 -and !$otherFailure -and $privateTail -match '(?im)error from registry:\s*Data limit exceeded\b') {
+                $cacheReceipt = Join-Path $work 'image-cache-proof.json'
+                Write-Host 'Original registry data quota exhausted; verifying exact official image equivalence before a CI-only cache fill.'
+                Invoke-PrivateRehearsalCommand $node @((Join-Path $source 'scripts\testing\hosted-image-cache.mjs'),$ComposeFile,$cacheReceipt) 'image-cache.private.log'
+                $cache = Get-RehearsalJson $cacheReceipt
+                if ($cache.protocol -ne 1 -or $cache.result -cne 'pass' -or $cache.sourceCommit -cne $env:GITHUB_SHA -or
+                    $cache.runId -cne $env:GITHUB_RUN_ID -or $cache.job -cne $env:GITHUB_JOB -or
+                    $cache.owner -cne $engineReceipt.owner -or $cache.daemonId -cne $engineReceipt.daemonId -or @($cache.images).Count -ne 5) { throw 'The exact-image cache receipt differs from this owned hosted job.' }
+                # Cache equivalence never substitutes for the original command.
+                Invoke-PrivateRehearsalCommand $Docker @('compose','--parallel','1','--project-name','smoothies-rehearsal-image-prefetch','-f',$ComposeFile,'pull','--policy','missing') 'image-prefetch-after-cache.private.log'
+                $script:imageCacheProof = $cache
+                $script:failureExitCode = $null; $script:failureCode = $null; $script:failureScript = $null
+                $script:failureLine = $null; $script:failureDiagnostics = @()
+                return
+            }
             if ($attempt -eq 3 -or $script:failureExitCode -le 0 -or !$throttled -or $otherFailure) { throw }
             $delaySeconds = 15 * $attempt
             Write-Host ('Original image registry throttled warmup attempt ' + $attempt + '; retrying missing original tags in ' + $delaySeconds + 's.')
@@ -415,6 +431,7 @@ console.log('Original candidate manifest, full file index and every file verifie
     if ($failureCode) { $proof.failureCode = $failureCode }
     if ($failureScript) { $proof.failureScript = $failureScript; $proof.failureLine = $failureLine }
     if ($failureDiagnostics.Count) { $proof.failureDiagnostics = $failureDiagnostics }
+    if ($imageCacheProof) { $proof.imageCache = $imageCacheProof }
     if ($result -ceq 'pass') {
         $proof.checks = @($acceptance.checks | Where-Object { $requiredChecks -ccontains [string]$_ })
     }

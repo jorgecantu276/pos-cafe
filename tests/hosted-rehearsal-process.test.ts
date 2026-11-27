@@ -49,6 +49,58 @@ try {
   assert.match(result.stdout, /failed-parent-returned-with-owned-writer-alive/);
 });
 
+test('actual image warmup invokes exact cache only for DataLimit and requires original pull to succeed afterward', { skip: process.platform !== 'win32' }, async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'pos-data-limit-cache-'));
+  const script = path.join(directory, 'test.ps1');
+  await writeFile(script, String.raw`
+param($Driver,$WorkDirectory)
+$ErrorActionPreference='Stop';$work=$WorkDirectory;$source=Split-Path (Split-Path (Split-Path $Driver -Parent) -Parent) -Parent;$node='fixture-node'
+$tokens=$null;$parseErrors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile($Driver,[ref]$tokens,[ref]$parseErrors)
+foreach($name in @('Invoke-HostedImagePrefetch','Get-RehearsalJson')) {
+  $function=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true)
+  if(!$function -or $parseErrors.Count){throw 'Actual cache caller missing'};Invoke-Expression $function.Extent.Text
+}
+$env:GITHUB_SHA='a'*40;$env:GITHUB_RUN_ID='42';$env:GITHUB_JOB='synthetic-cache'
+$engineReceipt=@{owner=('b'*32);daemonId='synthetic-daemon'}
+function Invoke-PrivateRehearsalCommand {
+  param($Executable,$Arguments,$LogName)
+  if($Executable -ceq 'fixture-node') {
+    $script:cacheCalls++
+    if($Arguments[0] -notlike '*hosted-image-cache.mjs' -or $Arguments[1] -cne 'fixture compose.yml'){throw 'Unexpected exact cache command'}
+    if($script:cacheFails){$script:failureExitCode=1;throw 'Synthetic cache identity failure'}
+    @{protocol=1;result='pass';sourceCommit=$env:GITHUB_SHA;runId=$env:GITHUB_RUN_ID;job=$env:GITHUB_JOB;owner=$engineReceipt.owner;daemonId=$engineReceipt.daemonId;images=@(@{},@{},@{},@{},@{})}|ConvertTo-Json|Set-Content -LiteralPath $Arguments[2] -Encoding utf8NoBOM
+    return
+  }
+  if($Executable -cne 'fixture-docker' -or ($Arguments -join '|') -cne 'compose|--parallel|1|--project-name|smoothies-rehearsal-image-prefetch|-f|fixture compose.yml|pull|--policy|missing'){throw 'Original command changed after cache'}
+  $script:pullCalls++
+  if($script:pullCalls -eq 1 -or $script:postCacheFails) {
+    [IO.File]::WriteAllText((Join-Path $work ($LogName+'.stdout.log')),'')
+    [IO.File]::WriteAllText((Join-Path $work ($LogName+'.stderr.log')),$script:message)
+    $script:failureExitCode=$script:exitCode;throw 'Synthetic original registry failure'
+  }
+}
+function Check-Case($Message,$ExitCode,$CacheFails,$PostCacheFails,$ExpectedCache,$ExpectedPull,$ExpectedPass) {
+  $script:message=$Message;$script:exitCode=$ExitCode;$script:cacheFails=$CacheFails;$script:postCacheFails=$PostCacheFails
+  $script:cacheCalls=0;$script:pullCalls=0;$script:imageCacheProof=$null;$script:failureExitCode=$null;$script:failureDiagnostics=@('prior')
+  $passed=$false;try{Invoke-HostedImagePrefetch 'fixture-docker' 'fixture compose.yml';$passed=$true}catch{}
+  if($passed -ne $ExpectedPass -or $script:cacheCalls -ne $ExpectedCache -or $script:pullCalls -ne $ExpectedPull){throw 'Cache trigger or mandatory original recheck differs'}
+  if($passed -and (!$script:imageCacheProof -or $script:failureExitCode -ne $null -or $script:failureDiagnostics.Count)){throw 'Successful original recheck did not bind cache proof/clear old failure'}
+  if(!$passed -and $script:imageCacheProof){throw 'A failed original recheck qualified a cache receipt'}
+}
+Check-Case 'error from registry: Data limit exceeded' 1 $false $false 1 2 $true
+Check-Case 'ordinary network failure' 1 $false $false 0 1 $false
+Check-Case 'error from registry: Data limit exceeded; unauthorized' 1 $false $false 0 1 $false
+Check-Case 'error from registry: Data limit exceeded' -1 $false $false 0 1 $false
+Check-Case 'error from registry: Data limit exceeded' 1 $true $false 1 1 $false
+Check-Case 'error from registry: Data limit exceeded' 1 $false $true 1 2 $false
+'data-limit-only-exact-cache-original-recheck-ok'
+`);
+  const result = await promisify(execFile)('pwsh.exe', ['-NoProfile', '-NonInteractive', '-File', script,
+    path.resolve('scripts/testing/Run-HostedSmoothiesRehearsal.ps1'), directory], { windowsHide: true, timeout: 15_000 });
+  assert.match(result.stdout, /data-limit-only-exact-cache-original-recheck-ok/);
+});
+
 test('actual failure projection retains a primary assertion and both safe frames ahead of long cleanup while redacting private values', { skip: process.platform !== 'win32' }, async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pos-safe-failure-'));
   const script = path.join(directory, 'test.ps1');
