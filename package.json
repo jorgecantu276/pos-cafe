@@ -55,7 +55,7 @@
     "supabase": "2.122.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">=24.22.2 <25"
