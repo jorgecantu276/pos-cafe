@@ -182,6 +182,41 @@ function Invoke-OwnedGuestDockerProxy($Proxy, [ValidateSet('check','stop')][stri
     $response = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $Proxy.script), $Proxy.guestAddress, $Proxy.windowsGateway, $owner, $Action, ([string]$Proxy.pid)) -TimeoutSeconds 30
     if ($Action -ceq 'check' -and $response.Trim() -cne 'owned-listener-active') { throw 'The exact owned proxy did not confirm liveness.' }
 }
+function Get-CanaryWindowsConnections([int]$Port) {
+    return @(Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue | ForEach-Object {
+        $processName = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName
+        @{ state = [string]$_.State; localAddress = [string]$_.LocalAddress; process = [string]$processName }
+    })
+}
+function Write-CanaryForwardingDiagnostics([string]$Container, [string]$ExpectedHash, $Before) {
+    # Synthetic-only failure evidence. Keep the failed strict loopback check;
+    # guest success or a retry never qualifies installation acceptance.
+    $report = @{ version = 1; ports = @(); before = $Before }
+    try {
+        $containerInfo = (Docker @('inspect', $Container) | ConvertFrom-Json)[0]
+        if ($containerInfo.Config.Labels.'mx.pos-hosted-rehearsal' -cne $owner) { throw 'Unowned canary diagnostic refused.' }
+        $report.container = @{ running = $containerInfo.State.Running; status = $containerInfo.State.Status; bindings = $containerInfo.NetworkSettings.Ports }
+        $report.windowsDynamicTcpRange = (Native -Executable 'netsh.exe' -Arguments @('int','ipv4','show','dynamicport','tcp') -TimeoutSeconds 10)
+        foreach ($port in @(58000,55432,55541,55542,55543,55544)) {
+            $row = @{ port = $port; windowsConnections = @(Get-CanaryWindowsConnections $port) }
+            try {
+                $body = Native -Executable 'wsl.exe' -Arguments @('--distribution',$distribution,'--user','root','--','docker','run','--rm','--network','host','--label',"mx.pos-hosted-rehearsal=$owner",'busybox:1.37','wget','-T','3','-q','-O','-',"http://127.0.0.1:$port/canary.txt") -TimeoutSeconds 10
+                $digest = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($body))).ToLowerInvariant()
+                $row.guestBodySha256 = $digest; $row.guestExactBody = $digest -ceq $ExpectedHash
+            } catch { $row.guestExactBody = $false; $row.guestFailure = $_.Exception.GetType().Name }
+            $row.windowsRetries = @()
+            foreach ($attempt in 1..2) {
+                try {
+                    $body = (Invoke-WebRequest -Uri "http://127.0.0.1:$port/canary.txt" -TimeoutSec 3).Content
+                    $digest = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($body))).ToLowerInvariant()
+                    $row.windowsRetries += @{ sha256 = $digest; exactBody = $digest -ceq $ExpectedHash }
+                } catch { $row.windowsRetries += @{ exactBody = $false; failure = $_.Exception.GetType().Name } }
+            }
+            $report.ports += $row
+        }
+    } catch { $report.failure = $_.Exception.GetType().Name }
+    [IO.File]::WriteAllText((Join-Path $WorkDirectory 'canary-forwarding.json'), ($report | ConvertTo-Json -Depth 12), [Text.UTF8Encoding]::new($false))
+}
 
 try {
     if ($env:DOCKER_HOST -or $env:DOCKER_CONTEXT) { throw 'A preselected Docker override is not a fresh default runner.' }
@@ -292,8 +327,14 @@ services:
         $composeHash = Canary-Hash $composeOutput $expectedHash 'Actual Windows Compose bind'
         [void](Docker @('cp', $canary, "${canaryId}:/tmp/pipe-copy.txt"))
         [void](Canary-Hash (Docker @('exec', $canaryId, 'sha256sum', '/tmp/pipe-copy.txt')) $expectedHash 'Binary Docker API copy')
-        foreach ($port in @(58000, 55432, 55541, 55542, 55543, 55544)) {
-            [void](Wait-Native { $body = (Invoke-WebRequest -Uri "http://127.0.0.1:$port/canary.txt" -TimeoutSec 2).Content; if ($body -ceq $canaryText) { $true } } 45 "Waiting for real container port $port through Windows loopback.")
+        $connectionsBefore = @(foreach ($port in @(58000,55432,55541,55542,55543,55544)) { @{ port = $port; connections = @(Get-CanaryWindowsConnections $port) } })
+        try {
+            foreach ($port in @(58000, 55432, 55541, 55542, 55543, 55544)) {
+                [void](Wait-Native { $body = (Invoke-WebRequest -Uri "http://127.0.0.1:$port/canary.txt" -TimeoutSec 2).Content; if ($body -ceq $canaryText) { $true } } 45 "Waiting for real container port $port through Windows loopback.")
+            }
+        } catch {
+            Write-CanaryForwardingDiagnostics $canaryId $expectedHash $connectionsBefore
+            throw
         }
         $rawWrapper = Join-Path $WorkDirectory 'DockerLoopbackRaw.exe'
         [void](Native $compiler @('/nologo', '/target:exe', "/out:$rawWrapper", (Join-Path $PSScriptRoot '../staging/docker-loopback.cs')))
