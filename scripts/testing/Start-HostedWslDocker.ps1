@@ -1,6 +1,6 @@
 #Requires -Version 7.2
 [CmdletBinding()]
-param([string]$WorkDirectory)
+param([string]$WorkDirectory, [switch]$Cleanup)
 $ErrorActionPreference = 'Stop'
 
 # Never enroll an owner's PC, an existing WSL distro or a nonempty Docker host.
@@ -10,6 +10,32 @@ if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hos
     throw 'This bootstrap requires a fresh explicitly enrolled GitHub-hosted Windows 2025 job.'
 }
 $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
+if ($Cleanup) {
+    $receiptPath = [IO.Path]::GetFullPath($env:POS_TEST_WSL_RECEIPT)
+    if (!$receiptPath.StartsWith($runnerTemp + '\', [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($receiptPath) -cne 'engine.json') { throw 'Cleanup requires the owned runner receipt.' }
+    $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+    $ownedDirectory = [IO.Path]::GetDirectoryName($receiptPath)
+    $expectedSsh = (Get-Command ssh.exe -ErrorAction Stop).Source
+    if ($receipt.version -ne 1 -or $receipt.transportCarrier -cne 'windows-openssh' -or
+        $receipt.owner -cnotmatch '^[a-f0-9]{32}$' -or $receipt.sshExecutable -ine $expectedSsh -or
+        $receipt.transport -cne 'tcp://127.0.0.1:2375') { throw 'The cleanup receipt is not an owned OpenSSH fixture.' }
+    foreach ($entry in @(@{ property = 'keyFile'; name = 'fixture-ssh-key' }, @{ property = 'knownHostsFile'; name = 'fixture-known-hosts' })) {
+        if ([IO.Path]::GetFullPath($receipt.($entry.property)) -ine (Join-Path $ownedDirectory $entry.name)) { throw 'The fixture key path is not owned.' }
+    }
+    $tunnelProcess = Get-CimInstance Win32_Process -Filter ('ProcessId=' + [int]$receipt.tunnelPid)
+    if ($tunnelProcess) {
+        $ownedCommand = $tunnelProcess.CommandLine.Replace('\', '/')
+        if ($tunnelProcess.ExecutablePath -ine $expectedSsh -or !$ownedCommand.Contains($receipt.keyFile.Replace('\', '/')) -or
+            !$ownedCommand.Contains($receipt.knownHostsFile.Replace('\', '/'))) { throw 'Refusing to stop a reused or unowned tunnel PID.' }
+        Stop-Process -Id ([int]$receipt.tunnelPid) -ErrorAction Stop
+    }
+    foreach ($file in @($receipt.keyFile, ($receipt.keyFile + '.pub'), $receipt.knownHostsFile)) {
+        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host 'Stopped the owned OpenSSH tunnel and removed its fixture keys.'
+    return
+}
 $owner = [guid]::NewGuid().ToString('N')
 if (!$WorkDirectory) { $WorkDirectory = Join-Path $runnerTemp "pos-wsl-engine-$owner" }
 $WorkDirectory = [IO.Path]::GetFullPath($WorkDirectory)
@@ -19,7 +45,7 @@ if (!$WorkDirectory.StartsWith($runnerTemp + '\', [StringComparison]::OrdinalIgn
 $docker = (Get-Command docker.exe -ErrorAction Stop).Source
 if (![IO.Path]::IsPathRooted($docker)) { throw 'The official installed Windows Docker CLI is required.' }
 $distribution = 'Ubuntu-24.04'
-$createdDistro = $false; $keepAlive = $null; $selectedLinux = $false
+$createdDistro = $false; $keepAlive = $null; $tunnel = $null; $selectedLinux = $false
 
 function Native {
     param([Parameter(Position=0)][string]$Executable, [Parameter(Position=1,ValueFromRemainingArguments=$true)][string[]]$Arguments,
@@ -94,13 +120,22 @@ try {
     $createdDistro = $true
     $kernel = Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'uname', '-r')
     if ($kernel -notmatch 'microsoft-standard-WSL2') { throw 'The disposable distro did not boot a genuine WSL2 Linux kernel.' }
+    $guestAddress = (Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'hostname', '-I')).Trim().Split(' ', [StringSplitOptions]::RemoveEmptyEntries)[0]
+    $parsedAddress = $null
+    if (![Net.IPAddress]::TryParse($guestAddress, [ref]$parsedAddress) -or
+        $guestAddress -notmatch '^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)') { throw 'The owned WSL guest did not expose a private IPv4 address.' }
+    $ssh = (Get-Command ssh.exe -ErrorAction Stop).Source
+    $keygen = Join-Path ([IO.Path]::GetDirectoryName($ssh)) 'ssh-keygen.exe'
+    $keyFile = Join-Path $WorkDirectory 'fixture-ssh-key'
+    $knownHostsFile = Join-Path $WorkDirectory 'fixture-known-hosts'
+    [void](Native $keygen @('-q', '-t', 'ed25519', '-N', '', '-f', $keyFile))
     $guestScript = Join-Path $WorkDirectory 'guest-bootstrap.sh'
     @'
 #!/bin/bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y docker.io socat
+apt-get install -y docker.io openssh-server
 for drive in c d; do
   if [ -d "/mnt/$drive" ]; then
     test ! -e "/$drive"
@@ -110,19 +145,66 @@ done
 test "$(cat /proc/1/comm)" = systemd
 install -d /etc/docker /etc/systemd/system/docker.service.d
 printf '{"userland-proxy":true,"labels":["mx.pos-hosted-rehearsal=__OWNER__"]}\n' > /etc/docker/daemon.json
-printf '[Service]\nExecStart=\nExecStart=%s -H fd:// -H tcp://127.0.0.1:2375 --tls=false --containerd=/run/containerd/containerd.sock\n' "$(command -v dockerd)" > /etc/systemd/system/docker.service.d/pos-hosted.conf
+printf '[Service]\nExecStart=\nExecStart=%s -H fd:// -H tcp://127.0.0.1:2376 --tls=false --containerd=/run/containerd/containerd.sock\n' "$(command -v dockerd)" > /etc/systemd/system/docker.service.d/pos-hosted.conf
 printf '__OWNER__\n' > /etc/pos-hosted-rehearsal
 systemctl daemon-reload
 systemctl enable --now containerd
 systemctl restart docker
+install -d -m 700 /root/.ssh /run/sshd
+printf 'restrict,port-forwarding,permitopen="127.0.0.1:2376" __PUBLIC_KEY__\n' > /root/.ssh/pos-hosted-authorized
+chmod 600 /root/.ssh/pos-hosted-authorized
+cat > /etc/ssh/pos-hosted.conf <<'SSHCONFIG'
+Port 22222
+ListenAddress __GUEST_IP__
+HostKey /etc/ssh/ssh_host_ed25519_key
+PidFile /run/pos-hosted-sshd.pid
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+UsePAM yes
+AuthorizedKeysFile /root/.ssh/pos-hosted-authorized
+AllowUsers root
+AllowTcpForwarding local
+PermitOpen 127.0.0.1:2376
+X11Forwarding no
+AllowAgentForwarding no
+PermitTTY no
+SSHCONFIG
+systemctl disable --now ssh.socket ssh.service || true
+cat > /etc/systemd/system/pos-hosted-ssh.service <<'SSHUNIT'
+[Unit]
+After=network.target
+[Service]
+ExecStart=/usr/sbin/sshd -D -e -f /etc/ssh/pos-hosted.conf
+Restart=on-failure
+[Install]
+WantedBy=multi-user.target
+SSHUNIT
+systemctl daemon-reload
+sshd -t -f /etc/ssh/pos-hosted.conf
+systemctl enable --now pos-hosted-ssh
 docker info --format '{{.OSType}}'
-'@.Replace('__OWNER__', $owner).Replace("`r`n", "`n") | Set-Content -LiteralPath $guestScript -Encoding utf8NoBOM
+'@.Replace('__OWNER__', $owner).Replace('__GUEST_IP__', $guestAddress).Replace('__PUBLIC_KEY__', (Get-Content -LiteralPath ($keyFile + '.pub') -Raw).Trim()).Replace("`r`n", "`n") | Set-Content -LiteralPath $guestScript -Encoding utf8NoBOM
     [void](Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestScript)))
     $keepAlive = Start-Process -FilePath 'wsl.exe' -ArgumentList @('--distribution', $distribution, '--user', 'root', '--', 'sleep', 'infinity') -WindowStyle Hidden -PassThru
+    $hostPublicKey = (Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'cat', '/etc/ssh/ssh_host_ed25519_key.pub')).Trim()
+    if ($hostPublicKey -notmatch '^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$') { throw 'The owned guest host key was not obtained.' }
+    [IO.File]::WriteAllText($knownHostsFile, "[$guestAddress]:22222 $hostPublicKey`n", [Text.UTF8Encoding]::new($false))
+    $sshArguments = @('-F', 'NUL', '-N', '-T', '-p', '22222', '-i', $keyFile,
+        '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'IdentityAgent=none',
+        '-o', 'StrictHostKeyChecking=yes', '-o', ('UserKnownHostsFile="' + $knownHostsFile.Replace('\', '/') + '"'),
+        '-o', 'GlobalKnownHostsFile=NUL', '-o', 'ExitOnForwardFailure=yes',
+        '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
+        '-L', '127.0.0.1:2375:127.0.0.1:2376', "root@$guestAddress")
+    $sshStart = [Diagnostics.ProcessStartInfo]::new()
+    $sshStart.FileName = $ssh; $sshStart.UseShellExecute = $false; $sshStart.CreateNoWindow = $true
+    foreach ($argument in $sshArguments) { $sshStart.ArgumentList.Add($argument) }
+    $tunnel = [Diagnostics.Process]::Start($sshStart)
     $linuxInfo = Wait-Native { (Docker @('--host', 'tcp://127.0.0.1:2375', 'info', '--format', '{{json .}}')) | ConvertFrom-Json } 120 'Waiting for the owned WSL Linux engine on Windows loopback.'
     if ($linuxInfo.OSType -cne 'linux' -or "mx.pos-hosted-rehearsal=$owner" -cnotin $linuxInfo.Labels) { throw 'The guest daemon identity was not established.' }
     $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 2375 -ErrorAction Stop)
-    if (@($listeners | Where-Object { $_.LocalAddress -notin @('127.0.0.1', '::1') }).Count) { throw 'The Docker API must not be exposed off Windows loopback.' }
+    if ($tunnel.HasExited -or @($listeners | Where-Object { $_.LocalAddress -ne '127.0.0.1' -or $_.OwningProcess -ne $tunnel.Id }).Count) { throw 'The Docker API must be owned by the OpenSSH tunnel on Windows loopback.' }
 
     # Use the official client's supported TCP transport. The existing Windows
     # Docker service, default context and named pipe remain entirely untouched.
@@ -131,6 +213,7 @@ docker info --format '{{.OSType}}'
     $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     $observed = Docker @('info', '--format', '{{json .}}') | ConvertFrom-Json
     if ($observed.ID -cne $linuxInfo.ID -or $observed.OSType -cne 'linux') { throw 'Official Windows Docker CLI does not reach the owned Linux daemon.' }
+    Write-Host (Docker @('version'))
     $env:POS_CAFE_REAL_DOCKER = $docker
     $env:POS_TEST_WSL_ENGINE = '1'
     $env:COMPOSE_CONVERT_WINDOWS_PATHS = '1'
@@ -201,7 +284,9 @@ services:
     }
     $receipt = Join-Path $WorkDirectory 'engine.json'
     @{ version = 1; owner = $owner; distribution = $distribution; kernel = $kernel.Trim(); daemonId = $observed.ID;
-       docker = $docker; transport = 'tcp://127.0.0.1:2375'; windowsHostUnchanged = $true;
+       docker = $docker; transport = 'tcp://127.0.0.1:2375'; transportCarrier = 'windows-openssh';
+       tunnelPid = $tunnel.Id; sshExecutable = $ssh; keyFile = $keyFile; knownHostsFile = $knownHostsFile;
+       windowsHostUnchanged = $true;
        windowsDaemonId = $windowsInfo.ID; windowsServicePid = $windowsServicePid;
        keepAlivePid = $keepAlive.Id; completedAt = [DateTimeOffset]::UtcNow.ToString('o');
        parity = @{ composeBindSha256 = $composeHash; rawBindSha256 = $rawHash; binaryCopySha256 = $expectedHash; loopbackPorts = @(58000,55432,55541,55542,55543,55544) } } |
@@ -211,6 +296,12 @@ services:
     }
     Write-Host "Owned real WSL Docker engine ready; parity receipt: $receipt"
 } catch {
+    if ($tunnel -and !$tunnel.HasExited) { $tunnel.Kill(); $tunnel.WaitForExit() }
+    if ($keyFile) {
+        foreach ($file in @($keyFile, ($keyFile + '.pub'), $knownHostsFile)) {
+            if ($file) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }
+        }
+    }
     if ($keepAlive -and !$keepAlive.HasExited) { $keepAlive.Kill($true); $keepAlive.WaitForExit() }
     if ($createdDistro) { & wsl.exe --terminate $distribution | Out-Null }
     if ($selectedLinux) { Remove-Item Env:DOCKER_HOST -ErrorAction SilentlyContinue }

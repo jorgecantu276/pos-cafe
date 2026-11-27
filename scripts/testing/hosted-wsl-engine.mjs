@@ -60,6 +60,11 @@ export async function verifyHostedWslEngine({ env = process.env, platform = proc
     && typeof receipt.daemonId === 'string' && receipt.daemonId.length > 0 && receipt.daemonId.length <= 128
     && receipt.distribution === 'Ubuntu-24.04' && receipt.transport === endpoint && receipt.windowsHostUnchanged === true,
   'The receipt must identify the owned WSL engine while preserving the Windows host.');
+  assert.ok(receipt.transportCarrier === 'windows-openssh' && Number.isSafeInteger(receipt.tunnelPid) && receipt.tunnelPid > 0
+    && localAbsolute(receipt.sshExecutable) && path.basename(receipt.sshExecutable).toLowerCase() === 'ssh.exe',
+  'The owned loopback transport must use the identified Windows OpenSSH tunnel.');
+  const sshInfo = await lstat(receipt.sshExecutable);
+  assert.ok(sshInfo.isFile() && !sshInfo.isSymbolicLink(), 'The official Windows OpenSSH executable must exist without redirection.');
   assert.ok(typeof receipt.kernel === 'string' && /^[A-Za-z0-9._+()-]{1,128}$/.test(receipt.kernel)
     && receipt.kernel.includes('microsoft-standard-WSL2'), 'A genuine WSL2 kernel identity is required.');
   const completed = Date.parse(receipt.completedAt);
@@ -80,7 +85,7 @@ export async function verifyHostedWslEngine({ env = process.env, platform = proc
     && Array.isArray(actual.Labels) && actual.Labels.includes(`mx.pos-hosted-rehearsal=${receipt.owner}`),
   'The actual Docker daemon does not match its owned WSL receipt.');
   return { state: 'verified', host: 'github-hosted-windows-2025', image: env.ImageOS,
-    engine: 'linux', distribution: 'Ubuntu-24.04', kernel: receipt.kernel, transport: endpoint, windowsHostUnchanged: true,
+    engine: 'linux', distribution: 'Ubuntu-24.04', kernel: receipt.kernel, transport: endpoint, transportCarrier: 'windows-openssh', windowsHostUnchanged: true,
     parity: { composeBind: 'verified', rawCliBind: 'verified', binaryCopy: 'verified', windowsLoopbackPorts: [...ports] } };
 }
 

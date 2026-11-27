@@ -191,10 +191,14 @@ HTTPS, autoridad temporal y carpeta externa de respaldos. Valida montajes,
 transporte binario y puertos Docker antes de instalar. No requiere valores ni
 variables del repositorio del cliente. El certificado se acepta solo en esta
 VM y se retira al terminar; no se desactiva la validación TLS.
-La CLI oficial accede al motor WSL por TCP exclusivamente en loopback. Una
+La CLI oficial accede al motor WSL por TCP exclusivamente en loopback, mediante
+una conexión OpenSSH temporal con clave y huella verificadas. Así se evita el
+[fallo de cierre parcial de WSL](https://github.com/docker/cli/issues/6220)
+sin modificar el cliente Docker ni su salida. Una
 comprobación compartida exige la identidad del runner desechable, recibo fresco
 y el ID/etiqueta/kernel del motor real. Los contextos remotos siguen rechazados;
 el servicio Docker Windows de la VM permanece intacto.
+El trabajo cierra solo su conexión y retira sus claves temporales al terminar.
 
 Además verifica copia cifrada, medio ausente sin perder el respaldo local y
 reintento del mismo archivo al reiniciar. El artefacto `rehearsal.json` contiene

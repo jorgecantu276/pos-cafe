@@ -9,10 +9,12 @@ async function fixture() {
   const base = await mkdtemp(path.join(tmpdir(), 'hosted-engine-'));
   const temporary = path.join(base, 'runner'), owned = path.join(temporary, 'owned'); await mkdir(owned, { recursive: true });
   const docker = path.join(temporary, 'docker.exe'); await writeFile(docker, 'Synthetic fixture file; never executed.');
+  const ssh = path.join(temporary, 'ssh.exe'); await writeFile(ssh, 'Synthetic fixture file; never executed.');
   const receiptFile = path.join(owned, 'engine.json');
   const now = new Date('2026-11-26T12:00:00Z'), owner = 'a'.repeat(32), hash = 'b'.repeat(64);
   const receipt = { version: 1, owner, distribution: 'Ubuntu-24.04', kernel: '6.6.87.2-microsoft-standard-WSL2', daemonId: 'private-fixture-daemon-id',
-    docker, transport: 'tcp://127.0.0.1:2375', windowsHostUnchanged: true, completedAt: now.toISOString(), privatePath: 'PRIVATE-PATH-CANARY', proxyPid: 1234,
+    docker, transport: 'tcp://127.0.0.1:2375', transportCarrier: 'windows-openssh', tunnelPid: 4321, sshExecutable: ssh,
+    windowsHostUnchanged: true, completedAt: now.toISOString(), privatePath: 'PRIVATE-PATH-CANARY', proxyPid: 1234,
     parity: { composeBindSha256: hash, rawBindSha256: hash, binaryCopySha256: hash, loopbackPorts: [58000, 55432, 55541, 55542, 55543, 55544] } };
   const env = { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Windows', ImageOS: 'win25', GITHUB_RUN_ID: '123456', RUNNER_TRACKING_ID: 'hosted-fixture',
     POS_ACCEPTANCE_DISPOSABLE: '1', POS_TEST_WSL_ENGINE: '1', DOCKER_HOST: 'tcp://127.0.0.1:2375', RUNNER_TEMP: temporary, POS_TEST_WSL_RECEIPT: receiptFile, POS_CAFE_REAL_DOCKER: docker };
@@ -34,8 +36,9 @@ test('hosted exception verifies the actual owned Linux daemon and returns only s
     const proof = await verifyHostedWslEngine({ env: f.env, platform: 'win32', inspectActual: f.inspectActual, now: f.now });
     assert.equal(f.calls, 1); assert.equal(proof.state, 'verified'); assert.equal(proof.windowsHostUnchanged, true);
     assert.equal(proof.transport, 'tcp://127.0.0.1:2375'); assert.equal(proof.kernel, f.receipt.kernel);
+    assert.equal(proof.transportCarrier, 'windows-openssh');
     assert.deepEqual(proof.parity.windowsLoopbackPorts, f.receipt.parity.loopbackPorts);
-    for (const privateValue of [f.base, f.receipt.owner, f.receipt.daemonId, 'PRIVATE-PATH-CANARY', 'proxyPid']) assert.ok(!JSON.stringify(proof).includes(privateValue));
+    for (const privateValue of [f.base, f.receipt.owner, f.receipt.daemonId, 'PRIVATE-PATH-CANARY', 'proxyPid', 'tunnelPid', 'sshExecutable']) assert.ok(!JSON.stringify(proof).includes(privateValue));
     await verifyHostedWslEngine({ env: { ...f.env, ImageOS: 'win25-vs2026' }, platform: 'win32', inspectActual: f.inspectActual, now: f.now });
   } finally { await f.clean(); }
 });
@@ -59,6 +62,8 @@ test('receipt freshness, identity, unchanged-host and complete parity are requir
     for (const override of [
       { completedAt: '2026-11-26T10:59:59Z' }, { completedAt: '2026-11-26T12:05:01Z' }, { owner: 'invalid' }, { windowsHostUnchanged: false },
       { transport: 'npipe:////./pipe/docker_engine' }, { distribution: 'Other-Linux' }, { kernel: 'PRIVATE-PATH-CANARY' },
+      { transportCarrier: 'wsl-localhost-relay' }, { tunnelPid: 0 }, { tunnelPid: 1.5 }, { tunnelPid: '4321' },
+      { sshExecutable: 'ssh.exe' }, { sshExecutable: path.join(f.temporary, 'missing', 'ssh.exe') }, { sshExecutable: f.docker },
       { parity: { ...f.receipt.parity, binaryCopySha256: 'c'.repeat(64) } }, { parity: { ...f.receipt.parity, loopbackPorts: [58000, 55432] } },
       { parity: { ...f.receipt.parity, loopbackPorts: [58000, 55432, 55541, 55542, 55543, 55543] } },
     ]) {

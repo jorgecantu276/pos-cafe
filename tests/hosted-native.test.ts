@@ -33,6 +33,13 @@ if(!$failed){throw 'nonzero exit not reported'}
 $bounded=$false; $timer=[Diagnostics.Stopwatch]::StartNew()
 try{Native -Executable $Node -Arguments @('-e','setInterval(()=>{},1000)') -TimeoutSeconds 1}catch{$bounded=$_.Exception.Message.Contains('deadline')}
 if(!$bounded -or $timer.Elapsed.TotalSeconds -gt 5){throw 'owned child deadline failed'}
+$sshExecutable=(Get-Command ssh.exe -ErrorAction Stop).Source
+$keygen=Join-Path ([IO.Path]::GetDirectoryName($sshExecutable)) 'ssh-keygen.exe'
+$fixtureKey=Join-Path $WorkDirectory 'fixture-key-with-spaces test'
+[void](Native -Executable $keygen -Arguments @('-q','-t','ed25519','-N','','-f',$fixtureKey))
+if(!(Test-Path -LiteralPath $fixtureKey) -or (Get-Content -LiteralPath ($fixtureKey+'.pub') -Raw).Trim() -notmatch '^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$'){
+    throw 'OpenSSH fixture key generation failed'
+}
 'native-regression-ok'
 `);
       const result = await run('pwsh.exe', ['-NoProfile', '-File', script, '-Bootstrap',
