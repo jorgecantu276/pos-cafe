@@ -52,6 +52,18 @@ function Docker {
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
     Native -Executable $docker -Arguments $Arguments
 }
+function Canary-Hash([string]$Output, [string]$Expected, [string]$Boundary) {
+    # Do not assume a CLI's first space-delimited token is the file digest.
+    # These are synthetic-only bytes: log only measured digests/lengths when a
+    # transport failure occurs, never arbitrary container output.
+    $lines = @($Output -split '\r?\n' | Where-Object { $_.Trim() })
+    if ($lines.Count -ne 1 -or $lines[0] -cnotmatch '^([a-f0-9]{64})[ \t]+\*?/[^\r\n]+$') {
+        throw "$Boundary returned invalid SHA-256 output (characters=$($Output.Length), lines=$($lines.Count))."
+    }
+    $actual = $Matches[1]
+    if ($actual -cne $Expected) { throw "$Boundary differs: expected SHA-256 $Expected; observed SHA-256 $actual." }
+    return $actual
+}
 function Free-Ports([int[]]$Ports) {
     foreach ($port in $Ports) {
         if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) {
@@ -171,10 +183,9 @@ services:
     try {
         [void](Docker @('compose', '--project-name', $project, '-f', $composeFile, 'up', '-d'))
         $canaryId = (Docker @('compose', '--project-name', $project, '-f', $composeFile, 'ps', '-q', 'canary')).Trim()
-        $composeHash = (Docker @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt')).Split(' ')[0]
-        if ($composeHash -cne $expectedHash) { throw 'The actual Windows Compose bind does not expose the intended host bytes.' }
+        $composeHash = Canary-Hash (Docker @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt')) $expectedHash 'Actual Windows Compose bind'
         [void](Docker @('cp', $canary, "${canaryId}:/tmp/pipe-copy.txt"))
-        if ((Docker @('exec', $canaryId, 'sha256sum', '/tmp/pipe-copy.txt')).Split(' ')[0] -cne $expectedHash) { throw 'Binary Docker API transport changed the canary.' }
+        [void](Canary-Hash (Docker @('exec', $canaryId, 'sha256sum', '/tmp/pipe-copy.txt')) $expectedHash 'Binary Docker API copy')
         foreach ($port in @(58000, 55432, 55541, 55542, 55543, 55544)) {
             [void](Wait-Native { $body = (Invoke-WebRequest -Uri "http://127.0.0.1:$port/canary.txt" -TimeoutSec 2).Content; if ($body -ceq $canaryText) { $true } } 45 "Waiting for real container port $port through Windows loopback.")
         }
@@ -182,8 +193,7 @@ services:
         [void](Native $compiler @('/nologo', '/target:exe', "/out:$rawWrapper", (Join-Path $PSScriptRoot '../staging/docker-loopback.cs')))
         [void](Native $rawWrapper @('--pos-cafe-self-test'))
         $rawId = (Native $rawWrapper @('create', '--name', $rawName, '--label', "mx.pos-hosted-rehearsal=$owner", '-v', "${canary}:/fixture/canary.txt:ro", 'alpine:3.22', 'sha256sum', '/fixture/canary.txt')).Trim()
-        $rawHash = (Docker @('start', '--attach', $rawId)).Split(' ')[0]
-        if ($rawHash -cne $expectedHash) { throw 'The attested raw Docker CLI bind does not expose the intended host bytes.' }
+        $rawHash = Canary-Hash (Docker @('start', '--attach', $rawId)) $expectedHash 'Attested raw Docker CLI bind'
     } finally {
         if ($rawId) {
             $rawOwner = (Docker @('inspect', '--format', '{{index .Config.Labels "mx.pos-hosted-rehearsal"}}', $rawId)).Trim()

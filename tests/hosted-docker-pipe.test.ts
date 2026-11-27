@@ -120,6 +120,17 @@ $functionNode=$syntax.Find({param($n) $n -is [Management.Automation.Language.Fun
 if(!$functionNode){throw 'Native function was not found'}
 # Only this function is evaluated: no bootstrap, host Docker, service or WSL code.
 Invoke-Expression $functionNode.Extent.Text
+$canaryFunction=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Canary-Hash'},$true)
+if(!$canaryFunction){throw 'Canary-Hash function was not found'}
+Invoke-Expression $canaryFunction.Extent.Text
+$digest='a'*64
+if((Canary-Hash ($digest+"  /fixture/canary.txt"+[Environment]::NewLine) $digest 'Synthetic bind') -cne $digest){throw 'canary SHA parser changed the measured digest'}
+$mismatch=$false
+try{Canary-Hash (('b'*64)+'  /fixture/canary.txt') $digest 'Synthetic bind'}catch{$mismatch=$_.Exception.Message.Contains('observed SHA-256 '+('b'*64))}
+if(!$mismatch){throw 'canary SHA mismatch did not retain safe measurements'}
+$invalid=$false
+try{Canary-Hash ('unexpected'+[Environment]::NewLine+$digest+'  /fixture/canary.txt') $digest 'Synthetic bind'}catch{$invalid=$_.Exception.Message.Contains('invalid SHA-256 output')}
+if(!$invalid){throw 'canary SHA parser accepted extra command output'}
 $actual=Native -Executable $Node -Arguments @('-e','process.stderr.write("pull progress");process.stdout.write(process.argv[1])','container id with spaces')
 if($actual -cne 'container id with spaces'){throw 'stdout or argument corruption'}
 if((Get-Content (Join-Path $WorkDirectory 'native-stderr.log') -Raw).Trim() -cne 'pull progress'){throw 'stderr lost'}
