@@ -9,7 +9,7 @@ import path from 'node:path';
 const run = promisify(execFile);
 
 test('real message pipe preserves binary bytes and drains TCP response after Docker-style CloseWrite',
-  { skip: process.platform !== 'win32', timeout: 25_000 }, async () => {
+  { skip: process.platform !== 'win32', timeout: 35_000 }, async context => {
     const directory = await mkdtemp(path.join(tmpdir(), 'pos-pipe-regression-'));
     try {
       const harness = path.join(directory, 'Harness.cs');
@@ -96,8 +96,13 @@ internal static class Harness {
 }
 `);
       const compiler = path.join(process.env.WINDIR || 'C:/Windows', 'Microsoft.NET/Framework64/v4.0.30319/csc.exe');
-      await run(compiler, ['/nologo', '/target:exe', '/main:Harness', `/out:${executable}`,
-        path.resolve('scripts/testing/WslDockerPipe.cs'), harness], { timeout: 10_000 });
+      const compilerStarted = performance.now();
+      try {
+        await run(compiler, ['/nologo', '/target:exe', '/main:Harness', `/out:${executable}`,
+          path.resolve('scripts/testing/WslDockerPipe.cs'), harness], { timeout: 20_000 });
+      } finally {
+        context.diagnostic(`C# compiler phase elapsed ${Math.round(performance.now() - compilerStarted)}ms (setup budget 20000ms).`);
+      }
       const result = await run(executable, [], { timeout: 10_000 });
       assert.equal(result.stdout.trim(), 'binary-and-half-close-ok');
       assert.equal(result.stderr, '');
