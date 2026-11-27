@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 # Never enroll an owner's PC, an existing WSL distro or a nonempty Docker host.
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
     $env:RUNNER_OS -cne 'Windows' -or $env:ImageOS -cnotmatch '^win25(?:-vs2026)?$' -or
-    $env:POS_ACCEPTANCE_DISPOSABLE -cne '1' -or !$env:GITHUB_RUN_ID -or !$env:RUNNER_TEMP -or !$env:GITHUB_ENV) {
+    $env:POS_ACCEPTANCE_DISPOSABLE -cne '1' -or !$env:GITHUB_RUN_ID -or !$env:GITHUB_JOB -or !$env:RUNNER_TEMP -or !$env:GITHUB_ENV) {
     throw 'This bootstrap requires a fresh explicitly enrolled GitHub-hosted Windows 2025 job.'
 }
 $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
@@ -19,7 +19,7 @@ if (!$WorkDirectory.StartsWith($runnerTemp + '\', [StringComparison]::OrdinalIgn
 $docker = (Get-Command docker.exe -ErrorAction Stop).Source
 if (![IO.Path]::IsPathRooted($docker)) { throw 'The official installed Windows Docker CLI is required.' }
 $distribution = 'Ubuntu-24.04'
-$serviceStopped = $false; $createdDistro = $false; $bridge = $null; $keepAlive = $null
+$createdDistro = $false; $keepAlive = $null; $ownedContext = $null
 
 function Native {
     param([Parameter(Position=0)][string]$Executable, [Parameter(Position=1,ValueFromRemainingArguments=$true)][string[]]$Arguments,
@@ -134,19 +134,20 @@ docker info --format '{{.OSType}}'
     $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 2375 -ErrorAction Stop)
     if (@($listeners | Where-Object { $_.LocalAddress -notin @('127.0.0.1', '::1') }).Count) { throw 'The Docker API must not be exposed off Windows loopback.' }
 
-    # Only this fresh runner's identified empty Windows daemon is stopped.
-    Stop-Service -Name docker -ErrorAction Stop
-    (Get-Service docker).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
-    $serviceStopped = $true
-    if (@([IO.Directory]::GetFiles('\\.\pipe\') | Where-Object { [IO.Path]::GetFileName($_) -ceq 'docker_engine' }).Count) { throw 'Another process still owns the default Docker pipe.' }
+    # Use the official CLI's native TCP transport to this owned loopback-only
+    # engine. Do not replace docker_engine or emulate upgraded/binary streams.
+    $contextName = 'pos-hosted-' + $owner
+    if (@((Docker @('context', 'ls', '--format', '{{.Name}}')) -split '\r?\n') -ccontains $contextName) { throw 'The owned context name already exists.' }
+    [void](Docker @('context', 'create', $contextName, '--docker', 'host=tcp://127.0.0.1:2375'))
+    $ownedContext = $contextName
+    [void](Docker @('context', 'use', $contextName))
+    $selectedContext = (Docker @('context', 'inspect')) | ConvertFrom-Json
+    if (@($selectedContext).Count -ne 1 -or $selectedContext[0].Name -cne $contextName -or
+        $selectedContext[0].Endpoints.docker.Host -cne 'tcp://127.0.0.1:2375') { throw 'The selected owned Docker context differs.' }
     $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-    $bridgeExe = Join-Path $WorkDirectory 'WslDockerPipe.exe'
-    [void](Native $compiler @('/nologo', '/target:exe', "/out:$bridgeExe", (Join-Path $PSScriptRoot 'WslDockerPipe.cs')))
-    $ready = Join-Path $WorkDirectory 'pipe-ready.txt'
-    $bridge = Start-Process -FilePath $bridgeExe -ArgumentList ('"{0}"' -f $ready) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $WorkDirectory 'pipe.log') -RedirectStandardError (Join-Path $WorkDirectory 'pipe-error.log')
-    [void](Wait-Native { if ($bridge.HasExited) { throw 'The owned Docker pipe process exited.' }; if (Test-Path -LiteralPath $ready) { (Get-Content -LiteralPath $ready -Raw).Trim() -eq [string]$bridge.Id } } 30 'Waiting for the owned Docker pipe relay.')
     $observed = Docker @('info', '--format', '{{json .}}') | ConvertFrom-Json
-    if ($observed.ID -cne $linuxInfo.ID -or $observed.OSType -cne 'linux') { throw 'Default Windows Docker CLI does not reach the owned Linux daemon.' }
+    if ($observed.ID -cne $linuxInfo.ID -or $observed.OSType -cne 'linux' -or
+        "mx.pos-hosted-rehearsal=$owner" -cnotin $observed.Labels) { throw 'Official Windows Docker CLI does not reach the owned Linux daemon.' }
     $env:POS_CAFE_REAL_DOCKER = $docker
     $env:POS_TEST_WSL_ENGINE = '1'
     $env:COMPOSE_CONVERT_WINDOWS_PATHS = '1'
@@ -203,8 +204,8 @@ services:
         if (Test-Path -LiteralPath $composeFile) { [void](Docker @('compose', '--project-name', $project, '-f', $composeFile, 'down', '--volumes')) }
     }
     $receipt = Join-Path $WorkDirectory 'engine.json'
-    @{ version = 1; owner = $owner; distribution = $distribution; kernel = $kernel.Trim(); daemonId = $observed.ID;
-       docker = $docker; pipe = 'npipe:////./pipe/docker_engine'; proxyPid = $bridge.Id; proxyExecutable = $bridgeExe;
+    @{ version = 2; owner = $owner; distribution = $distribution; kernel = $kernel.Trim(); daemonId = $observed.ID;
+       docker = $docker; context = $contextName; endpoint = 'tcp://127.0.0.1:2375'; runId = $env:GITHUB_RUN_ID; job = $env:GITHUB_JOB;
        keepAlivePid = $keepAlive.Id; completedAt = [DateTimeOffset]::UtcNow.ToString('o');
        parity = @{ composeBindSha256 = $composeHash; rawBindSha256 = $rawHash; binaryCopySha256 = $expectedHash; loopbackPorts = @(58000,55432,55541,55542,55543,55544) } } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $receipt -Encoding utf8NoBOM
@@ -213,9 +214,13 @@ services:
     }
     Write-Host "Owned real WSL Docker engine ready; parity receipt: $receipt"
 } catch {
-    if ($bridge -and !$bridge.HasExited) { $bridge.Kill($true); $bridge.WaitForExit() }
+    if ($ownedContext) {
+        if ((Docker @('context', 'show')).Trim() -ceq $ownedContext) { [void](Docker @('context', 'use', 'default')) }
+        $contextInfo = Docker @('context', 'inspect', $ownedContext) | ConvertFrom-Json
+        if (@($contextInfo).Count -eq 1 -and $contextInfo[0].Name -ceq $ownedContext -and
+            $contextInfo[0].Endpoints.docker.Host -ceq 'tcp://127.0.0.1:2375') { [void](Docker @('context', 'rm', $ownedContext)) }
+    }
     if ($keepAlive -and !$keepAlive.HasExited) { $keepAlive.Kill($true); $keepAlive.WaitForExit() }
     if ($createdDistro) { & wsl.exe --terminate $distribution | Out-Null }
-    if ($serviceStopped) { Start-Service docker -ErrorAction Continue }
     throw
 }

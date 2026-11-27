@@ -128,9 +128,14 @@ try {
         if (!$ancestor) { throw 'The engine receipt escaped its runner-temporary owner.' }
     }
     $engineReceipt = Get-RehearsalJson $engineReceiptPath
-    if ($engineReceipt.version -ne 1 -or $engineReceipt.owner -cnotmatch '^[a-f0-9]{32}$' -or
+    $selectedContext = (& $docker 'context' 'inspect' | Out-String) | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) { throw 'The actual Docker context is unavailable.' }
+    if ($engineReceipt.version -ne 2 -or $engineReceipt.owner -cnotmatch '^[a-f0-9]{32}$' -or
         $engineReceipt.daemonId -cne $engine.ID -or ('mx.pos-hosted-rehearsal=' + $engineReceipt.owner) -cnotin $engine.Labels -or
-        $engineReceipt.distribution -cne 'Ubuntu-24.04' -or $engineReceipt.pipe -cne 'npipe:////./pipe/docker_engine' -or
+        $engineReceipt.distribution -cne 'Ubuntu-24.04' -or $engineReceipt.endpoint -cne 'tcp://127.0.0.1:2375' -or
+        $engineReceipt.context -cne ('pos-hosted-' + $engineReceipt.owner) -or $engineReceipt.runId -cne $env:GITHUB_RUN_ID -or
+        $engineReceipt.job -cne $env:GITHUB_JOB -or @($selectedContext).Count -ne 1 -or
+        $selectedContext[0].Name -cne $engineReceipt.context -or $selectedContext[0].Endpoints.docker.Host -cne $engineReceipt.endpoint -or
         $engineReceipt.kernel -cnotmatch '^[A-Za-z0-9._+()-]{1,128}$' -or $engineReceipt.kernel -cne $engine.KernelVersion) {
         throw 'The receipt does not identify the actual owned WSL Linux daemon.'
     }

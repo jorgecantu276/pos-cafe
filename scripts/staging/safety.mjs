@@ -27,6 +27,31 @@ export function localDocker(endpoint) {
     || endpoint === 'unix:///var/run/docker.sock', 'Refusing a remote/custom Docker endpoint');
 }
 
+// This exception is available only to the explicitly enrolled fresh hosted VM.
+// Ordinary developer/store checks still use localDocker's original endpoints.
+export function hostedDockerContext(context, engine, receipt, env = process.env, platform = process.platform, now = Date.now()) {
+  assert.equal(platform, 'win32');
+  assert.equal(env.GITHUB_ACTIONS, 'true'); assert.equal(env.RUNNER_ENVIRONMENT, 'github-hosted');
+  assert.equal(env.RUNNER_OS, 'Windows'); assert.match(env.ImageOS || '', /^win25(?:-vs2026)?$/);
+  assert.equal(env.POS_ACCEPTANCE_DISPOSABLE, '1'); assert.equal(env.POS_TEST_WSL_ENGINE, '1');
+  assert.ok(!env.DOCKER_HOST && !env.DOCKER_CONTEXT, 'Docker environment redirects are refused.');
+  assert.match(env.GITHUB_RUN_ID || '', /^[1-9][0-9]*$/); assert.ok(env.GITHUB_JOB);
+  assert.equal(receipt.version, 2); assert.match(receipt.owner || '', /^[a-f0-9]{32}$/);
+  assert.equal(receipt.runId, env.GITHUB_RUN_ID); assert.equal(receipt.job, env.GITHUB_JOB);
+  assert.equal(receipt.distribution, 'Ubuntu-24.04'); assert.equal(engine.OSType, 'linux');
+  assert.ok(typeof receipt.daemonId === 'string' && receipt.daemonId && receipt.daemonId === engine.ID);
+  assert.ok(engine.Labels?.includes('mx.pos-hosted-rehearsal=' + receipt.owner));
+  assert.equal(receipt.kernel, engine.KernelVersion); assert.match(receipt.kernel, /microsoft-standard-WSL2/);
+  assert.equal(receipt.context, 'pos-hosted-' + receipt.owner); assert.equal(context.Name, receipt.context);
+  assert.equal(receipt.endpoint, 'tcp://127.0.0.1:2375'); assert.equal(context.Endpoints?.docker?.Host, receipt.endpoint);
+  const completed = Date.parse(receipt.completedAt);
+  assert.ok(Number.isFinite(completed) && completed >= now - 60 * 60_000 && completed <= now + 5 * 60_000, 'Hosted Docker receipt is stale.');
+  const parity = receipt.parity;
+  assert.match(parity?.composeBindSha256 || '', /^[a-f0-9]{64}$/);
+  assert.equal(parity.composeBindSha256, parity.rawBindSha256); assert.equal(parity.composeBindSha256, parity.binaryCopySha256);
+  assert.deepEqual([...parity.loopbackPorts].sort(), [58000, 55432, 55541, 55542, 55543, 55544].sort());
+}
+
 export function fingerprint(snapshot, migration) {
   return createHash('sha256').update(snapshot).update('\0').update(migration).digest('hex');
 }
