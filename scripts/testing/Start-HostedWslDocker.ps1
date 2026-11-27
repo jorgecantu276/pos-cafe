@@ -23,7 +23,8 @@ $createdDistro = $false; $keepAlive = $null; $ownedContext = $null
 
 function Native {
     param([Parameter(Position=0)][string]$Executable, [Parameter(Position=1,ValueFromRemainingArguments=$true)][string[]]$Arguments,
-        [ValidateRange(1,900)][int]$TimeoutSeconds = 600, [switch]$CloseInput)
+        [ValidateRange(1,900)][int]$TimeoutSeconds = 600, [switch]$CloseInput,
+        [ValidatePattern('^1\.[0-9]+$')][string]$ApiVersion)
     # Docker emits pull progress on stderr even when create succeeds. Keep its
     # machine-readable stdout (IDs/hashes/JSON) separate from diagnostics.
     $label = (Split-Path -Leaf $Executable) + ' ' + (($Arguments | Select-Object -First 2) -join ' ')
@@ -32,6 +33,7 @@ function Native {
     $start.FileName = $Executable; $start.UseShellExecute = $false; $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
     $start.RedirectStandardInput = $CloseInput.IsPresent
+    if ($ApiVersion) { $start.Environment['DOCKER_API_VERSION'] = $ApiVersion }
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     $process = [Diagnostics.Process]::new(); $process.StartInfo = $start
     try {
@@ -221,14 +223,10 @@ services:
                 $apiVersion = [string]$versions.Server.MinAPIVersion
                 if ($apiVersion -cnotmatch '^1\.[0-9]+$') { $apiVersion = [string]$versions.Server.ApiVersion }
                 if ($apiVersion -cmatch '^1\.[0-9]+$') {
-                    $savedDockerApiVersion = $env:DOCKER_API_VERSION
-                    try {
-                        $env:DOCKER_API_VERSION = $apiVersion
-                        $apiOutput = Native -Executable $docker -Arguments @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30
-                        $diagnostic.serverApiVersion = $apiVersion
-                        $diagnostic.serverApiStdout = Canary-Measurement $apiOutput $expectedHash
-                        $diagnostic.serverApiStderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
-                    } finally { $env:DOCKER_API_VERSION = $savedDockerApiVersion }
+                    $apiOutput = Native -Executable $docker -Arguments @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30 -ApiVersion $apiVersion
+                    $diagnostic.serverApiVersion = $apiVersion
+                    $diagnostic.serverApiStdout = Canary-Measurement $apiOutput $expectedHash
+                    $diagnostic.serverApiStderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
                 }
             } catch { }
             try {

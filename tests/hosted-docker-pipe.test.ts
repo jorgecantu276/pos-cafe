@@ -143,6 +143,9 @@ if($actual -cne 'container id with spaces'){throw 'stdout or argument corruption
 if((Get-Content (Join-Path $WorkDirectory 'native-stderr.log') -Raw).Trim() -cne 'pull progress'){throw 'stderr lost'}
 $eof=Native -Executable $Node -Arguments @('-e','process.stdin.resume();process.stdin.on("end",()=>process.stdout.write("valid-eof"))') -CloseInput -TimeoutSeconds 3
 if($eof -cne 'valid-eof'){throw 'explicit redirected stdin did not deliver valid EOF'}
+$originalApi=$env:DOCKER_API_VERSION
+$childApi=Native -Executable $Node -Arguments @('-e','process.stdout.write(process.env.DOCKER_API_VERSION)') -ApiVersion '1.44'
+if($childApi -cne '1.44' -or $env:DOCKER_API_VERSION -cne $originalApi){throw 'API version must affect only the explicit child process'}
 $failed=$false
 try{Native -Executable $Node -Arguments @('-e','process.stderr.write("synthetic command failed");process.exit(7)')}catch{$failed=$_.Exception.Message.Contains('synthetic command failed')}
 if(!$failed){throw 'nonzero exit not reported'}
