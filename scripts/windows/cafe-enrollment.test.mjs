@@ -42,7 +42,7 @@ async function fixture() {
     const files = { 'node.exe': 'synthetic executable marker', 'release.json': JSON.stringify(metadata),
       'Start-POS.ps1': '# synthetic no execution', 'app/server.js': '// synthetic no execution',
       'database-migrations/schema.snapshot.json': '{}', 'Open-Caja.ps1': '# synthetic fixed launcher',
-      'auto-update.mjs': '// synthetic updater', 'Extract-POS-Update.ps1': '# synthetic extraction' };
+      'auto-update.mjs': '// synthetic updater', 'Extract-POS-Update.ps1': '# synthetic extraction', 'Cafe-UpdateTask.ps1': '# synthetic task', 'legacy-route-cache.mjs': '// synthetic legacy verifier' };
     for (const [file, value] of Object.entries(files)) { await mkdir(path.dirname(path.join(folder, file)), { recursive: true }); await writeFile(path.join(folder, file), value); }
     const index = Object.entries(files).map(([file, value]) => ({ file, sha256: digest(value) }));
     await writeFile(path.join(folder, 'SHA256.json'), JSON.stringify(index));
@@ -73,11 +73,16 @@ async function fixture() {
     checkedAtUtc: new Date().toISOString(), release: { commit: prior, sourceDirty: false, fixtureOnly: false, source: 'verified_server' } };
   const options = { installed, bootstrap, config, shortcut, key, manifest, support, approval, reporter };
   const requests = [];
+  const taskCalls = [];
+  const scheduledTask = { name: 'synthetic-Cafe-05', hash: 'absent', xml: null, at: '05:00', timeZone: 'America/Matamoros', missedRun: 'skip' };
   const dependencies = { machine: async () => machine, portUnused: async () => true, idle: async () => true,
+    inspectUpdateTask: async () => scheduledTask,
+    installUpdateTask: async (inputs, priorTask) => { taskCalls.push({ operation: 'install', inputs, priorTask }); return { name: scheduledTask.name, hash: '5'.repeat(64), at: '05:00', timeZone: 'America/Matamoros', missedRun: 'skip' }; },
+    rollbackUpdateTask: async () => { taskCalls.push({ operation: 'rollback' }); },
     gh: async args => { requests.push(args[0]); return args[0].endsWith('/issues/comments/42')
       ? { user: { login: 'synthetic-publisher' }, html_url: reportUrl, body: '```json\n' + JSON.stringify(report) + '\n```' }
       : { private: true }; } };
-  return { root, options, configuration, dependencies, report, requests };
+  return { root, options, configuration, dependencies, report, requests, taskCalls, scheduledTask };
 }
 
 test('read-only plan authenticates actual context and supervised enrollment preserves client data and real shortcut', windows, async () => {
@@ -116,6 +121,8 @@ test('read-only plan authenticates actual context and supervised enrollment pres
   const enabled = await applyEnrollment(enable, path.join(f.root, 'enable.json'), f.dependencies);
   assert.equal(enabled.state, 'enabled');
   assert.equal(JSON.parse(await readFile(f.options.config, 'utf8')).AutoUpdate, true);
+  assert.equal(f.taskCalls.length, 1); assert.equal(f.taskCalls[0].operation, 'install');
+  assert.equal(enabled.scheduledTask.at, '05:00'); assert.equal(enabled.scheduledTask.missedRun, 'skip');
 });
 
 test('unknown report/machine, busy backend, changed source and changed plan all refuse before mutations', windows, async () => {
@@ -126,6 +133,7 @@ test('unknown report/machine, busy backend, changed source and changed plan all 
   await assert.rejects(inspectEnrollment(f.options, f.dependencies), /fresh actual-PC report/);
   f.report.checkedAtUtc = new Date().toISOString();
   const plan = await inspectEnrollment(f.options, f.dependencies);
+  await assert.rejects(applyEnrollment({...plan,legacyRuntimeCache:[{file:'forged-cache',sha256:'0'.repeat(64)}]},path.join(f.root,'forged-cache.json'),f.dependencies),/legacy runtime cache changed/);
   await assert.rejects(applyEnrollment({ ...plan, machineSha256: '7'.repeat(64) }, path.join(f.root, 'forged.json'), f.dependencies), /plan machineSha256/);
   await writeFile(f.options.config, JSON.stringify({ ...f.configuration, ClipEnabled: false }));
   await assert.rejects(applyEnrollment(plan, path.join(f.root, 'refused.json'), f.dependencies), /inputs changed/);
@@ -180,6 +188,97 @@ test('an actual Windows sharing lock refusing the final shortcut switch restores
     assert.deepEqual(await readFile(f.options.config), before);
     assert.deepEqual(await readFile(f.options.shortcut), shortcutBefore);
     assert.equal(JSON.parse(await readFile(path.join(f.root, 'locked.json'), 'utf8')).state, 'rolled-back');
+  } finally {
+    await writeFile(release, 'release');
+    if (holder?.exitCode === null) await new Promise(resolve => holder.once('exit', resolve));
+  }
+});
+
+test('native Windows task XML preserves fixed UTC cadence, current limited account and no missed-run catch-up', windows, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'cafe-task-contract-'));
+  const script = path.join(import.meta.dirname, 'Cafe-UpdateTask.ps1');
+  const harness = `
+$ErrorActionPreference='Stop'
+Import-Module ScheduledTasks
+$global:fixtureTask=$null
+$global:registered=0
+$global:removed=0
+function global:Get-ScheduledTask { param($TaskName,$TaskPath,$ErrorAction) if($global:fixtureTask){$global:fixtureTask} }
+function global:Register-ScheduledTask { param($TaskName,$TaskPath,$InputObject,$Xml,[switch]$Force) if($Xml){throw 'Unexpected XML restoration'};$global:fixtureTask=$InputObject;$global:registered++ }
+function global:Export-ScheduledTask { param($TaskName,$TaskPath) if($global:failExportOnce){$global:failExportOnce=$false;throw 'Synthetic export failure'};ScheduledTasks\\Export-ScheduledTask -InputObject $global:fixtureTask }
+function global:Unregister-ScheduledTask { param($TaskName,$TaskPath,[switch]$Confirm) $global:fixtureTask=$null;$global:removed++ }
+$install=& $env:TEST_TASK_SCRIPT -Mode Install -ConfigPath $env:TEST_TASK_CONFIG -Bootstrap $env:TEST_TASK_BOOTSTRAP | ConvertFrom-Json
+try { $inspect=& $env:TEST_TASK_SCRIPT -Mode Inspect -ConfigPath $env:TEST_TASK_CONFIG -Bootstrap $env:TEST_TASK_BOOTSTRAP | ConvertFrom-Json } catch { throw ('Initial inspect failed: '+$_) }
+if($inspect.hash -cne $install.hash){throw 'Task snapshot changed unexpectedly'}
+$xml=ScheduledTasks\\Export-ScheduledTask -InputObject $global:fixtureTask
+$global:fixtureTask.Triggers[0].StartBoundary='2026-01-01T04:00:00-06:00'
+$global:fixtureTask.Triggers[1].StartBoundary='2026-01-01T05:00:00-06:00'
+$normalized=& $env:TEST_TASK_SCRIPT -Mode Inspect -ConfigPath $env:TEST_TASK_CONFIG -Bootstrap $env:TEST_TASK_BOOTSTRAP | ConvertFrom-Json
+$global:fixtureTask.Triggers[0].StartBoundary='2026-01-01T12:00:00Z'
+$refused=$false
+try { & $env:TEST_TASK_SCRIPT -Mode Inspect -ConfigPath $env:TEST_TASK_CONFIG -Bootstrap $env:TEST_TASK_BOOTSTRAP | Out-Null } catch { $refused=$true }
+if(!$refused -or $global:registered -ne 1){throw 'Unexpected schedule was not preserved/refused'}
+$global:fixtureTask.Triggers[0].StartBoundary='2026-01-01T04:00:00-06:00'
+$global:fixtureTask.Settings.StartWhenAvailable=$true
+$refused=$false
+try { & $env:TEST_TASK_SCRIPT -Mode Inspect -ConfigPath $env:TEST_TASK_CONFIG -Bootstrap $env:TEST_TASK_BOOTSTRAP | Out-Null } catch { $refused=$true }
+if(!$refused){throw 'Missed-run catch-up was accepted'}
+$global:fixtureTask.Settings.StartWhenAvailable=$false
+try { $rollback=& $env:TEST_TASK_SCRIPT -Mode Rollback -ConfigPath $env:TEST_TASK_CONFIG -Bootstrap $env:TEST_TASK_BOOTSTRAP -ExpectedHash $normalized.hash | ConvertFrom-Json } catch { throw ('Rollback failed: '+$_) }
+$global:failExportOnce=$true
+$refused=$false
+try { & $env:TEST_TASK_SCRIPT -Mode Install -ConfigPath $env:TEST_TASK_CONFIG -Bootstrap $env:TEST_TASK_BOOTSTRAP | Out-Null } catch { $refused=$true }
+if(!$refused -or $global:fixtureTask){throw 'Failed registration readback did not remove its own task'}
+@{xml=$xml;removed=$global:removed;registered=$global:registered;taskRemains=($null -ne $global:fixtureTask)}|ConvertTo-Json -Compress
+`;
+  const result = JSON.parse(execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', harness], {
+    windowsHide: true, encoding: 'utf8', env: { ...process.env, PSModulePath: path.join(path.dirname(powershell), 'Modules'),
+      TEST_TASK_SCRIPT: script, TEST_TASK_CONFIG: path.join(root, 'private', 'config.json'), TEST_TASK_BOOTSTRAP: path.join(root, 'bootstrap') },
+  }));
+  assert.match(result.xml, /<StartBoundary>2026-01-01T10:00:00Z<\/StartBoundary>/);
+  assert.match(result.xml, /<StartBoundary>2026-01-01T11:00:00Z<\/StartBoundary>/);
+  assert.equal((result.xml.match(/<CalendarTrigger>/g) || []).length, 2);
+  assert.match(result.xml, /<StartWhenAvailable>false<\/StartWhenAvailable>/);
+  assert.match(result.xml, /<MultipleInstancesPolicy>IgnoreNew<\/MultipleInstancesPolicy>/);
+  assert.match(result.xml, /<RunLevel>LeastPrivilege<\/RunLevel>/);
+  assert.match(result.xml, /<LogonType>InteractiveToken<\/LogonType>/);
+  assert.match(result.xml, /-ScheduledUpdate/);
+  assert.equal(result.registered, 2); assert.equal(result.removed, 2); assert.equal(result.taskRemains, false);
+});
+
+test('enable rolls back its scheduled task when Windows refuses the configuration switch', windows, async () => {
+  const f = await fixture();
+  await applyEnrollment(await inspectEnrollment(f.options, f.dependencies), path.join(f.root, 'enrollment.json'), f.dependencies);
+  f.report.release.commit = next;
+  const reporter = JSON.parse(await readFile(f.options.reporter, 'utf8'));
+  await writeFile(f.options.reporter, JSON.stringify({ ...reporter, InstallDirectory: f.options.bootstrap }));
+  const plan = await inspectEnrollment({ ...f.options, enabling: true }, f.dependencies);
+  await assert.rejects(applyEnrollment(plan, path.join(f.root, 'changed-task.json'), {
+    ...f.dependencies, inspectUpdateTask: async () => ({ ...f.scheduledTask, hash: '9'.repeat(64) }),
+  }), /scheduled task changed/);
+  assert.equal(f.taskCalls.length, 0);
+  const before = await readFile(f.options.config), ready = path.join(f.root, 'config-lock-ready'), release = path.join(f.root, 'config-lock-release');
+  let holder, rolledBack = false;
+  const dependencies = { ...f.dependencies,
+    installUpdateTask: async () => {
+      holder = spawn(powershell, ['-NoProfile', '-NonInteractive', '-Command',
+        "$ErrorActionPreference='Stop';$h=[IO.File]::Open($env:TEST_LOCK,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);try{[IO.File]::WriteAllText($env:TEST_READY,'ready');while(!(Test-Path -LiteralPath $env:TEST_RELEASE)){Start-Sleep -Milliseconds 50}}finally{$h.Dispose()}"],
+      { windowsHide: true, stdio: 'ignore', env: { ...process.env, TEST_LOCK: f.options.config, TEST_READY: ready, TEST_RELEASE: release } });
+      let locked = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (await readFile(ready).catch(() => null)) { locked = true; break; }
+        assert.equal(holder.exitCode, null); await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      assert.equal(locked, true); return { name: f.scheduledTask.name, hash: '5'.repeat(64) };
+    },
+    rollbackUpdateTask: async (inputs, installed, previous) => {
+      assert.equal(inputs.config, f.options.config); assert.equal(installed.hash, '5'.repeat(64)); assert.equal(previous.hash, 'absent'); rolledBack = true;
+    },
+  };
+  try {
+    await assert.rejects(applyEnrollment(plan, path.join(f.root, 'enable-refused.json'), dependencies), /EPERM|EACCES|EBUSY/);
+    assert.equal(rolledBack, true); assert.deepEqual(await readFile(f.options.config), before);
+    assert.equal(JSON.parse(await readFile(path.join(f.root, 'enable-refused.json'), 'utf8')).state, 'rolled-back');
   } finally {
     await writeFile(release, 'release');
     if (holder?.exitCode === null) await new Promise(resolve => holder.once('exit', resolve));

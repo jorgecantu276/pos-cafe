@@ -2,7 +2,8 @@
 
 Use this adapter on the actual Windows POS during its supervised maintenance
 window. It changes the existing shortcut and the two updater configuration
-fields. It never replaces application folders, applies SQL, launches Caja,
+fields. The enable step also installs the owned daily 05:00 Central update task.
+It never replaces application folders, applies SQL, launches Caja,
 changes provider settings, copies a journal or publishes a release.
 
 The engineering PC cannot stand in for the store. First accept the genuine PC
@@ -69,6 +70,18 @@ backup folder/key, matching target configuration, known shortcut ownership,
 GitHub access and a closed application/backend. Unknown or unresolved state
 refuses. Application and key folders cannot contain private client files.
 
+The observed rc.6 predecessor `b776550a7a91ad1dafb21b2200a235dfe337bb6f`
+can contain Next runtime route-cache copies created by ordinary login/favicon
+requests. Only this installed predecessor has a bounded compatibility check:
+every indexed file remains hash-verified, and each extra must derive exactly from
+an indexed immutable prerender seed and its source-route ownership metadata.
+Payloads must match their seed bytes; metadata may differ only by the numeric
+runtime timestamp. The plan/receipt preserves every accepted cache path/hash and
+rechecks that inventory before application. Nothing is deleted or moved. Unknown
+files, dynamic responses, altered seeds, links or other predecessor commits refuse.
+New bootstrap/candidate packages keep strict complete-file verification; they do
+not receive this compatibility exception.
+
 Application rechecks all probes and exact input hashes under an exclusive local
 enrollment lock. It saves the original config and shortcut to the private
 receipt's `.previous.json`, stages files with their original ACLs, then switches
@@ -103,6 +116,22 @@ path, and apply it with a new receipt path. Enabling refuses until the shortcut
 already selects the reviewed bootstrap and the current report identifies it.
 The existing updater then downloads only signed compatible packages and retains
 its closed-shift/payment/printing and startup fallback gates.
+
+Enabling binds an owned Windows task to the current Windows account with limited
+privilege. Its two fixed daily UTC boundaries (10:00Z and 11:00Z) do not depend on
+the PC's Windows timezone; the updater accepts only the one that falls at 05:00
+`America/Matamoros`, including daylight-saving changes. It refuses all work
+outside 05:00–05:15 Central and never catches up a missed run. The PC must be on
+and this Windows account signed in (locked is fine); otherwise it skips the day.
+No operating-system timezone or 08:00 reporter schedule is changed.
+
+The task checks a closed app/backend and resolved printing before downloading.
+It verifies candidate startup without opening a browser, closes only its owned
+probe process, and rechecks the window and idle gates before selection. Opening
+or closing Caja later never activates a pending update. An unexpected existing
+task/action/principal/cadence refuses; task registration is rolled back together
+with updater configuration if enabling fails. The private plan and receipt bind
+the exact scheduled-task snapshot.
 
 Finally observe one accepted signed update and its recovery behavior on that
 actual PC. Enrollment or enabling alone does not prove delivery, physical paper,

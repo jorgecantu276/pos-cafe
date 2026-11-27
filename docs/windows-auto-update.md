@@ -1,10 +1,14 @@
 # Actualizaciones automáticas de Caja en Windows
 
-El acceso directo de Caja abre un lanzador fijo. Con la opción activada, el lanzador consulta cada 15 minutos la última versión estable de GitHub Releases y prepara el ZIP mientras Caja funciona. Al cerrar la ventana de Caja, consulta el estado del turno en Supabase. Si hay un turno abierto, una entrega pendiente, un pago CLIP sin resolver, un trabajo de impresión pendiente o incierto, o no se puede confirmar el estado, conserva la versión actual.
+El acceso directo de Caja abre un lanzador fijo. Las actualizaciones automáticas se ejecutan una vez al día a las **05:00, hora Central de Matamoros**, con ajuste de horario de verano. Abrir o cerrar Caja durante el día no descarga ni activa una versión. El reporte de soporte conserva su tarea independiente de las 08:00.
 
-Cuando el servidor de Caja se detiene y Supabase confirma el cierre, el lanzador selecciona la versión preparada para la próxima apertura. Vuelve a consultar el estado antes de abrirla. Si el nuevo servidor no arranca y verifica su identidad, el lanzador abre la versión anterior y registra el intento fallido. El registro está junto a la configuración privada, en `pos-cafe-config.json.update.log`.
+La tarea solo trabaja entre 05:00 y 05:15 Central. Si el equipo está apagado, la sesión Windows de la cuenta de Caja no está iniciada, la ventana de tiempo terminó o no se puede confirmar el estado, se omite ese día: no hay recuperación tardía al encender o abrir Caja. La cuenta puede estar bloqueada. El instalador conserva la zona horaria de Windows; programa dos límites UTC diarios (10:00Z/11:00Z) y el control `America/Matamoros` permite únicamente el que corresponde a las 05:00 Central.
+
+Antes de descargar o probar una versión, debe estar cerrada la aplicación y Supabase debe confirmar que no hay turno abierto, entrega pendiente o pago CLIP sin resolver. El diario debe estar accesible y sin trabajos pendientes o inciertos. La tarea nunca detiene una Caja abierta. Verifica firma, ZIP y contrato; inicia la versión candidata sin navegador para comprobar su identidad, detiene solo ese proceso propio y vuelve a verificar tiempo/estado antes de seleccionar la versión. Si la prueba falla conserva la anterior. La próxima apertura usa la versión ya aceptada; si después falla el inicio, conserva la recuperación anterior. El registro está junto a la configuración privada, en `pos-cafe-config.json.update.log`.
 
 Los paquetes se guardan en carpetas separadas. La configuración, el diario de impresión, los respaldos y los archivos privados permanecen en sus rutas externas. El actualizador compara el contrato de base de datos con la versión activa. Si la lista de migraciones o sus hashes difieren, esa versión requiere el procedimiento habitual de mantenimiento.
+
+La compilación standalone conserva la caché acotada en memoria de Next y desactiva su escritura de caché de respuestas en la carpeta inmutable. La prueba de Windows comprueba todos los archivos y sus hashes después de abrir, consultar login/favicon y detener el servidor. Una versión nueva que crea o cambia archivos dentro del paquete no pasa esa comprobación.
 
 Durante una actualización manual, apunta el acceso directo al lanzador nuevo. Si la versión del lanzador cambió, la primera apertura confirmada usa ese paquete y desvincula la selección automática anterior. Conserva la carpeta anterior; no reemplaces el diario para volver de versión.
 
@@ -14,7 +18,7 @@ Durante una actualización manual, apunta el acceso directo al lanzador nuevo. S
 - En el backend correspondiente, la migración `202611250025_windows_update_idle.sql` habilita la consulta de cierre. Usa las credenciales de servicio ya disponibles en la configuración privada del lanzador. El instalador automático nunca ejecuta migraciones.
 - La cuenta de Windows que abre Caja necesita `gh.exe` en su PATH con acceso de lectura al repositorio privado. El equipo de publicación guarda la clave privada Ed25519 por separado. Solo la clave pública PEM se copia al equipo del café, fuera de las versiones.
 - Configura `PrintDataDirectory` con la ruta absoluta del diario de impresión existente y conserva `RequireExistingPrintJournal: true`. Usa rutas externas al lanzador y a la carpeta de actualizaciones para todos los archivos privados.
-- La configuración inicial trae `AutoUpdate: false`. Para habilitarlo se usa `AutoUpdate: true` con `AutoUpdatePublicKeyFile` apuntando a la ruta absoluta de la clave pública. Una vez habilitado, abre Caja con el acceso directo habitual. Para deshabilitar la descarga, deja el acceso fijo y configura `AutoUpdate: false`.
+- La configuración inicial trae `AutoUpdate: false`. La habilitación supervisada de [cafe-enrollment.md](cafe-enrollment.md) instala la tarea propia de las 05:00 con la misma cuenta de Caja y privilegios limitados, sin catch-up, además de establecer `AutoUpdate: true` y la ruta absoluta `AutoUpdatePublicKeyFile`. Rechaza tareas ajenas o con horario inesperado. Para deshabilitar la descarga, deja el acceso fijo y configura `AutoUpdate: false`.
 
 ## Publicar una versión apta para actualización
 

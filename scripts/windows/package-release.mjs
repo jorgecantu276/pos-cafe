@@ -67,7 +67,7 @@ cpSync(process.execPath, path.join(destination, 'node.exe'));
 const nodeLicense = path.join(path.dirname(process.execPath), 'LICENSE');
 assert.ok(existsSync(nodeLicense), 'The official Node distribution LICENSE must accompany node.exe.');
 cpSync(nodeLicense, path.join(destination, 'Node-LICENSE.txt'));
-for (const file of ['Start-POS.ps1', 'Open-POS.cmd', 'Open-Caja.ps1', 'Install-POS-shortcut.ps1', 'Carinito-Mio.ico', 'auto-update.mjs', 'cafe-enrollment.mjs', 'Extract-POS-Update.ps1']) cpSync(path.join(root, 'scripts/windows', file), path.join(destination, file));
+for (const file of ['Start-POS.ps1', 'Open-POS.cmd', 'Open-Caja.ps1', 'Install-POS-shortcut.ps1', 'Carinito-Mio.ico', 'auto-update.mjs', 'cafe-enrollment.mjs', 'Cafe-UpdateTask.ps1', 'Extract-POS-Update.ps1', 'legacy-route-cache.mjs']) cpSync(path.join(root, 'scripts/windows', file), path.join(destination, file));
 cpSync(path.join(root, 'supabase/migrations'), path.join(destination, 'database-migrations'), { recursive: true });
 cpSync(path.join(root, 'supabase/schema.snapshot.json'), path.join(destination, 'database-migrations/schema.snapshot.json'));
 mkdirSync(path.join(destination, 'clip-setup'), {recursive:true});
@@ -99,6 +99,7 @@ function recoveryDependency(name, parent = path.join(root, 'package.json')) {
 }
 recoveryDependency('pg');
 writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: 1, ...versionMetadata,
+  catalogRules: ['brownie-syrup-v1'],
   node: process.version, supabaseUrl: url.origin, publicKeySha256: createHash('sha256').update(key).digest('hex'),
   fixtureOnly: url.protocol === 'http:',
 }, null, 2));

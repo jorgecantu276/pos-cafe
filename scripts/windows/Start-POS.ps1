@@ -1,5 +1,6 @@
-﻿param([string]$ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'pos-cafe-config.json'), [switch]$NoBrowser, [switch]$DesktopApp)
+﻿param([string]$ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'pos-cafe-config.json'), [switch]$NoBrowser, [switch]$DesktopApp, [switch]$MaintenanceProbe)
 $ErrorActionPreference = 'Stop'
+if ($MaintenanceProbe) { $NoBrowser = $true; $DesktopApp = $false }
 # Cafe retains its direct backend and loopback-only launcher contract.
 Remove-Item Env:POS_LAN_MODE, Env:POS_PUBLIC_ORIGIN -ErrorAction SilentlyContinue
 
@@ -113,6 +114,7 @@ try {
   try { $ownsMutex = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $ownsMutex = $true }
   if (-not $ownsMutex) {
     if ($updateReadyToken -match '^[0-9a-f-]{36}$') { Write-Output "POS_UPDATE_BUSY $updateReadyToken" }
+    if ($MaintenanceProbe) { throw 'Caja esta abierta. Se omite la comprobacion de mantenimiento.' }
     Write-Host 'La caja ya se esta iniciando. Comprobando la ventana existente...'
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
       $owner = Read-CafeOwner
@@ -209,6 +211,7 @@ public sealed class CafeProcessJob : IDisposable {
         Write-Output "POS_UPDATE_READY $updateReadyToken"
         $startupReported = $true
       }
+      if ($MaintenanceProbe) { return }
       while (-not $child.HasExited) {
         if ($DesktopApp -and $cafeWindow -and $cafeWindow.HasExited) { return }
         Start-Sleep -Milliseconds 250
