@@ -264,8 +264,8 @@ test('actual API accepts only own completed server snapshot; read/retry never in
     auth = false; await assert.rejects(handlePrintRequest(request(), client, journal, config), /Inicia sesión/); auth = true;
     active = false; await assert.rejects(handlePrintRequest(request(), client, journal, config), /Sin acceso/);
   } finally { journal.close(); remove(directory); }
-  assert.throws(() => requireLocalPrintRequest(new Request('https://remote.example/api/printing', { headers: { 'X-Pos-Print': '1' } })), /PC de caja/);
-  assert.throws(() => requireLocalPrintRequest(new Request('http://127.0.0.1:3000/api/printing', { headers: { 'X-Pos-Print': '1', Origin: 'https://evil.example' } })), /PC de caja/);
+  assert.throws(() => requireLocalPrintRequest(new Request('https://remote.example/api/printing', { headers: { 'X-Pos-Print': '1' } })), /dirección configurada/);
+  assert.throws(() => requireLocalPrintRequest(new Request('http://127.0.0.1:3000/api/printing', { headers: { 'X-Pos-Print': '1', Origin: 'https://evil.example' } })), /dirección configurada/);
 });
 
 for (const lateState of ['cancelled', 'read-failed']) test(`cancellation/eligibility after paused Windows preparation withholds both copies: ${lateState}`, async () => {

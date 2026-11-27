@@ -1,5 +1,12 @@
 # Unpaid cart recovery
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 Unsubmitted carts now persist in browser local storage immediately when their
 items or order details change. There is no debounce or reliance on an unload
 handler. The owner’s normal layout, product controls and payment dialogs stay

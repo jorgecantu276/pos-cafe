@@ -20,3 +20,10 @@ const result = spawnSync(process.execPath, [require.resolve('next/dist/bin/next'
 });
 if (result.error) throw result.error;
 process.exitCode = result.status ?? 1;
+if (result.status === 0 && process.env.POS_VERIFY_LAN === '1') {
+  const smoke = spawnSync(process.execPath, ['--import', 'tsx', path.join(repository, 'scripts/testing/smoothies-lan-app.mjs'), stage], {
+    cwd: repository, stdio: 'inherit', env: process.env,
+  });
+  if (smoke.error) throw smoke.error;
+  process.exitCode = smoke.status ?? 1;
+}

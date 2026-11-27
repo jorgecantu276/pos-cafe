@@ -1,0 +1,11 @@
+{
+  "protocol": 1,
+  "product": "smoothies",
+  "enabled": false,
+  "repository": null,
+  "publisher": null,
+  "device": null,
+  "machineSha256": null,
+  "backendIdentitySha256": null,
+  "developmentMachineSha256": null
+}

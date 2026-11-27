@@ -10,6 +10,7 @@ import { type ProductRow, type ExtraRow, errorMessage } from '@/lib/pos-types';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { announceCatalogChange, readCatalogRequest, saveCatalogChange, type CatalogChange } from '@/lib/catalog-management';
 import { supabase } from '@/lib/supabase';
+import { canonicalCatalogPhoto } from '@/lib/supabase-connection';
 import { useResource } from '@/lib/use-resource';
 import LoadFailure from '@/app/LoadFailure';
 import { PlusCircle, Trash2, Loader2 } from 'lucide-react';
@@ -27,7 +28,7 @@ async function uploadCatalogPhoto(file: File, extension: string) {
   const path = `${crypto.randomUUID()}.${extension}`;
   const { error } = await bucket.upload(path, file, { contentType: file.type });
   if (error) throw error;
-  return bucket.getPublicUrl(path).data.publicUrl;
+  return canonicalCatalogPhoto(path, process.env.NEXT_PUBLIC_SUPABASE_URL || '');
 }
 
 export default function ProductosPage() {

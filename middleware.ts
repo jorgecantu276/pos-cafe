@@ -6,13 +6,16 @@ import { loginReturnTarget } from '@/lib/login-return';
 import { withDeadline } from '@/lib/request-deadline';
 import { supabasePublicKey } from '@/lib/supabase-public-config';
 import { operationsDemoAuth } from '@/lib/operations-demo-auth';
+import { supabaseStorageKey, supabaseCookieOptions } from '@/lib/supabase-connection';
 
 export async function middleware(request: NextRequest) {
+  if (process.env.POS_LAN_MODE === '1' && /^\/(?:ops-demo|api\/ops-demo)(?:\/|$)/.test(request.nextUrl.pathname)) return new NextResponse(null, { status: 404 });
+  if (request.nextUrl.pathname.startsWith('/api/backend/')) return NextResponse.next();
   if (['/ops-demo','/api/ops-demo/identity','/api/ops-demo/login'].includes(request.nextUrl.pathname)) {
     if (!process.env.POS_OPS_DEMO_ACCESS_FILE || !process.env.POS_OPS_DEMO_TOKEN || process.env.POS_RELEASE_BUILD === '1') return new NextResponse(null, { status: 404 });
     return NextResponse.next(); // Each demo route validates the fixed local instance before access.
   }
-  if (['/api/local-instance','/smoothies-config.js'].includes(request.nextUrl.pathname)) return NextResponse.next();
+  if (['/api/local-instance','/api/app-version','/smoothies-config.js'].includes(request.nextUrl.pathname)) return NextResponse.next();
   const updates = new Map<string, { name: string; value: string; options: CookieOptions }>();
   const authHeaders = new Headers();
   const complete = (response: NextResponse) => {
@@ -27,6 +30,8 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     supabasePublicKey(),
     {
+      auth: { storageKey: supabaseStorageKey(process.env.NEXT_PUBLIC_SUPABASE_URL!) },
+      cookieOptions: supabaseCookieOptions(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.POS_PUBLIC_ORIGIN || request.nextUrl.origin),
       ...operationsDemoAuth(process.env.NEXT_PUBLIC_SUPABASE_URL!),
       cookies: {
         getAll: () => request.cookies.getAll(),
@@ -61,15 +66,14 @@ export async function middleware(request: NextRequest) {
     return complete(NextResponse.json({ error: 'Inicia sesión.' }, { status: 401 }));
   }
   if (!user && !request.nextUrl.pathname.startsWith('/login')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
+    const url = new URL('/login', process.env.POS_LAN_MODE === '1' && process.env.POS_PUBLIC_ORIGIN ? process.env.POS_PUBLIC_ORIGIN : request.nextUrl.origin);
     if (request.nextUrl.pathname === '/tv') url.search = '?returnTo=%2Ftv';
     return complete(NextResponse.redirect(url));
   }
 
   // RUTAS PÚBLICAS: Si ya inició sesión y trata de entrar al /login, lo mandamos al POS
   if (user && request.nextUrl.pathname.startsWith('/login')) {
-    const url = request.nextUrl.clone();
+    const url = new URL(process.env.POS_LAN_MODE === '1' && process.env.POS_PUBLIC_ORIGIN ? process.env.POS_PUBLIC_ORIGIN : request.nextUrl.origin);
     url.pathname = loginReturnTarget(request.nextUrl.searchParams.get('returnTo'));
     url.search = '';
     return complete(NextResponse.redirect(url));

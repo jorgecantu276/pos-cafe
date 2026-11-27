@@ -33,6 +33,9 @@ test('login return accepts only the TV route and defaults safely to POS', () => 
 });
 
 test('middleware preserves TV destination for expired sessions and safely redirects an already signed-in login', async () => {
+  const previousApi = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:58000';
+  try {
   let signedIn = false;
   const { middleware } = compile('../middleware.ts', {
     '@supabase/ssr': { createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: signedIn ? { id: 'synthetic' } : null }, error: null }) } }) },
@@ -47,6 +50,29 @@ test('middleware preserves TV destination for expired sessions and safely redire
   for (const path of ['/login', '/login?returnTo=https://example.com', '/login?returnTo=%2F%2Fexample.com']) {
     assert.equal((await request(path)).headers.get('location'), 'http://localhost:3112/');
   }
+  } finally {
+    if (previousApi === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = previousApi;
+  }
+});
+
+test('LAN middleware redirects through the configured HTTPS origin despite Next internal HTTP URLs', async () => {
+  const names = ['NEXT_PUBLIC_SUPABASE_URL', 'POS_LAN_MODE', 'POS_PUBLIC_ORIGIN'];
+  const previous = names.map(name => process.env[name]);
+  Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:58000', POS_LAN_MODE: '1', POS_PUBLIC_ORIGIN: 'https://192.168.1.25:3443' });
+  let signedIn = false;
+  try {
+    const { middleware } = compile('../middleware.ts', {
+      '@supabase/ssr': { createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: signedIn ? { id: 'synthetic' } : null }, error: null }) } }) },
+      '@/lib/request-deadline': deadline, '@/lib/login-return': loginReturn, '@/lib/user-management': userManagement,
+    }) as { middleware: (request: NextRequest) => Promise<Response> };
+    const request = (pathname: string) => middleware(new NextRequest(`http://127.0.0.1:3180${pathname}`, { headers: { host: '192.168.1.25:3443' } }));
+    assert.equal((await request('/')).headers.get('location'), 'https://192.168.1.25:3443/login');
+    assert.equal((await request('/tv')).headers.get('location'), 'https://192.168.1.25:3443/login?returnTo=%2Ftv');
+    signedIn = true;
+    assert.equal((await request('/login')).headers.get('location'), 'https://192.168.1.25:3443/');
+    assert.equal((await request('/api/backend/auth/v1/token')).status, 200);
+    assert.equal((await request('/api/ops-demo/login')).status, 404);
+  } finally { names.forEach((name, index) => { if (previous[index] === undefined) delete process.env[name]; else process.env[name] = previous[index]; }); }
 });
 
 test('actual login form preserves TV destination through failed authentication and replaces it only after success', async () => {

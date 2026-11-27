@@ -4,18 +4,22 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'node:module';
 import { get } from 'node:http';
+import { get as httpsGet } from 'node:https';
 import { gunzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { parseEnv } from 'node:util';
 import { freshLocalApi } from '../testing/local-api.mjs';
+import { lanOrigin } from '../customer/lan.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright-core');
 const { createClient } = require('@supabase/supabase-js');
 const { Client } = require('pg');
-const base = 'http://127.0.0.1:3180';
+const localBase = 'http://127.0.0.1:3180';
+const base = process.env.POS_TEST_LAN_ORIGIN ? lanOrigin(process.env.POS_TEST_LAN_ORIGIN).origin : localBase;
+if (base !== localBase) assert.ok(process.env.NODE_EXTRA_CA_CERTS, 'Configura la autoridad PEM sintética para Node y acepta su confianza en el navegador de prueba. No se omiten errores TLS.');
 const localApi = 'http://127.0.0.1:58000';
 const viewport = { width:1366, height:768 };
 const auth = { autoRefreshToken:false, persistSession:false };
@@ -51,7 +55,7 @@ function record(event) {
 function ok({data,error}) {if(error) throw Error(error.message); return data;}
 async function raw(url,encoding) {
   return new Promise((resolve,reject)=>{
-    const outgoing=get(url,{headers:{'accept-encoding':encoding}},response=>{
+    const outgoing=(new URL(url).protocol === 'https:' ? httpsGet : get)(url,{headers:{'accept-encoding':encoding}},response=>{
       const parts=[];
       response.on('data',chunk=>parts.push(chunk));
       response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,bytes:Buffer.concat(parts)}));
@@ -102,7 +106,7 @@ try {
   const form = { version: 1, menu, extras: [oat, soy, chia], stock };
   const backupRoot=portableHome;
   const backups={directory:path.join(backupRoot,'respaldos'),keyFile:path.join(backupRoot,'clave','recuperacion.key')};
-  assert.equal((await (await fetch(`${base}/api/local-instance`)).json()).protocol, 1);
+  assert.equal((await (await fetch(`${localBase}/api/local-instance`)).json()).protocol, 1);
   const recipeDemo = true;
   browser = await chromium.launch({ channel: 'msedge', headless: audit || process.argv.includes('--headless'), args: ['--window-size=1420,860'] });
 
@@ -115,21 +119,23 @@ try {
   });
   page.on('response', response => {
     const url = new URL(response.url());
-    if (url.origin === localApi && url.pathname.startsWith('/rest/v1/rpc/'))
+    if (url.origin === base && url.pathname.startsWith('/api/backend/rest/v1/rpc/'))
       record({ kind: 'local-rpc', method: response.request().method(), url: diagnosticUrl(response.url()),
         status: response.status(), publicKeyMatches: response.request().headers().apikey === config.anon });
   });
   page.on('requestfailed', request => {
     const url = new URL(request.url());
-    if (url.origin === localApi && url.pathname.startsWith('/rest/v1/rpc/'))
+    if (url.origin === base && url.pathname.startsWith('/api/backend/rest/v1/rpc/'))
       record({ kind: 'local-rpc-failed', method: request.method(), url: diagnosticUrl(request.url()),
         message: sanitize(request.failure()?.errorText || 'Request failed') });
   });
   await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false }));
-  const localOrigins = new Set([base, localApi]);
+  // Browser traffic must remain on the visible origin even when the browser
+  // happens to run on the PC. Allowing direct loopback calls would mask iPad bugs.
+  const localOrigins = new Set([base]);
   await page.route('**/*', route => localOrigins.has(new URL(route.request().url()).origin) ? route.continue() : route.abort());
   if (portableHome) {
-    await page.route(`${localApi}/auth/v1/**`, route => {
+    await page.route(`${base}/api/backend/auth/v1/**`, route => {
       assert.equal(route.request().headers().apikey, config.anon);
       return route.continue();
     });
@@ -355,8 +361,30 @@ try {
       await createBackup.click();
       const backupReply = await backupResponse;
       assert.equal(backupReply.status(), 200, await backupReply.text());
-      const status = await backupReply.json();
+      let status = await backupReply.json();
       assert.ok(status.lastSuccess?.filename);
+      const external = process.env.POS_TEST_BACKUP_EXPORT_DIR;
+      if (external) {
+        assert.ok(path.isAbsolute(external));
+        assert.equal(status.externalCopy?.state, 'copied');
+        assert.equal(sha256(await readFile(path.join(external, status.lastSuccess.filename))), status.lastSuccess.sha256);
+        console.log('PASS: installed backup operation exports the exact encrypted archive to its configured synthetic external destination.');
+        const unavailable = external + '.unavailable-' + randomUUID();
+        await rename(external, unavailable);
+        try {
+          const failedCopyResponse = page.waitForResponse(response => response.url().endsWith('/api/backups') && response.request().headers()['x-pos-backup'] === '1');
+          await createBackup.click();
+          const reply = await failedCopyResponse;
+          assert.equal(reply.status(), 200);
+          status = await reply.json();
+          assert.ok(status.lastSuccess?.filename);
+          assert.equal(status.externalCopy?.state, 'failed');
+          assert.ok(!status.lastError, 'Unavailable external media must not turn the verified local archive into a failed backup.');
+          await writeFile(path.join(artifacts, 'external-copy-fixture.json'), JSON.stringify({ filename: status.lastSuccess.filename,
+            sha256: status.lastSuccess.sha256, bytes: status.lastSuccess.bytes, copiedInitially: true, unavailablePreservedLocal: true }));
+          console.log('PASS: an unavailable external destination preserves a newly verified local archive for restoration.');
+        } finally { await rename(unavailable, external); }
+      }
       const storedBytes = await readFile(path.join(backups.directory, status.lastSuccess.filename));
       const attachment = await page.request.get(`${base}/api/backups?download=latest`, {headers:{'accept-encoding':'gzip'}});
       assert.equal(attachment.status(), 200);

@@ -1,8 +1,15 @@
 # Inventario de productos terminados
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 Integrado en **Catálogo → Inventario**, conservando las cuatro áreas principales de administración. Requiere `202611020017_inventory.sql`, después de las migraciones 001–016 retenidas. La migración 006 de la rama anterior no se publica: ese número ya corresponde a lealtad.
 
-**Estado inicial: apagado.** La integración y las pruebas se realizaron localmente. La migración 017 no está desplegada en el backend alojado del cliente. Instalar esta app requiere aplicar primero su contrato de base de datos; publicar en GitHub no lo despliega.
+**Estado inicial: apagado.** La integración y las pruebas se realizaron localmente. La observación inicial anterior no acredita el estado de ningún backend actual; consultar el historial del destino antes de aplicar migraciones. Instalar esta app requiere aplicar primero su contrato de base de datos; publicar en GitHub no lo despliega.
 
 ## Activación y operación
 

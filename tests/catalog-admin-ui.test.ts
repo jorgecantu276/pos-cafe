@@ -9,6 +9,7 @@ import * as management from '../lib/catalog-management';
 import * as resource from '../lib/use-resource';
 import * as types from '../lib/pos-types';
 import CatalogEditor from '../app/admin/productos/CatalogEditor';
+import { canonicalCatalogPhoto } from '../lib/supabase-connection';
 
 test('actual catalog blocks double submit, restores uncertain save after reload and exposes failed extra deactivation', async () => {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://127.0.0.1' }), saved = new Map<string, PropertyDescriptor | undefined>();
@@ -28,13 +29,17 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
   const calls: Args[] = []; let release!: (value: unknown) => void;
   const firstResponse = new Promise(resolve => { release = resolve; });
   const replays=new Map<string,unknown>();let loseReactivation=true;
-  const photoUrl = 'https://storage.example.test/catalog-photos/photo.png';
+  const api = 'http://127.0.0.1:58000';
+  const previousApi = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = api;
+  let photoUrl = '';
   let uploaded: File | undefined;
   const client = { storage: { from: (bucket: string) => {
     assert.equal(bucket, 'catalog-photos');
     return {
       upload: async (path: string, file: File) => {
         assert.match(path, /^[0-9a-f-]+\.png$/);
+        photoUrl = canonicalCatalogPhoto(path, api);
         uploaded = file;
         return { error: null };
       },
@@ -58,6 +63,7 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
   const imports: Record<string, unknown> = { '@/components/ProductPhoto': { default: () => null, __esModule: true }, '@/lib/catalog-management': management, '@/lib/pos-types': types, '@/lib/use-resource': resource,
     './smoothies-catalog.css': {}, 'next/navigation': { useSearchParams: () => new URLSearchParams(dom.window.location.search) },
     '@/lib/supabase': { supabase: client }, './CatalogEditor': { default: CatalogEditor, __esModule: true },
+    '@/lib/supabase-connection': { canonicalCatalogPhoto },
     './SmoothiesImport': { default: () => null, __esModule: true }, './WeeklySpecial': { default: () => null, __esModule: true },
     './OpeningCount': { default: () => null, __esModule: true },
     '@/app/LoadFailure': { default: () => null, __esModule: true } };
@@ -90,7 +96,7 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
     const fields = [...dom.window.document.querySelectorAll('dialog input:not([type="checkbox"]),dialog select')];
     assert.ok(fields.every(e => (e as HTMLInputElement).labels?.length), 'Every catalog field has a persistent label');
     await act(async () => { const form = dom.window.document.querySelector('form')!; form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); });
-    assert.match(JSON.stringify(calls[0].p_payload), /storage\.example\.test\/catalog-photos\/photo\.png/);
+    assert.equal(calls[0].p_payload.fields?.image_url, photoUrl);
     assert.equal(calls.length, 1); assert.ok(dom.window.document.querySelector('fieldset')!.disabled);
     await act(async () => release({ error: { code: '', message: 'Respuesta perdida' } }));
     assert.match(dom.window.document.body.textContent!, /Respuesta perdida/); assert.ok(management.readCatalogRequest(dom.window.localStorage, 'owner'));
@@ -111,6 +117,7 @@ test('actual catalog blocks double submit, restores uncertain save after reload 
     await click('Extras');await click('Inactivos');await click('Reactivar Coco retirado');await click('Activos');assert.ok(button('Editar Coco retirado'));
     assert.deepEqual(calls[5].p_payload,{kind:'extra',action:'reactivate',id:inactiveExtra,revision:2,actor_id:'owner'});assert.equal((fixtures.extras.find(p=>(p as {id:string}).id===inactiveExtra) as {price:number}).price,15);
   } finally {
+    if (previousApi === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = previousApi;
     await act(async () => root.unmount()); dom.window.close();
     for (const [key, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
   }

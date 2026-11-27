@@ -1,5 +1,12 @@
 # Familia POS en desarrollo local
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 El código de Café y Smoothies se compila desde este árbol con Node 24.22.2. El valor de compilación de NEXT_PUBLIC_POS_PROFILE es cafe por defecto. El lanzador de Smoothies y su empaquetador seleccionan smoothies explícitamente.
 
 Cada instalación configura su propia base de datos y sus propias cuentas. Café usa sus migraciones de supabase/migrations. La instalación dedicada de Smoothies aplica además las de supabase/smoothies. La existencia de un perfil en este árbol no da acceso a los datos de otro cliente.
@@ -13,9 +20,9 @@ Cada instalación configura su propia base de datos y sus propias cuentas. Café
 
 Las pruebas con Supabase levantan una instancia desechable con datos sintéticos. Ejecuta los ensayos de Smoothies uno a la vez, ya que comparten los puertos de prueba. Para los requisitos de la instalación real, consulta [la guía de Smoothies](smoothies-local.md).
 
-## Prueba local de Papelería
+## Ensayo histórico de Papelería (no es su aplicación operativa)
 
-El ensayo de Papelería ejecuta el carrito y el generador de tickets compartidos con una base SQLite sintética. Cubre lectura de códigos con ceros iniciales, venta en MXN, reintento, cancelación y restauración. La prueba evita archivos del negocio y no es un instalador de Papelería.
+El ensayo histórico de Papelería ejecuta el carrito y el generador de tickets compartidos con una base SQLite sintética. Cubre lectura de códigos con ceros iniciales, venta en MXN, reintento, cancelación y restauración. La prueba evita archivos del negocio y no es un instalador de Papelería.
 
     node --import tsx scripts/papeleria/trial.mts
 
@@ -23,7 +30,7 @@ El ensayo de Papelería ejecuta el carrito y el generador de tickets compartidos
 
 La familia POS tiene una sola versión en **config/pos-versions.json**. Ejecuta **npm run versions** para ver la versión actual y las etiquetas de Café, Smoothies y Papelería. Para una entrega, cambia la versión una vez y prepara los tres paquetes con ese mismo valor, incluso si la corrección es de un solo producto.
 
-La candidata actual es **1.0.0-rc.3**. Incluye Next.js 16.4.6 en Café y Smoothies. `versions verify` rechaza paquetes de familias o commits distintos y paquetes generados con cambios sin guardar en Git. Papelería conserva su aplicación nativa y toma la misma versión del catálogo.
+La publicación histórica rc.3 incluyó Next.js 16.4.6. Consulta `config/pos-versions.json`, los archivos de bloqueo y el catálogo para el candidato seleccionado actualmente. `versions verify` rechaza paquetes de familias o commits distintos y paquetes generados con cambios sin guardar en Git. La decisión actual preserva Papelería WPF/SQLite; este ensayo no la reemplaza. Papelería conserva su aplicación nativa y toma la misma versión del catálogo.
 
 Usa **X.Y.Z** para una versión estable y **X.Y.Z-rc.N** para una candidata. Incrementa Z para correcciones, Y para funciones compatibles y X para cambios de compatibilidad. Incrementa N para otra candidata. La primera candidata sincronizada es **pos-v1.0.0-rc.2**.
 
@@ -37,7 +44,7 @@ Agrega **--demos** al comando de Papelería para empaquetar los dos demos con la
 
 ## Publicación de Smoothies
 
-El equipo de compilación necesita Node 24.22.2 x64 con su licencia y el SDK .NET 10.0.403 en PATH. `build-family.mjs <destino-cafe.json> <checkout-papeleria> <salida-nueva>` comprueba ambos árboles limpios y el SDK antes de preparar los tres paquetes.
+El equipo de compilación necesita Node 24.22.2 x64 con su licencia y el SDK .NET fijado por `global.json` del checkout nativo en PATH. `build-family.mjs <destino-cafe.json> <checkout-papeleria> <salida-nueva>` comprueba ambos árboles limpios y el SDK antes de preparar los tres paquetes.
 
 La descarga automática de Smoothies usa paquetes genéricos firmados. No se incluyen el menú de la clienta, sus cuentas, las claves de Supabase ni datos de operación. Papelería y los paquetes de un destino específico no se adjuntan a la descarga pública de Smoothies.
 

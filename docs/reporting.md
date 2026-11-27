@@ -1,5 +1,12 @@
 # Administrative reporting — local candidate
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 Requires the retained migrations 001, 002, 004 and 005 and the matching application. Nothing in this work applies migrations to the hosted café or syncs a café PC. Old synthetic staging markers deliberately fail the new contract check; do not overwrite a marker or upgrade a retained source to run tests.
 
 `pos_sales_report`, `pos_shift_history` and `pos_customer_report` are read-only administrator-only RPCs. Each returns a scalar JSON snapshot with complete aggregate totals and a 50-row history page; the API's 1,000-row cap cannot truncate those totals. Stable functions use one PostgreSQL statement snapshot for rows, counts and aggregates. Timestamps sort by creation time and UUID. Errors/timeouts never become zero or the previous filter's totals.

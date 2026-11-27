@@ -1,5 +1,12 @@
 # Owner TV dashboard
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 Open `/tv` on the local app after signing in as an active administrator. Access is checked both at the page and on every read-only `/api/tv` request. There is no public display token or service-role client. This screen displays private sales information: use an owner-visible TV.
 
 When a TV session expires, select **Iniciar sesión**. After a successful sign-in the app returns automatically to `/tv` and resumes updates. Opening `/tv` without a session also preserves this destination. A failed sign-in keeps the destination for the next attempt. Ordinary sign-in still opens the POS; only the exact `/tv` return target is accepted, and administrator access is still required.

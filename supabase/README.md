@@ -1,5 +1,11 @@
 # Candidate database contract
 
+> Development reference: use isolated synthetic state only. Historical fixture
+> counts and earlier schemas below do not establish the current Smoothies/client
+> contract. Preserve the full current migration order and verify the script's
+> prerequisites before running. No hosted deployment or production reset is implied.
+
+
 The earlier ingredient/recipe inventory remains removed. On November 2 the user
 authorized integrating the separate finished-product inventory locally. Migration
 017 adds `pos_inventory_*` tables, admin RPCs, explicit activation (OFF initially),
