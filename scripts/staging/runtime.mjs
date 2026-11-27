@@ -76,7 +76,7 @@ export async function dockerCheck() {
   if (process.env.DOCKER_HOST || process.env.DOCKER_CONTEXT) throw new Error('Unset DOCKER_HOST/DOCKER_CONTEXT before local staging');
   const context = JSON.parse(await run('docker', ['context', 'inspect']));
   assert.equal(context.length, 1, 'One explicit Docker context is required.');
-  if (context[0].Endpoints.docker.Host === 'tcp://127.0.0.1:2375') {
+  if (context[0].Endpoints.docker.Host.startsWith('tcp://')) {
     const temporary = path.resolve(process.env.RUNNER_TEMP || '');
     const file = process.env.POS_TEST_WSL_RECEIPT;
     assert.ok(file && path.isAbsolute(file) && path.basename(file) === 'engine.json');

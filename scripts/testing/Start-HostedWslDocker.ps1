@@ -19,7 +19,7 @@ if (!$WorkDirectory.StartsWith($runnerTemp + '\', [StringComparison]::OrdinalIgn
 $docker = (Get-Command docker.exe -ErrorAction Stop).Source
 if (![IO.Path]::IsPathRooted($docker)) { throw 'The official installed Windows Docker CLI is required.' }
 $distribution = 'Ubuntu-24.04'
-$createdDistro = $false; $keepAlive = $null; $ownedContext = $null
+$createdDistro = $false; $keepAlive = $null; $ownedContext = $null; $ownedProxy = $null
 
 function Native {
     param([Parameter(Position=0)][string]$Executable, [Parameter(Position=1,ValueFromRemainingArguments=$true)][string[]]$Arguments,
@@ -61,7 +61,7 @@ function Native {
 }
 function Docker {
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
-    Native -Executable $docker -Arguments $Arguments
+    Native -Executable $docker -Arguments $Arguments -CloseInput
 }
 function Canary-Hash([string]$Output, [string]$Expected, [string]$Boundary) {
     # Do not assume a CLI's first space-delimited token is the file digest.
@@ -109,6 +109,78 @@ function Wait-Native([scriptblock]$Probe, [int]$Seconds, [string]$Message) {
         Start-Sleep -Seconds 2
     }
     throw $Message
+}
+
+function Start-OwnedGuestDockerProxy {
+    $interfaces = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'ip', '-j', '-4', 'address', 'show', 'eth0') -TimeoutSeconds 30 | ConvertFrom-Json
+    $routes = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'ip', '-j', '-4', 'route', 'show', 'default') -TimeoutSeconds 30 | ConvertFrom-Json
+    $addresses = @($interfaces[0].addr_info | Where-Object { $_.family -ceq 'inet' -and $_.scope -ceq 'global' })
+    if (@($interfaces).Count -ne 1 -or $interfaces[0].ifname -cne 'eth0' -or $addresses.Count -ne 1 -or @($routes).Count -ne 1 -or $routes[0].dev -cne 'eth0') { throw 'The owned WSL network is ambiguous.' }
+    $guestAddress = Private-IPv4 ([string]$addresses[0].local)
+    $windowsGateway = Private-IPv4 ([string]$routes[0].gateway)
+    $gateway = @(Get-NetIPAddress -AddressFamily IPv4 -IPAddress $windowsGateway -ErrorAction SilentlyContinue)
+    if ($guestAddress -ceq $windowsGateway -or $gateway.Count -ne 1) { throw 'The exact WSL gateway must belong to this Windows host.' }
+    $proxyScript = Join-Path $WorkDirectory 'guest-transport-control.sh'
+    $proxyText = @'
+#!/bin/bash
+set -euo pipefail
+test "$(cat /etc/pos-hosted-rehearsal)" = "$3"
+pidfile="/run/pos-transport-$3.pid"
+unit="pos-transport-$3.service"
+binding="TCP4-LISTEN:2376,bind=$1,range=$2/32,reuseaddr,fork"
+if [ "$4" = stop ] && [ ! -e "$pidfile" ] && [ "$(systemctl show "$unit" --property=LoadState --value)" = not-found ]; then
+  test -z "$(ss -ltnH 'sport = :2376')"
+  exit 0
+fi
+if [ "$4" = start ]; then
+  test ! -e "$pidfile"
+  test -z "$(ss -ltnH 'sport = :2376')"
+  test "$(systemctl show "$unit" --property=LoadState --value)" = not-found
+  systemd-run --quiet --unit="$unit" --collect --description="POS hosted transport $3" /usr/bin/socat "$binding" UNIX-CONNECT:/var/run/docker.sock
+  sleep 0.2
+  child=$(systemctl show "$unit" --property=MainPID --value)
+  test "$child" -gt 0
+  printf '%s\n' "$child" > "$pidfile"
+else
+  child=$(cat "$pidfile")
+  test "$child" = "$5"
+fi
+test "$(systemctl show "$unit" --property=Description --value)" = "POS hosted transport $3"
+test "$(systemctl show "$unit" --property=MainPID --value)" = "$child"
+systemctl is-active --quiet "$unit"
+test "$(cat "/proc/$child/comm")" = socat
+arguments=$(tr '\0' ' ' < "/proc/$child/cmdline")
+test "$arguments" = "/usr/bin/socat $binding UNIX-CONNECT:/var/run/docker.sock "
+entry=$(systemctl show "$unit" --property=ExecStart --value)
+case "$entry" in "{ path=/usr/bin/socat ; argv[]=/usr/bin/socat $binding UNIX-CONNECT:/var/run/docker.sock ; "*) ;; *) exit 8 ;; esac
+if [ "$4" = stop ]; then
+  systemctl stop "$unit"
+  rm -- "$pidfile"
+  test -z "$(ss -ltnH 'sport = :2376')"
+elif [ "$4" = start ]; then
+  printf '%s\n' "$child"
+elif [ "$4" = check ]; then
+  printf 'owned-listener-active\n'
+else
+  exit 9
+fi
+'@
+    Write-LinuxScript $proxyScript $proxyText
+    [void](Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', '-n', (Guest-Path $proxyScript)) -TimeoutSeconds 30)
+    $proxyPid = (Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $proxyScript), $guestAddress, $windowsGateway, $owner, 'start') -TimeoutSeconds 30).Trim()
+    if ($proxyPid -cnotmatch '^[1-9][0-9]*$') { throw 'The owned Docker proxy PID is unavailable.' }
+    $proxy = @{ guestAddress = $guestAddress; windowsGateway = $windowsGateway; gatewayInterfaceIndex = $gateway[0].InterfaceIndex;
+        guestPrefixLength = [int]$addresses[0].prefixlen; unit = ('pos-transport-' + $owner + '.service'); pid = [int]$proxyPid;
+        script = $proxyScript; scriptSha256 = (Get-FileHash -LiteralPath $proxyScript -Algorithm SHA256).Hash.ToLowerInvariant();
+        endpoint = ('tcp://' + $guestAddress + ':2376') }
+    Invoke-OwnedGuestDockerProxy $proxy 'check'
+    return $proxy
+}
+function Invoke-OwnedGuestDockerProxy($Proxy, [ValidateSet('check','stop')][string]$Action) {
+    if ($Proxy.script -cne (Join-Path $WorkDirectory 'guest-transport-control.sh') -or
+        (Get-FileHash -LiteralPath $Proxy.script -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Proxy.scriptSha256) { throw 'The owned proxy helper changed.' }
+    $response = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $Proxy.script), $Proxy.guestAddress, $Proxy.windowsGateway, $owner, $Action, ([string]$Proxy.pid)) -TimeoutSeconds 30
+    if ($Action -ceq 'check' -and $response.Trim() -cne 'owned-listener-active') { throw 'The exact owned proxy did not confirm liveness.' }
 }
 
 try {
@@ -162,16 +234,20 @@ docker info --format '{{.OSType}}'
     $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 2375 -ErrorAction Stop)
     if (@($listeners | Where-Object { $_.LocalAddress -notin @('127.0.0.1', '::1') }).Count) { throw 'The Docker API must not be exposed off Windows loopback.' }
 
-    # Use the official CLI's native TCP transport to this owned loopback-only
-    # engine. Do not replace docker_engine or emulate upgraded/binary streams.
+    # The real byte-control proved this restricted same-host WSL path. Its
+    # transient unit accepts only this Windows gateway; normal store transports
+    # remain unchanged. Never emulate Docker API responses or streams.
+    $ownedProxy = Start-OwnedGuestDockerProxy
+    $proxyEngine = Docker @('--host', $ownedProxy.endpoint, 'info', '--format', '{{json .}}') | ConvertFrom-Json
+    if ($proxyEngine.ID -cne $linuxInfo.ID -or $proxyEngine.OSType -cne 'linux' -or "mx.pos-hosted-rehearsal=$owner" -cnotin $proxyEngine.Labels) { throw 'The proxy must reach the same exact owned Linux daemon.' }
     $contextName = 'pos-hosted-' + $owner
     if (@((Docker @('context', 'ls', '--format', '{{.Name}}')) -split '\r?\n') -ccontains $contextName) { throw 'The owned context name already exists.' }
-    [void](Docker @('context', 'create', $contextName, '--docker', 'host=tcp://127.0.0.1:2375'))
+    [void](Docker @('context', 'create', $contextName, '--docker', ('host=' + $ownedProxy.endpoint)))
     $ownedContext = $contextName
     [void](Docker @('context', 'use', $contextName))
     $selectedContext = (Docker @('context', 'inspect')) | ConvertFrom-Json
     if (@($selectedContext).Count -ne 1 -or $selectedContext[0].Name -cne $contextName -or
-        $selectedContext[0].Endpoints.docker.Host -cne 'tcp://127.0.0.1:2375') { throw 'The selected owned Docker context differs.' }
+        $selectedContext[0].Endpoints.docker.Host -cne $ownedProxy.endpoint) { throw 'The selected owned Docker context differs.' }
     $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     $observed = Docker @('info', '--format', '{{json .}}') | ConvertFrom-Json
     if ($observed.ID -cne $linuxInfo.ID -or $observed.OSType -cne 'linux' -or
@@ -213,153 +289,6 @@ services:
         [void](Docker @('compose', '--project-name', $project, '-f', $composeFile, 'up', '-d'))
         $canaryId = (Docker @('compose', '--project-name', $project, '-f', $composeFile, 'ps', '-q', 'canary')).Trim()
         $composeOutput = Docker @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt')
-        $composeStderr = Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw
-        if (!$composeOutput.Length) {
-            # Genuine independent controls locate empty attach output without
-            # treating an alternative path as accepted installation evidence.
-            $diagnostic = [ordered]@{ windowsExecCharacters = 0; guestBind = 'unavailable'; archiveBind = 'unavailable'; interactiveCharacters = $null; ttyCharacters = $null }
-            $diagnostic.windowsExecStderr = Canary-Measurement $composeStderr $expectedHash
-            try {
-                $guestOutput = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'docker', 'exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30
-                [void](Canary-Hash $guestOutput $expectedHash 'Guest Linux CLI canary bind')
-                $diagnostic.guestBind = 'exact-bytes'
-            } catch { $diagnostic.guestBind = 'failed' }
-            try {
-                $observedCanary = Join-Path $WorkDirectory 'observed-canary.txt'
-                [void](Native -Executable $docker -Arguments @('cp', "${canaryId}:/fixture/canary.txt", $observedCanary) -TimeoutSeconds 30)
-                $diagnostic.archiveBind = if ((Get-FileHash -LiteralPath $observedCanary -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $expectedHash) { 'exact-bytes' } else { 'different-bytes' }
-            } catch { $diagnostic.archiveBind = 'failed' }
-            try { $diagnostic.interactiveCharacters = (Native -Executable $docker -Arguments @('exec', '-i', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30).Length } catch { }
-            try { $diagnostic.ttyCharacters = (Native -Executable $docker -Arguments @('exec', '-t', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30).Length } catch { }
-            try {
-                $closedInput = Native -Executable $docker -Arguments @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30 -CloseInput
-                $diagnostic.closedStdin = Canary-Measurement $closedInput $expectedHash
-                $diagnostic.closedStdinStderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
-            } catch { $diagnostic.closedStdin = 'failed' }
-            try {
-                $versions = Native -Executable $docker -Arguments @('version', '--format', '{{json .}}') -TimeoutSeconds 30 | ConvertFrom-Json
-                $diagnostic.clientVersion = [string]$versions.Client.Version
-                $diagnostic.serverVersion = [string]$versions.Server.Version
-                $apiVersion = [string]$versions.Server.MinAPIVersion
-                if ($apiVersion -cnotmatch '^1\.[0-9]+$') { $apiVersion = [string]$versions.Server.ApiVersion }
-                if ($apiVersion -cmatch '^1\.[0-9]+$') {
-                    $apiOutput = Native -Executable $docker -Arguments @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30 -ApiVersion $apiVersion
-                    $diagnostic.serverApiVersion = $apiVersion
-                    $diagnostic.serverApiStdout = Canary-Measurement $apiOutput $expectedHash
-                    $diagnostic.serverApiStderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
-                }
-            } catch { }
-            try {
-                # Optional client-version control, independently pinned from the
-                # official HTTPS static distribution. Never replaces the selected
-                # installed CLI or qualifies an alternative installation path.
-                $clientArchive = Join-Path $WorkDirectory 'docker-29.9.2.zip'
-                Invoke-WebRequest -Uri 'https://download.docker.com/win/static/stable/x86_64/docker-29.9.2.zip' -OutFile $clientArchive -TimeoutSec 90
-                if ((Get-FileHash -LiteralPath $clientArchive -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'b2be959bfed1281ddaf665c0972cba9a62ce30c542b6bcce82f055bf8886bc7d') { throw 'Official client control archive differs.' }
-                $clientFolder = Join-Path $WorkDirectory 'official-client-control'
-                Expand-Archive -LiteralPath $clientArchive -DestinationPath $clientFolder
-                $clientControl = Join-Path $clientFolder 'docker/docker.exe'
-                if ((Get-FileHash -LiteralPath $clientControl -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'dd40364e3e71395fb082d91227b76bf83adfcdab4ecc719803a0ef4579a27d24') { throw 'Official client control executable differs.' }
-                $controlOutput = Native -Executable $clientControl -Arguments @('--host', 'tcp://127.0.0.1:2375', 'exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30 -CloseInput
-                $diagnostic.client2992Stdout = Canary-Measurement $controlOutput $expectedHash
-                $diagnostic.client2992Stderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
-            } catch { $diagnostic.client2992Stdout = 'unavailable' }
-            $guestControlPid = $null
-            $directPhase = 'network-discovery'
-            try {
-                # Diagnostic only: compare Windows against the same WSL daemon
-                # without the localhost-forwarder. The temporary guest listener
-                # binds only its actual eth0 address and accepts only the exact
-                # Windows/WSL default gateway. No installed endpoint is changed.
-                $guestInterfaces = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'ip', '-j', '-4', 'address', 'show', 'eth0') -TimeoutSeconds 30 | ConvertFrom-Json
-                $guestRoutes = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'ip', '-j', '-4', 'route', 'show', 'default') -TimeoutSeconds 30 | ConvertFrom-Json
-                $guestAddresses = @($guestInterfaces[0].addr_info | Where-Object { $_.family -ceq 'inet' -and $_.scope -ceq 'global' })
-                if (@($guestInterfaces).Count -ne 1 -or $guestInterfaces[0].ifname -cne 'eth0' -or $guestAddresses.Count -ne 1 -or
-                    @($guestRoutes).Count -ne 1 -or $guestRoutes[0].dev -cne 'eth0') { throw 'The owned WSL network was not uniquely identified.' }
-                $guestAddress = Private-IPv4 ([string]$guestAddresses[0].local)
-                $windowsGateway = Private-IPv4 ([string]$guestRoutes[0].gateway)
-                if ($guestAddress -ceq $windowsGateway) { throw 'The WSL guest and its Windows gateway must differ.' }
-                $directPhase = 'windows-peer-identity'
-                if (@(Get-NetIPAddress -AddressFamily IPv4 -IPAddress $windowsGateway -ErrorAction SilentlyContinue).Count -ne 1) { throw 'The WSL gateway is not a unique local Windows interface.' }
-                $guestControlScript = Join-Path $WorkDirectory 'guest-transport-control.sh'
-                $guestControlText = @'
-#!/bin/bash
-set -euo pipefail
-test "$(cat /etc/pos-hosted-rehearsal)" = "$3"
-pidfile="/run/pos-transport-$3.pid"
-unit="pos-transport-$3.service"
-binding="TCP4-LISTEN:2376,bind=$1,range=$2/32,reuseaddr,fork"
-if [ "$4" = start ]; then
-  test ! -e "$pidfile"
-  test -z "$(ss -ltnH 'sport = :2376')"
-  test "$(systemctl show "$unit" --property=LoadState --value)" = not-found
-  systemd-run --quiet --unit="$unit" --collect --description="POS hosted transport $3" /usr/bin/socat "$binding" UNIX-CONNECT:/var/run/docker.sock
-  sleep 0.2
-  child=$(systemctl show "$unit" --property=MainPID --value)
-  test "$child" -gt 0
-  printf '%s\n' "$child" > "$pidfile"
-else
-  child=$(cat "$pidfile")
-  test "$child" = "$5"
-fi
-test "$(systemctl show "$unit" --property=Description --value)" = "POS hosted transport $3"
-test "$(systemctl show "$unit" --property=MainPID --value)" = "$child"
-systemctl is-active --quiet "$unit"
-test "$(cat "/proc/$child/comm")" = socat
-arguments=$(tr '\0' ' ' < "/proc/$child/cmdline")
-test "$arguments" = "/usr/bin/socat $binding UNIX-CONNECT:/var/run/docker.sock "
-entry=$(systemctl show "$unit" --property=ExecStart --value)
-case "$entry" in "{ path=/usr/bin/socat ; argv[]=/usr/bin/socat $binding UNIX-CONNECT:/var/run/docker.sock ; "*) ;; *) exit 8 ;; esac
-if [ "$4" = stop ]; then
-  systemctl stop "$unit"
-  rm -- "$pidfile"
-  test -z "$(ss -ltnH 'sport = :2376')"
-elif [ "$4" = start ]; then
-  printf '%s\n' "$child"
-elif [ "$4" = check ]; then
-  printf 'owned-listener-active\n'
-else
-  exit 9
-fi
-'@
-                Write-LinuxScript $guestControlScript $guestControlText
-                [void](Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', '-n', (Guest-Path $guestControlScript)) -TimeoutSeconds 30)
-                $directPhase = 'listener-start'
-                $guestControlPid = (Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestControlScript), $guestAddress, $windowsGateway, $owner, 'start') -TimeoutSeconds 30).Trim()
-                if ($guestControlPid -cnotmatch '^[1-9][0-9]*$') { throw 'The temporary guest listener ownership is unavailable.' }
-                $directPhase = 'listener-liveness'
-                [void](Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestControlScript), $guestAddress, $windowsGateway, $owner, 'check', $guestControlPid) -TimeoutSeconds 30)
-                $diagnostic.directGuestListenerAlive = $true
-                $directEndpoint = 'tcp://' + $guestAddress + ':2376'
-                $directPhase = 'daemon-identity'
-                $directEngine = Native -Executable $docker -Arguments @('--host', $directEndpoint, 'info', '--format', '{{json .}}') -TimeoutSeconds 30 | ConvertFrom-Json
-                if ($directEngine.ID -cne $observed.ID -or $directEngine.OSType -cne 'linux' -or "mx.pos-hosted-rehearsal=$owner" -cnotin $directEngine.Labels) { throw 'The direct diagnostic endpoint is not the exact owned daemon.' }
-                $directPhase = 'exec-byte-control'
-                $directOutput = Native -Executable $docker -Arguments @('--host', $directEndpoint, 'exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30 -CloseInput
-                $diagnostic.directGuestDaemon = 'same-owned-daemon'
-                $diagnostic.directGuestStdout = Canary-Measurement $directOutput $expectedHash
-                $diagnostic.directGuestStderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
-            } catch {
-                $diagnostic.directGuestStdout = 'unavailable'
-                $diagnostic.directGuestFailurePhase = $directPhase
-                $diagnostic.directGuestFailureType = $_.Exception.GetType().Name
-                $diagnostic.directGuestFailureExitCode = $_.Exception.Data['ExitCode']
-            }
-            finally {
-                if ($guestControlPid -cmatch '^[1-9][0-9]*$') {
-                    try {
-                        [void](Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestControlScript), $guestAddress, $windowsGateway, $owner, 'stop', $guestControlPid) -TimeoutSeconds 30)
-                        $diagnostic.directGuestListenerRemoved = $true
-                    } catch {
-                        $diagnostic.directGuestListenerRemoved = $false
-                        $diagnostic.directGuestCleanupType = $_.Exception.GetType().Name
-                        $diagnostic.directGuestCleanupExitCode = $_.Exception.Data['ExitCode']
-                    }
-                }
-            }
-            Write-Host ('Synthetic canary transport diagnostics: ' + ($diagnostic | ConvertTo-Json -Compress))
-            [IO.File]::WriteAllText((Join-Path $WorkDirectory 'transport-diagnostic.json'), ($diagnostic | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
-        }
         $composeHash = Canary-Hash $composeOutput $expectedHash 'Actual Windows Compose bind'
         [void](Docker @('cp', $canary, "${canaryId}:/tmp/pipe-copy.txt"))
         [void](Canary-Hash (Docker @('exec', $canaryId, 'sha256sum', '/tmp/pipe-copy.txt')) $expectedHash 'Binary Docker API copy')
@@ -379,9 +308,10 @@ fi
         }
         if (Test-Path -LiteralPath $composeFile) { [void](Docker @('compose', '--project-name', $project, '-f', $composeFile, 'down', '--volumes')) }
     }
+    Invoke-OwnedGuestDockerProxy $ownedProxy 'check'
     $receipt = Join-Path $WorkDirectory 'engine.json'
-    @{ version = 2; owner = $owner; distribution = $distribution; kernel = $kernel.Trim(); daemonId = $observed.ID;
-       docker = $docker; context = $contextName; endpoint = 'tcp://127.0.0.1:2375'; runId = $env:GITHUB_RUN_ID; job = $env:GITHUB_JOB;
+    @{ version = 3; owner = $owner; distribution = $distribution; kernel = $kernel.Trim(); daemonId = $observed.ID;
+       docker = $docker; context = $contextName; endpoint = $ownedProxy.endpoint; proxy = $ownedProxy; runId = $env:GITHUB_RUN_ID; job = $env:GITHUB_JOB;
        keepAlivePid = $keepAlive.Id; completedAt = [DateTimeOffset]::UtcNow.ToString('o');
        parity = @{ composeBindSha256 = $composeHash; rawBindSha256 = $rawHash; binaryCopySha256 = $expectedHash; loopbackPorts = @(58000,55432,55541,55542,55543,55544) } } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $receipt -Encoding utf8NoBOM
@@ -394,8 +324,9 @@ fi
         if ((Docker @('context', 'show')).Trim() -ceq $ownedContext) { [void](Docker @('context', 'use', 'default')) }
         $contextInfo = Docker @('context', 'inspect', $ownedContext) | ConvertFrom-Json
         if (@($contextInfo).Count -eq 1 -and $contextInfo[0].Name -ceq $ownedContext -and
-            $contextInfo[0].Endpoints.docker.Host -ceq 'tcp://127.0.0.1:2375') { [void](Docker @('context', 'rm', $ownedContext)) }
+            $contextInfo[0].Endpoints.docker.Host -ceq $ownedProxy.endpoint) { [void](Docker @('context', 'rm', $ownedContext)) }
     }
+    if ($ownedProxy) { try { Invoke-OwnedGuestDockerProxy $ownedProxy 'stop' } catch { Write-Host 'Owned proxy cleanup failed; the owned disposable distro will be terminated.' } }
     if ($keepAlive -and !$keepAlive.HasExited) { $keepAlive.Kill($true); $keepAlive.WaitForExit() }
     if ($createdDistro) { & wsl.exe --terminate $distribution | Out-Null }
     throw

@@ -63,6 +63,9 @@ $failureScript = $null
 $failureLine = $null
 $failureExitCode = $null
 $failureDiagnostics = @()
+$ownedEngineValidated = $false
+$ownedProxyRemoved = $false
+$ownedContextRemoved = $false
 $requiredChecks = @('zip-build-equality','complete-file-index','exact-zip-install','private-config','launch-reuse','browser-offline','json-import',
     'opening-counts','photos','private-recipes','extra-scope','weekly-special','cash-sale','closing','gzip','backup-attachment','full-restore','signed-live-update','docker-restart','installer-repair',
     'external-ciphertext-copy','external-copy-failure-local-preserved','external-copy-restart-retry')
@@ -110,6 +113,18 @@ function Get-RehearsalJson {
     return (Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json)
 }
 
+function Invoke-OwnedProxy([ValidateSet('check','stop')][string]$Action) {
+    $proxy = $engineReceipt.proxy
+    $helper = Join-Path ([IO.Path]::GetDirectoryName($engineReceiptPath)) 'guest-transport-control.sh'
+    $item = Get-Item -LiteralPath $helper -Force
+    if ($proxy.script -cne $helper -or $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+        $proxy.scriptSha256 -cnotmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash.ToLowerInvariant() -cne $proxy.scriptSha256) { throw 'The owned transport helper changed.' }
+    if ($helper -notmatch '^([A-Za-z]):[\\/](.*)$') { throw 'The helper must use a local runner drive.' }
+    $guestHelper = '/mnt/' + $Matches[1].ToLowerInvariant() + '/' + $Matches[2].Replace('\','/')
+    $output = & wsl.exe --distribution Ubuntu-24.04 --user root -- bash $guestHelper $proxy.guestAddress $proxy.windowsGateway $engineReceipt.owner $Action ([string]$proxy.pid)
+    if ($LASTEXITCODE -ne 0 -or ($Action -ceq 'check' -and ($output | Out-String).Trim() -cne 'owned-listener-active')) { throw 'The owned transport unit did not confirm its exact live identity.' }
+}
+
 try {
     $phase = 'docker-validation'
     $engineJson = & $docker 'info' '--format' '{{json .}}' 2>$null
@@ -130,15 +145,28 @@ try {
     $engineReceipt = Get-RehearsalJson $engineReceiptPath
     $selectedContext = (& $docker 'context' 'inspect' | Out-String) | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw 'The actual Docker context is unavailable.' }
-    if ($engineReceipt.version -ne 2 -or $engineReceipt.owner -cnotmatch '^[a-f0-9]{32}$' -or
+    if ($engineReceipt.version -ne 3 -or $engineReceipt.owner -cnotmatch '^[a-f0-9]{32}$' -or
         $engineReceipt.daemonId -cne $engine.ID -or ('mx.pos-hosted-rehearsal=' + $engineReceipt.owner) -cnotin $engine.Labels -or
-        $engineReceipt.distribution -cne 'Ubuntu-24.04' -or $engineReceipt.endpoint -cne 'tcp://127.0.0.1:2375' -or
+        $engineReceipt.distribution -cne 'Ubuntu-24.04' -or $engineReceipt.endpoint -cne ('tcp://' + $engineReceipt.proxy.guestAddress + ':2376') -or
         $engineReceipt.context -cne ('pos-hosted-' + $engineReceipt.owner) -or $engineReceipt.runId -cne $env:GITHUB_RUN_ID -or
         $engineReceipt.job -cne $env:GITHUB_JOB -or @($selectedContext).Count -ne 1 -or
         $selectedContext[0].Name -cne $engineReceipt.context -or $selectedContext[0].Endpoints.docker.Host -cne $engineReceipt.endpoint -or
         $engineReceipt.kernel -cnotmatch '^[A-Za-z0-9._+()-]{1,128}$' -or $engineReceipt.kernel -cne $engine.KernelVersion) {
         throw 'The receipt does not identify the actual owned WSL Linux daemon.'
     }
+    if ($env:DOCKER_HOST -or $env:DOCKER_CONTEXT -or $env:POS_ACCEPTANCE_DISPOSABLE -cne '1') { throw 'The current fresh-host transport cannot be overridden.' }
+    $proxy = $engineReceipt.proxy
+    foreach ($address in @($proxy.guestAddress,$proxy.windowsGateway)) {
+        $parsed = $null
+        if (![Net.IPAddress]::TryParse($address,[ref]$parsed) -or $parsed.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork -or
+            $parsed.ToString() -cne $address -or $address -cnotmatch '^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)') { throw 'Only exact private same-host WSL addresses are accepted.' }
+    }
+    $gateway = @(Get-NetIPAddress -AddressFamily IPv4 -IPAddress $proxy.windowsGateway -ErrorAction SilentlyContinue)
+    if ($proxy.guestAddress -ceq $proxy.windowsGateway -or $gateway.Count -ne 1 -or $gateway[0].InterfaceIndex -ne $proxy.gatewayInterfaceIndex -or
+        $proxy.unit -cne ('pos-transport-' + $engineReceipt.owner + '.service') -or $proxy.pid -le 0 -or
+        $proxy.endpoint -cne $engineReceipt.endpoint -or $proxy.guestPrefixLength -lt 1 -or $proxy.guestPrefixLength -gt 30) { throw 'The private transport ownership differs.' }
+    Invoke-OwnedProxy 'check'
+    $ownedEngineValidated = $true
     $completedAt = [DateTimeOffset]::MinValue
     if (![DateTimeOffset]::TryParse([string]$engineReceipt.completedAt,[ref]$completedAt) -or
         $completedAt -lt [DateTimeOffset]::UtcNow.AddHours(-1) -or $completedAt -gt [DateTimeOffset]::UtcNow.AddMinutes(5)) { throw 'The owned engine receipt must be fresh for this rehearsal.' }
@@ -148,7 +176,7 @@ try {
     $requiredPorts = @(58000,55432,55541,55542,55543,55544)
     if (@($parity.loopbackPorts).Count -ne $requiredPorts.Count -or @($requiredPorts | Where-Object { $parity.loopbackPorts -notcontains $_ }).Count) { throw 'Every required Windows loopback port must have completed genuine container parity.' }
     $platformProof = @{ state = 'verified'; host = 'github-hosted-windows-2025'; image = $env:ImageOS;
-        engine = 'linux'; distribution = 'Ubuntu-24.04'; kernel = [string]$engineReceipt.kernel;
+        engine = 'linux'; distribution = 'Ubuntu-24.04'; kernel = [string]$engineReceipt.kernel; transport = 'owned-wsl-private-peer'; peerRestriction = 'windows-gateway-only';
         parity = @{ composeBind = 'verified'; rawCliBind = 'verified'; binaryCopy = 'verified'; windowsLoopbackPorts = $requiredPorts } }
 
     $phase = 'immutable-artifact-download'
@@ -305,6 +333,18 @@ console.log('Original candidate manifest, full file index and every file verifie
     $result = 'fail'
     if (!$failureDiagnostics.Count) { $failureDiagnostics = @(ConvertTo-SafeRehearsalDiagnostic $_.Exception.Message) }
 } finally {
+    if ($ownedEngineValidated) {
+        try {
+            Invoke-OwnedProxy 'stop'
+            $ownedProxyRemoved = $true
+            $context = (& $docker context inspect $engineReceipt.context | Out-String) | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or @($context).Count -ne 1 -or $context[0].Name -cne $engineReceipt.context -or $context[0].Endpoints.docker.Host -cne $engineReceipt.endpoint) { throw 'The owned context changed before cleanup.' }
+            if ((& $docker context show).Trim() -ceq $engineReceipt.context) { & $docker context use default | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'Could not restore default context.' } }
+            & $docker context rm $engineReceipt.context | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not remove the exact owned context.' }
+            $ownedContextRemoved = $true
+        } catch { $result = 'fail'; $phase = 'owned-transport-cleanup' }
+    }
     if ($temporaryThumbprint) {
         try {
             $certificatePath = 'Cert:\CurrentUser\Root\' + $temporaryThumbprint
@@ -326,6 +366,7 @@ console.log('Original candidate manifest, full file index and every file verifie
         originalCandidateModified = $originalCandidateModified; candidateIntegrity = @{ before = $candidateIntegrityBefore; after = $candidateIntegrityAfter }
         platform = $platformProof; tlsVerification = 'enabled'; actualDeviceAcceptance = 'pending'
         temporaryTrustChanged = $temporaryTrustChanged; temporaryTrustRemoved = $temporaryTrustRemoved
+        ownedProxyRemoved = $ownedProxyRemoved; ownedContextRemoved = $ownedContextRemoved
     }
     if ($failureExitCode -ne $null) { $proof.childExitCode = $failureExitCode }
     if ($failureCode) { $proof.failureCode = $failureCode }
