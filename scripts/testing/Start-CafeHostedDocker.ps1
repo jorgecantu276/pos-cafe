@@ -198,7 +198,7 @@ function Write-CanaryForwardingDiagnostics([string]$Container, [string]$Expected
         $report.container = @{ running = $containerInfo.State.Running; status = $containerInfo.State.Status; bindings = $containerInfo.NetworkSettings.Ports }
         $report.windowsDynamicTcpRange = (Native -Executable 'netsh.exe' -Arguments @('int','ipv4','show','dynamicport','tcp') -TimeoutSeconds 10)
         $report.windowsExcludedTcpRanges = (Native -Executable 'netsh.exe' -Arguments @('int','ipv4','show','excludedportrange','protocol=tcp') -TimeoutSeconds 10)
-        foreach ($port in @(58000,55432,15541,15542,15543,15544)) {
+        foreach ($port in @(15800,15432,15541,15542,15543,15544)) {
             $row = @{ port = $port; windowsConnections = @(Get-CanaryWindowsConnections $port) }
             try {
                 $body = Native -Executable 'wsl.exe' -Arguments @('--distribution',$distribution,'--user','root','--','docker','run','--rm','--network','host','--label',"mx.pos-hosted-rehearsal=$owner",'busybox:1.37','wget','-T','3','-q','-O','-',"http://127.0.0.1:$port/canary.txt") -TimeoutSeconds 10
@@ -230,7 +230,7 @@ try {
     if (@($networks | Where-Object { $_ -and $_ -cnotin @('nat', 'none') }).Count) { throw 'The runner Docker host has a nondefault network.' }
     $windowsDocker = Get-CimInstance Win32_Service -Filter "Name='docker'"
     if (!$windowsDocker -or $windowsDocker.PathName -notmatch 'dockerd\.exe') { throw 'The standard Windows Docker service was not identified.' }
-    Free-Ports @(2375, 3180, 58000, 55432, 15541, 15542, 15543, 15544)
+    Free-Ports @(2375, 3180, 15800, 15432, 15541, 15542, 15543, 15544)
     $listed = (& wsl.exe --list --quiet 2>&1 | Out-String).Replace([string][char]0, '').Trim()
     if ($LASTEXITCODE -eq 0 -and $listed) { throw 'An existing WSL distribution must be left intact.' }
     if ($LASTEXITCODE -ne 0 -and $listed -notmatch 'no installed distributions') { throw 'Could not establish that the WSL host is empty.' }
@@ -308,8 +308,8 @@ services:
       mx.pos-hosted-rehearsal: '$owner'
     command: ['busybox', 'httpd', '-f', '-p', '8080', '-h', '/fixture']
     ports:
-      - '127.0.0.1:58000:8080'
-      - '127.0.0.1:55432:8080'
+      - '127.0.0.1:15800:8080'
+      - '127.0.0.1:15432:8080'
       - '127.0.0.1:15541:8080'
       - '127.0.0.1:15542:8080'
       - '127.0.0.1:15543:8080'
@@ -328,9 +328,9 @@ services:
         $composeHash = Canary-Hash $composeOutput $expectedHash 'Actual Windows Compose bind'
         [void](Docker @('cp', $canary, "${canaryId}:/tmp/pipe-copy.txt"))
         [void](Canary-Hash (Docker @('exec', $canaryId, 'sha256sum', '/tmp/pipe-copy.txt')) $expectedHash 'Binary Docker API copy')
-        $connectionsBefore = @(foreach ($port in @(58000,55432,15541,15542,15543,15544)) { @{ port = $port; connections = @(Get-CanaryWindowsConnections $port) } })
+        $connectionsBefore = @(foreach ($port in @(15800,15432,15541,15542,15543,15544)) { @{ port = $port; connections = @(Get-CanaryWindowsConnections $port) } })
         try {
-            foreach ($port in @(58000, 55432, 15541, 15542, 15543, 15544)) {
+            foreach ($port in @(15800, 15432, 15541, 15542, 15543, 15544)) {
                 [void](Wait-Native { $body = (Invoke-WebRequest -Uri "http://127.0.0.1:$port/canary.txt" -TimeoutSec 2).Content; if ($body -ceq $canaryText) { $true } } 45 "Waiting for real container port $port through Windows loopback.")
             }
         } catch {
@@ -355,7 +355,7 @@ services:
     @{ version = 3; owner = $owner; distribution = $distribution; kernel = $kernel.Trim(); daemonId = $observed.ID;
        docker = $docker; context = $contextName; endpoint = $ownedProxy.endpoint; proxy = $ownedProxy; runId = $env:GITHUB_RUN_ID; job = $env:GITHUB_JOB;
        keepAlivePid = $keepAlive.Id; completedAt = [DateTimeOffset]::UtcNow.ToString('o');
-       parity = @{ composeBindSha256 = $composeHash; rawBindSha256 = $rawHash; binaryCopySha256 = $expectedHash; loopbackPorts = @(58000,55432,15541,15542,15543,15544) } } |
+       parity = @{ composeBindSha256 = $composeHash; rawBindSha256 = $rawHash; binaryCopySha256 = $expectedHash; loopbackPorts = @(15800,15432,15541,15542,15543,15544) } } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $receipt -Encoding utf8NoBOM
     foreach ($entry in @("POS_CAFE_REAL_DOCKER=$docker", 'POS_TEST_WSL_ENGINE=1', 'COMPOSE_CONVERT_WINDOWS_PATHS=1', "POS_TEST_WSL_RECEIPT=$receipt")) {
         Add-Content -LiteralPath $env:GITHUB_ENV -Value $entry -Encoding utf8NoBOM
