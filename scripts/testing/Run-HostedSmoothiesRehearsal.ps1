@@ -88,13 +88,19 @@ function ConvertTo-SafeRehearsalDiagnostic {
     $lines = @($safe -split '\r?\n' | Where-Object { $_.Trim() } | ForEach-Object {
         if ($_.Length -gt 300) { $_.Substring(0,300) + ' [truncated]' } else { $_ }
     })
-    $primary = -1
+    $primary = @()
     for ($index = 0; $index -lt $lines.Count; $index++) {
-        if ($lines[$index] -match '(?i)(?:^\s*(?:AssertionError|TimeoutError|Error:|locator\.(?:click|fill|waitFor))|\bERR_ASSERTION\b)') { $primary = $index; break }
+        if ($lines[$index] -match '(?i)(?:^\s*(?:AssertionError|TimeoutError|Error[: ]|locator\.(?:click|fill|waitFor))|\b(?:ERR_ASSERTION|Rate exceeded|failed to|unexpected status|panic:|FATAL:))') {
+            $primary += $index
+            if ($primary.Count -eq 4) { break }
+        }
     }
-    if ($primary -ge 0) {
-        $first = [Math]::Max(0, $primary - 2); $last = [Math]::Min($lines.Count - 1, $primary + 15)
-        return @(@($lines[$first..$last]) + $frames + @($lines | Select-Object -Last 10) | Select-Object -Unique | Select-Object -First 60)
+    if ($primary.Count) {
+        $windows = @(foreach ($position in $primary) {
+            $first = [Math]::Max(0, $position - 2); $last = [Math]::Min($lines.Count - 1, $position + 7)
+            $lines[$first..$last]
+        })
+        return @($windows + $frames + @($lines | Select-Object -Last 10) | Select-Object -Unique | Select-Object -First 60)
     }
     return @($frames + @($lines | Select-Object -Last 45) | Select-Object -Unique | Select-Object -First 60)
 }

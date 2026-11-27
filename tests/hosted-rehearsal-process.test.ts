@@ -67,6 +67,9 @@ $joined=$result -join [Environment]::NewLine
 if(!$joined.Contains('Primary synthetic mismatch') -or !$joined.Contains('[acceptance frame] acceptance-ui.mjs:139') -or !$joined.Contains('[acceptance frame] acceptance-ui.mjs:198')){throw 'Cleanup drowned primary error or allowlisted frames'}
 if($joined.Contains($jwt) -or $joined.Contains('SyntheticPrivate') -or $joined.Contains('synthetic-private-header') -or $joined.Contains('file:///C:')){throw 'Private diagnostic value leaked'}
 if($result.Count -gt 60 -or @($result|Where-Object {$_.Length -gt 312}).Count){throw 'Failure projection exceeded its fixed bounds'}
+$nested=@('Error: outer node failed with image progress') + @(1..120|ForEach-Object {'Image synthetic pulling '+$_}) + @('error from registry: Synthetic inner cause',"+ '$jwt'",'  at file:///C:/task/acceptance-ui.mjs:397:7') + @(1..80|ForEach-Object {'Container synthetic cleanup '+$_}) + @('Error: outer child failure')
+$nestedSafe=(ConvertTo-SafeRehearsalDiagnostic ($nested -join [Environment]::NewLine)) -join [Environment]::NewLine
+if(!$nestedSafe.Contains('Synthetic inner cause') -or !$nestedSafe.Contains('acceptance-ui.mjs:397') -or $nestedSafe.Contains($jwt)){throw 'Nested critical cause was lost behind progress or leaked private value'}
 'primary-preserved-private-values-redacted'
 `);
   const result = await promisify(execFile)('pwsh.exe', ['-NoProfile', '-NonInteractive', '-File', script,
