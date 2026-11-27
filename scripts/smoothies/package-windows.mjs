@@ -1,4 +1,5 @@
 import { packageVersion } from '../releases/version-info.mjs';
+import { operationsDemoFile } from '../operations/package-policy.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -21,7 +22,7 @@ function copy(src, into, names) {
   for (const name of names) {
     const target = path.join(into, name);
     mkdirSync(path.dirname(target), { recursive: true });
-    cpSync(path.join(src, name), target, { recursive: true, dereference: true, filter: file => !path.basename(file).startsWith('.env') });
+    cpSync(path.join(src, name), target, { recursive: true, dereference: true, filter: file => !path.basename(file).startsWith('.env') && !operationsDemoFile(path.relative(src, file)) });
   }
 }
 
@@ -60,12 +61,15 @@ try {
   linkDependencies(path.join(source, 'node_modules'), path.join(stage, 'node_modules'));
   const env = { ...process.env, NEXT_PUBLIC_POS_PROFILE: 'smoothies', NEXT_TELEMETRY_DISABLED: '1', POS_RELEASE_BUILD: '1', NEXT_PUBLIC_SMOOTHIES_PORTABLE: '1',
     NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:58000', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'smoothies-runtime-config' };
+  delete env.NEXT_PUBLIC_POS_OPS_DEMO; delete env.POS_OPS_DEMO_ACCESS_FILE; delete env.POS_OPS_DEMO_TOKEN;
   for (const key of Object.keys(env)) {
     if (/^SMOOTHIES_|^SUPABASE_|^POS_(?:CLIP|PRINT|BACKUP|DATABASE|RECEIPT|LAUNCH)/.test(key)) delete env[key];
   }
+  delete env.POS_LAN_MODE; delete env.POS_PUBLIC_ORIGIN;
   const result = spawnSync(process.execPath, [path.join(stage, 'node_modules/next/dist/bin/next'), 'build', '--webpack'],
     { cwd: stage, env, stdio: 'inherit' });
   assert.equal(result.status, 0, 'No se generó el paquete de producción.');
+  assert.ok(!Object.keys(JSON.parse(readFileSync(path.join(stage, '.next/server/app-paths-manifest.json'), 'utf8'))).some(route => /(?:^|\/)ops-demo(?:\/|$)/.test(route)), 'Operational demo routes must be physically absent from customer builds.');
   const standalone = path.join(stage, '.next/standalone');
   assert.ok(existsSync(path.join(standalone, 'server.js')), 'Falta el servidor portable de Next.');
   cpSync(standalone, runtimePath, { recursive: true, dereference: true, filter: file => !path.basename(file).startsWith('.env') });
@@ -73,17 +77,22 @@ try {
   rmSync(path.join(runtimePath, 'public/receipt-branding'), { recursive: true, force: true });
   copy(source, runtimePath, ['supabase/migrations', 'supabase/smoothies', 'supabase/schema.snapshot.json',
     'scripts/printing/windows-print.ps1', 'scripts/printing/DesktopPrinter.cs', 'scripts/staging/safety.mjs',
-    'scripts/backups/restore-business.mjs', 'lib/business-backup-format.mjs', 'lib/smoothies-backup-assets.mjs',
+    'scripts/backups/restore-business.mjs', 'scripts/customer/lan.mjs', 'lib/business-backup-format.mjs', 'lib/smoothies-backup-assets.mjs', 'lib/business-backup-export.mjs',
+    'config/smoothies-site.example.json', 'config/smoothies-reporting.example.json',
     ...['Install-Smoothies.ps1','Launch-Smoothies.ps1','install-local.mjs','prepare-local.mjs',
-      'provision-supabase.mjs','restore-local.mjs','restore-contract.mjs','start-local.mjs','stop-local.mjs','auto-update.mjs',
+      'provision-supabase.mjs','provision-lan.mjs','New-LanCertificate.ps1','lan.mjs','site-plan.mjs','support-report.mjs','Publish-BackupCopy.ps1','export-backup.mjs','restore-local.mjs','restore-contract.mjs','start-local.mjs','stop-local.mjs','auto-update.mjs',
       'Extract-Smoothies-Update.ps1','supabase']
       .map(name => `scripts/smoothies/${name}`)]);
+  copy(source, runtimePath, ['BackendOwnership.psm1', 'SupportTransport.psm1', 'SmoothiesSupport.psm1', 'Report-SmoothiesSupport.ps1', 'Install-SmoothiesSupport.ps1', 'support-transport-origin.json'].map(name => `scripts/smoothies/${name}`));
   recoveryDependency('pg');
   recoveryDependency('@supabase/supabase-js');
   cpSync(process.execPath, path.join(output, 'node.exe'));
   cpSync(nodeLicense, path.join(output, 'Node-LICENSE.txt'));
   copy(source, output, ['Instalar POS Smoothies.cmd']);
   cpSync(path.join(source, 'docs/smoothies-local.md'), path.join(output, 'Guia PC e iPad.md'));
+  cpSync(path.join(source, 'docs/smoothies-lan.md'), path.join(output, 'smoothies-lan.md'));
+  cpSync(path.join(source, 'config/smoothies-site.example.json'), path.join(output, 'smoothies-site.example.json'));
+  cpSync(path.join(source, 'config/smoothies-reporting.example.json'), path.join(output, 'smoothies-reporting.example.json'));
   const policyFile = process.env.SMOOTHIES_UPDATE_POLICY_FILE || path.join(source, 'config/smoothies-update-policy.json');
   const publicKeyFile = process.env.SMOOTHIES_UPDATE_PUBLIC_KEY_FILE || path.join(source, 'config/smoothies-update-public-key.pem');
   assert.ok(existsSync(policyFile) && existsSync(publicKeyFile), 'Faltan la politica y la clave publica de actualizaciones.');

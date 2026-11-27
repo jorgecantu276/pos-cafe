@@ -1,4 +1,13 @@
+> Registro histórico: conserva resultados y límites de su fecha. No describe la configuración actual ni concede permiso para desplegar, restablecer datos, cobrar o imprimir. Para estado y siguiente trabajo, consultar el [plan de Café](products/cafe.md).
+
 # Revisión de integración y preparación
+
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
 
 Fecha: **2 de noviembre de 2026**, America/Matamoros. Alcance: UI actual, CLIP, controles 1–30, inventario y pedidos por teléfono con pago al recoger; migraciones 017–021 y preparación de entrega.
 

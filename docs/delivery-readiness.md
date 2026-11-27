@@ -1,4 +1,13 @@
+> Registro histórico: conserva resultados y límites de su fecha. No describe la configuración actual ni concede permiso para desplegar, restablecer datos, cobrar o imprimir. Para estado y siguiente trabajo, consultar el [plan de Café](products/cafe.md).
+
 # Entrega del POS
+
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
 
 La entrega conserva **CLIP e inventario apagados**. La tarjeta se cobra en la terminal y se confirma manualmente en el POS. No se importan existencias hasta tener los conteos del negocio. El POS anterior se conserva hasta aceptar el reemplazo.
 

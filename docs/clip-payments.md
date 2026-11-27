@@ -1,14 +1,31 @@
-# CLIP Total 3 integration
+# CLIP integration and recovery
 
-The café terminal is a Clip Total 3 K1352. Automatic payment remains OFF with the supplied placeholder. Until activation, Tarjeta retains the existing manual “Pago aprobado en la terminal” confirmation. No real CLIP request is made by tests or previews.
+Preserve the current accepted provider configuration of each installation. The owner reports Café's terminal works; old OFF/placeholder observations do not authorize disabling it. A fresh installation starts disabled until its actual merchant/device/credentials and acceptance are established. Tests and previews always use a simulated provider with a separate synthetic backend.
+
+## Activation and cancellation boundary
+
+Configuration-ready, HTTP 200, request registration and reader delivery are different observations. Confirm read-only reader availability and the accepted provider/device contract before any separately authorized live test. Do not recreate the historical production-connected test that blocked normal checkout.
+
+Authenticated GET recovery accepts omitted/null `amount_paid` and `tip_amount`
+only for exact `CANCELED` or `REJECTED`, with matching original provider ID,
+reference and quoted amount, complete transaction detail and no paid transaction.
+Explicit nonzero/malformed money, incomplete detail, unknown transaction states
+or approval evidence retain the original pending request. Approved payments keep
+all existing amount/currency/device/transaction/refund checks. Recovery never
+sends another provider POST and remains available while automatic charging is off.
+
+Use the provider simulator and a separate synthetic backend, accounts, retained
+state and request/lock domain for tests. Another port, browser or simulated
+printer does not isolate a production-connected window. Never reproduce a
+cancellation failure against customer records.
 
 ## Setup
 
 1. Have CLIP provision its PinPad application on the terminal. Sign into the café's own CLIP account and keep PinPad open and connected. The owner manages account verification and production credentials.
-2. Apply the retained migrations through `202611020018_required_order_pager.sql` to the explicit CLIENT backend, first verifying on an isolated database. Migrations through 016 and the receiver are already deployed; 017 and 018 remain pending on that hosted client. Migration 015 adds the pager; 016 adds the private payment journal, service-only settlement, payment recovery and drawer fences; 017 adds finished-product inventory; 018 requires a manually selected control 1–30 before preparing any new payment. Old sales and accepted-request recovery remain unchanged. Do not point this release at the historical development target.
+2. Verify the complete retained migration contract of the exact package against the explicit client backend. Apply necessary forward SQL only through deliberate reviewed maintenance with backup and recovery; this document does not establish current applied migrations. Do not use the historical development target.
 3. Deploy ONLY the callback function to that same client project: `supabase functions deploy clip-webhook --project-ref <CLIENT_PROJECT_REF> --no-verify-jwt`. This endpoint intentionally receives CLIP's unauthenticated callbacks. Each attempt has a private random nonce; a callback only stores an identity hint. It cannot approve a sale. The Edge Function uses Supabase's provided `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`; it does not need the CLIP token.
-4. Keep the CLIP Basic token in a private file outside the release directory. Start from `clip-token.example.txt`; replace its placeholder locally, never in Git. In the café's private launcher JSON configure `ClipTokenFile` with its absolute path, `ClipSerial` with the terminal's API serial, and retain the client `SupabaseServiceRoleKey`. The photographed serial is the example, but the PinPad device registration must match it. Never use `NEXT_PUBLIC` for the token.
-5. Once the function and PinPad registration are ready, set `ClipEnabled: true` and restart the launcher. The callback address is derived as `https://<client-project>.supabase.co/functions/v1/clip-webhook`; `ClipWebhookUrl` is an optional public HTTPS override. The launcher hashes the token into its instance configuration identity without printing it. Environment-based launches may use `config/clip.env.example` instead.
+4. Keep the CLIP Basic token in a private file outside the release directory. Start from `clip-token.example.txt`; replace its placeholder locally, never in Git. In the café's private launcher JSON configure `ClipTokenFile` with its absolute path, `ClipSerial` with the terminal's API serial, and retain the client `SupabaseServiceRoleKey`. The configured serial must match the registered device for that client; do not copy a serial from an example. Never use `NEXT_PUBLIC` for the token.
+5. After the activation qualification above and the separately authorized site/provider acceptance, set `ClipEnabled: true` and restart the launcher through the qualified release procedure. Function/PinPad registration alone is insufficient. The callback address is derived as `https://<client-project>.supabase.co/functions/v1/clip-webhook`; `ClipWebhookUrl` is an optional public HTTPS override. The launcher hashes the token into its instance configuration identity without printing it. Environment-based launches may use `config/clip.env.example` instead.
 
 Keep `ClipEnabled: false` initially. Missing/placeholder credentials cannot enable automatic checkout. Disabling automatic payment later does not abandon existing requests: authenticated GET recovery still settles an already approved payment when the token remains available.
 
@@ -24,7 +41,7 @@ The integration deliberately disables split payments, tips, installments, DCC an
 
 ## Physical pager 1–30
 
-Control de entrega is optional, selected manually using 30 touch buttons plus Sin control. It persists in the unpaid draft, validated checkout payload, order and receipt snapshot. The customer receipt prints CONTROL prominently. Each barista cup and each physical continuation page repeats its control identity. The number clears for the next order. Previous snapshots and print journals are never changed. No radio/base communication or automatic pager activation is implemented.
+New in-person checkout requires a manually selected Control de entrega 1–30; a persisted phone pickup order has its explicit no-control exception. It persists in the unpaid draft, validated checkout payload, order and receipt snapshot. The customer receipt prints CONTROL prominently. Each barista cup and each physical continuation page repeats its control identity. The number clears for the next order. Previous snapshots and print journals are never changed. No radio/base communication or automatic pager activation is implemented.
 
 ## Verification and limitations
 
@@ -36,8 +53,10 @@ Local verification on November 2: 193 tests and 2,394 PostgreSQL assertions pass
 
 ## Authorized cloud deployment — November 2, 2026
 
-The owner subsequently authorized deploying the migrations and callback while keeping automatic CLIP payments off. The CLI link and the existing private client target both identified `ouizfkefuwnalnlgruav`; the legacy development target was not changed. Before deployment, an encrypted, decrypt-verified business backup captured the client backend, and the deployed checkout body matched the verified baseline.
+> Historical evidence only. This deployment permission and then-current settings do not establish current client/provider state.
 
-Migrations 013, 014, 015 and 016 were applied successfully. The final migration list contains all 15 retained versions and `db push --dry-run` reports no pending changes. `clip-webhook` version 1 is ACTIVE at `https://ouizfkefuwnalnlgruav.supabase.co/functions/v1/clip-webhook`, with JWT verification disabled specifically for this nonce-protected notification receiver. HTTP checks returned 405 for GET, 400 without a nonce and 200 for a correctly shaped notification with an unknown request/nonce. The last check produced no journal records; payment and hint counts remain zero. Anonymous notification RPC access and authenticated settlement access remain denied; only the service role can settle.
+The owner subsequently authorized deploying the migrations and callback while keeping automatic CLIP payments off. The CLI link and the existing private client target both identified `<CLIENT_PROJECT_REF>`; the legacy development target was not changed. Before deployment, an encrypted, decrypt-verified business backup captured the client backend, and the deployed checkout body matched the verified baseline.
 
-Post-deployment database fingerprints matched all 28 pre-existing exported tables, excluding only the newly added nullable pager column from the order comparison. The existing sale, 82 products, original receipt snapshots and private configuration were preserved. The three new request/payment tables are empty. Evidence and the encrypted backup remain in the private deployment workspace, with its recovery key outside the backup folder. No CLIP token was uploaded or configured, no real charge or physical print was performed, and no café-PC app installation or configuration change was made. Keep `POS_CLIP_ENABLED=0` / `ClipEnabled: false` and the placeholder until PinPad provisioning and the real token are ready.
+Migrations 013, 014, 015 and 016 were applied successfully. The final migration list contains all 15 retained versions and `db push --dry-run` reports no pending changes. `clip-webhook` version 1 is ACTIVE at `https://<CLIENT_PROJECT_REF>.supabase.co/functions/v1/clip-webhook`, with JWT verification disabled specifically for this nonce-protected notification receiver. HTTP checks returned 405 for GET, 400 without a nonce and 200 for a correctly shaped notification with an unknown request/nonce. The last check produced no journal records; payment and hint counts remain zero. Anonymous notification RPC access and authenticated settlement access remain denied; only the service role can settle.
+
+Post-deployment database fingerprints matched all 28 pre-existing exported tables, excluding only the newly added nullable pager column from the order comparison. The existing sale, 82 products, original receipt snapshots and private configuration were preserved. The three new request/payment tables are empty. Evidence and the encrypted backup remain in the private deployment workspace, with its recovery key outside the backup folder. No CLIP token was uploaded or configured, no real charge or physical print was performed, and no café-PC app installation or configuration change was made. Those were disabled/placeholder settings at that date, not an instruction to change the current store.

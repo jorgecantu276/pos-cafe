@@ -1,6 +1,15 @@
+> Registro histórico: conserva resultados y límites de su fecha. No describe la configuración actual ni concede permiso para desplegar, restablecer datos, cobrar o imprimir. Para estado y siguiente trabajo, consultar el [plan de Café](products/cafe.md).
+
 > Updated scope: inventory, recipes, supplies, costing and CSV were removed by the user on October 30. Older inventory verification below is historical and does not describe this candidate. Use retained migrations 001, 002 and 004 and the current Windows checks.
 
 # October 30 review fixes
+
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
 
 The reviewed baseline was `feea91f`. These changes address reproduced software
 defects and the verified runtime issue. PR #1 remains draft and main is not merged.

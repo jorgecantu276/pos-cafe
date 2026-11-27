@@ -1,5 +1,12 @@
 # Daily business backups
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 The Windows launcher supplies `POS_BACKUP_DIR`, `POS_BACKUP_KEY_FILE`,
 `POS_DATABASE_CONTRACT_DIR` and `POS_RELEASE_COMMIT`. Automatic backup also
 requires the server-only `SUPABASE_SERVICE_ROLE_KEY` and matching Supabase URL.

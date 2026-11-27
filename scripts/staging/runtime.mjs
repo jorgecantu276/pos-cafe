@@ -20,6 +20,12 @@ const cli = path.join(path.dirname(require.resolve('supabase/package.json')), cl
 // Pre-create the primary network; Windows also needs explicit published IPs.
 export const network = `supabase_network_${project}`;
 
+export function realDockerExecutable() {
+  const executable = process.env.POS_CAFE_REAL_DOCKER || (localDockerBin && path.join(localDockerBin, 'docker.exe'));
+  assert.ok(executable && path.isAbsolute(executable) && existsSync(executable), 'A configured installed Docker CLI is required');
+  return executable;
+}
+
 export function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd: root, windowsHide: true, ...options, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -49,8 +55,7 @@ export async function prepare(allowStoppedConfigDrift = false) {
 export async function cliRun(args) {
   let env = { ...process.env };
   if (process.platform === 'win32') {
-    const real = localDockerBin && path.join(localDockerBin, 'docker.exe');
-    assert.ok(real && existsSync(real), 'The installed per-user Docker CLI is required');
+    const real = realDockerExecutable();
     const bin = path.join(work, 'docker-bin'); await mkdir(bin, { recursive: true });
     const launcher = path.join(bin, 'docker.exe');
     const compiler = path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET/Framework64/v4.0.30319/csc.exe');
@@ -73,12 +78,18 @@ export async function dockerCheck() {
   localDocker(context[0].Endpoints.docker.Host);
   if ((await run('docker', ['info', '--format', '{{.OSType}}'])).trim() !== 'linux') throw new Error('Docker Linux containers must be running');
 }
+export async function ensureLoopbackNetwork({ name, label, owner }, execute = run) {
+  const names = (await execute('docker', ['network', 'ls', '--format', '{{.Name}}'])).trim().split(/\r?\n/);
+  // Docker allocates a free subnet atomically. Random fixed CIDRs can collide
+  // with another disposable stack or a runner's pre-existing networks.
+  if (!names.includes(name)) await execute('docker', ['network', 'create', '--driver', 'bridge', '--label', `${label}=${owner}`,
+    '--opt', 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1', name]);
+  const [info] = JSON.parse(await execute('docker', ['network', 'inspect', name]));
+  if (info.Labels?.[label] !== owner || info.Options?.['com.docker.network.bridge.host_binding_ipv4'] !== '127.0.0.1') throw new Error('Dedicated Docker network identity/binding mismatch');
+  return info;
+}
 export async function ensureNetwork() {
-  const names = (await run('docker', ['network', 'ls', '--format', '{{.Name}}'])).trim().split(/\r?\n/);
-  if (!names.includes(network)) await run('docker', ['network', 'create', '--driver', 'bridge', '--label', `pos-cafe.staging=${project}`,
-    '--opt', 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1', network]);
-  const [info] = JSON.parse(await run('docker', ['network', 'inspect', network]));
-  if (info.Labels?.['pos-cafe.staging'] !== project || info.Options?.['com.docker.network.bridge.host_binding_ipv4'] !== '127.0.0.1') throw new Error('Dedicated Docker network identity/binding mismatch');
+  await ensureLoopbackNetwork({ name: network, label: 'pos-cafe.staging', owner: project });
 }
 export async function settings() {
   await prepare();

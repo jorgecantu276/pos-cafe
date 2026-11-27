@@ -1,3 +1,5 @@
+> Registro histórico: conserva resultados y límites de su fecha. No describe la configuración actual ni concede permiso para desplegar, restablecer datos, cobrar o imprimir. Para estado y siguiente trabajo, consultar el [plan de Café](products/cafe.md).
+
 # Cheesecakes y total en dólares — 21 de noviembre de 2026
 
 POS Café rc.5 aplica el mismo comportamiento de brownie con nieve a las seis

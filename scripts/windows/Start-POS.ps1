@@ -1,5 +1,7 @@
 ﻿param([string]$ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'pos-cafe-config.json'), [switch]$NoBrowser, [switch]$DesktopApp)
 $ErrorActionPreference = 'Stop'
+# Cafe retains its direct backend and loopback-only launcher contract.
+Remove-Item Env:POS_LAN_MODE, Env:POS_PUBLIC_ORIGIN -ErrorAction SilentlyContinue
 
 function Get-CafeHash([string]$Value) {
   $hash = [System.Security.Cryptography.SHA256]::Create()
@@ -104,10 +106,13 @@ $mutex = New-Object Threading.Mutex($false, ('Local\POSCafe-' + (Get-CafeHash $C
 $ownsMutex = $false
 $child = $null
 $job = $null
+$startupReported = $false
+$updateReadyToken = $env:POS_UPDATE_READY_TOKEN
 $savedEnvironment = @{}
 try {
   try { $ownsMutex = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $ownsMutex = $true }
   if (-not $ownsMutex) {
+    if ($updateReadyToken -match '^[0-9a-f-]{36}$') { Write-Output "POS_UPDATE_BUSY $updateReadyToken" }
     Write-Host 'La caja ya se esta iniciando. Comprobando la ventana existente...'
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
       $owner = Read-CafeOwner
@@ -121,7 +126,10 @@ try {
     }
     throw 'La caja existente no responde con una identidad valida. Conserva sus datos y pide ayuda; no se inicio otra copia.'
   }
-  if (@(Get-CafeListeners).Count -gt 0) { throw 'El puerto ya esta ocupado por otra aplicacion o version. No se cerro ningun programa. Pide ayuda para revisar la caja o su puerto.' }
+  if (@(Get-CafeListeners).Count -gt 0) {
+    if ($updateReadyToken -match '^[0-9a-f-]{36}$') { Write-Output "POS_UPDATE_BUSY $updateReadyToken" }
+    throw 'El puerto ya esta ocupado por otra aplicacion o version. No se cerro ningun programa. Pide ayuda para revisar la caja o su puerto.'
+  }
 
   # A Windows job kills only this launcher's child tree even if its window is closed.
   Add-Type -TypeDefinition @"
@@ -161,6 +169,7 @@ public sealed class CafeProcessJob : IDisposable {
     POS_LAUNCH_INSTANCE_TOKEN=$instanceToken; POS_LAUNCH_RELEASE_ID=$releaseId; POS_LAUNCH_CONFIG_ID=$configId
     POS_BACKUP_DIR=$backupDirectory; POS_BACKUP_KEY_FILE=$backupKeyFile
     POS_DATABASE_CONTRACT_DIR=(Join-Path $PSScriptRoot 'database-migrations'); POS_RELEASE_COMMIT=[string]$release.sourceCommit
+    POS_UPDATE_READY_TOKEN=$null
   }
   foreach ($name in $environment.Keys) { $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process'); [Environment]::SetEnvironmentVariable($name, $environment[$name], 'Process') }
   $browserOpened = $false
@@ -196,6 +205,10 @@ public sealed class CafeProcessJob : IDisposable {
       Write-Host "Caja disponible en $baseUrl - cierra esta ventana para detenerla."
       if ($config.PrintMode -eq 'mock') { Write-Host 'Impresion de prueba: no imprime en papel.' }
       if (-not $NoBrowser -and -not $browserOpened) { $cafeWindow = Open-CafeWindow; $browserOpened = $true }
+      if (!$startupReported -and $updateReadyToken -match '^[0-9a-f-]{36}$') {
+        Write-Output "POS_UPDATE_READY $updateReadyToken"
+        $startupReported = $true
+      }
       while (-not $child.HasExited) {
         if ($DesktopApp -and $cafeWindow -and $cafeWindow.HasExited) { return }
         Start-Sleep -Milliseconds 250
@@ -208,7 +221,10 @@ public sealed class CafeProcessJob : IDisposable {
   }
   throw 'La caja no pudo mantenerse abierta tras 3 reintentos. Conserva los registros y pide ayuda. Detalle tecnico: archivo .server-error.log junto a la configuracion privada.'
 } finally {
-  if ($child -and -not $child.HasExited) { Stop-Process -Id $child.Id -ErrorAction SilentlyContinue }
+  if ($child -and -not $child.HasExited) {
+    Stop-Process -Id $child.Id -ErrorAction SilentlyContinue
+    $child.WaitForExit(5000) | Out-Null
+  }
   if ($job) { $job.Dispose() }
   if ($ownsMutex) {
     $owner = Read-CafeOwner

@@ -1,0 +1,10 @@
+{
+  "protocol": 1,
+  "product": "smoothies",
+  "pc": { "windowsVersion": null, "lanAddress": null },
+  "ipad": { "model": null, "ipadOsVersion": null },
+  "network": { "port": 3443, "samePrivateNetworkConfirmed": null },
+  "backup": { "externalDirectory": null, "separateDeviceConfirmed": null, "recoveryKeyStoredSeparately": null },
+  "printing": { "required": null, "model": null, "connection": null },
+  "menu": { "intakeJson": null, "approved": null, "openingCountsConfirmed": null }
+}

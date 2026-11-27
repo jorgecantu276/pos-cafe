@@ -3,14 +3,23 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { freshLocalApi } from '../testing/local-api.mjs';
 import { prepareLocal } from './prepare-local.mjs';
+import { proxyBackendRequest } from '../../lib/backend-proxy.ts';
 
 const stack = await freshLocalApi({ portBase: 55541, emptyWithStorage: true });
 const config = { ...stack.config, apiPort: 55541, dbPort: 55542, password: randomBytes(24).toString('base64url') };
-const localFetch = (request, init) => {
-  assert.equal(new URL(typeof request === 'string' ? request : request.url).origin, config.api);
-  return fetch(request, init);
+// Exercise the actual browser proxy against a fresh Auth/Postgres stack. The
+// synthetic visible origin does not bind or alter the developer's LAN interface.
+const visible = 'https://192.168.1.25:3189';
+const proxyEnv = { POS_LAN_MODE: '1', POS_PUBLIC_ORIGIN: visible, NEXT_PUBLIC_SUPABASE_URL: config.api,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: config.anon, SUPABASE_SERVICE_ROLE_KEY: config.service };
+const localFetch = async (input, init) => {
+  const request = new Request(input, init), url = new URL(request.url);
+  assert.equal(url.origin, visible);
+  const headers = new Headers(request.headers); headers.set('host', new URL(visible).host);
+  if (request.method !== 'GET' && request.method !== 'HEAD') headers.set('origin', visible);
+  return proxyBackendRequest(new Request(request, { headers }), url.pathname.slice('/api/backend/'.length).split('/').map(decodeURIComponent), proxyEnv);
 };
-const api = createClient(config.api, config.anon, {
+const api = createClient(`${visible}/api/backend`, config.anon, {
   auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: localFetch },
 });
 function ok({ data, error }) {
@@ -40,8 +49,8 @@ try {
   assert.equal(sale.change_mxn, 10);
   assert.equal(sale.pager_number, null);
   assert.equal(ok(await api.rpc('pos_checkout', { p_request: request, p_payload: payload })).id, sale.id);
-  assert.equal(ok(await api.from('orders').select('id').eq('id',sale.id).single()).id, sale.id);
-  console.log('PASS: inicio de sesión, turno, venta en efectivo, cambio y reintento sin duplicación por API local.');
+  assert.equal((await stack.db.query('select count(*)::int n from public.orders where id=$1', [sale.id])).rows[0].n, 1);
+  console.log('PASS: same-origin LAN proxy login, shift, cash sale, change and original-request replay produce one saved order.');
 } finally {
   await stack.cleanup();
 }

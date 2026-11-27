@@ -1,5 +1,12 @@
 # One POS, one drawer, cashier handoff
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 Apply `202610300005_single_drawer.sql` after 001, 002 and 004 with the matching
 app. No hosted migration is applied by development/tests. Migration preflight
 refuses multiple open historical shifts; a responsible person must reconcile

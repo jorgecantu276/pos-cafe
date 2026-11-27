@@ -177,7 +177,7 @@ earlier transferred flowing-label logs and from full POS installation.
 | Destination | Exact queue / driver | Connection | Job paper form |
 |---|---|---|---|
 | Customer | POS80 Printer / POS80; observed driver 5.1.1.43 | CP001 USB; VID4B43/PID3830; 203 dpi | Explicit 72 × 210 mm advertised form |
-| Barista | Y813BT Sticker / Y813BT Label; VEVOR; observed driver 1.1.3.1 | Y813BT-E08D, Bluetooth SPP COM3; 203 dpi | Hybsk 2.25 × 1.25 inch (57.15 × 31.75 mm); 57 × 32 mm driver form |
+| Barista | Y813BT Sticker / Y813BT Label; VEVOR; observed driver 1.1.3.1 | <REGISTERED_BLUETOOTH_DEVICE>, Bluetooth SPP COM3; 203 dpi | Hybsk 2.25 × 1.25 inch (57.15 × 31.75 mm); 57 × 32 mm driver form |
 
 The receipt queue's observed default was 72 × 3276 mm. The helper selects the
 advertised 72 × 210 mm form for the job to avoid inheriting that long page.
@@ -204,10 +204,10 @@ field programmatically. Physical model/roll/cutter/drawer remain unverified.
 
 ## Runtime configuration
 
-Use the tested Node 24.22.2 Windows x64 runtime (including built-in SQLite) and
+Use the Windows x64 Node runtime required by the package (including built-in SQLite) and
 run the local POS under the signed-in Windows user's desktop session. The
 PowerShell/.NET desktop helper is not a Windows service printing integration.
-The verified runtime embeds SQLite 3.53.4. Journal creation rejects SQLite older
+Read the actual bundled SQLite version from the accepted runtime; historical pins in prose are not a servicing source. Journal creation rejects SQLite older
 than 3.51.3 before opening the journal, addressing the published WAL-reset fix.
 Keep `scripts/printing/windows-print.ps1` and `DesktopPrinter.cs` in the release.
 Chrome/Edge must open the POS through localhost or 127.0.0.1.
@@ -237,8 +237,7 @@ application stopped or through SQLite-aware backup.
 
 `POS_PRINT_MODE=mock` writes only synthetic spool records and uses a separate
 `mock-jobs.sqlite`; Windows uses `windows-jobs.sqlite`. Omission/disabled mode
-withholds dispatch and retains print intents. No real print mode was enabled
-on the development PC or full café POS. The standalone kit did print marked
+withholds dispatch and retains print intents. Development tests do not enable real printing; the live store retains its accepted configuration. The standalone kit did print marked
 samples on October 31. Network/Auth/order-read failure retains the
 print intent; the existing POS still depends on cloud access and does not gain
 offline sales or offline access authorization from this feature.

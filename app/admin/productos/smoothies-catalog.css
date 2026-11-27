@@ -1,0 +1,14 @@
+.smoothies-catalog-guide{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;color:var(--admin-muted);font-size:14px}
+.smoothies-catalog-guide a,.smoothies-product-next>a:not(.admin-primary-button),.smoothies-catalog-note button{color:var(--ui-accent)}
+.smoothies-catalog-guide a,.smoothies-product-next>a{display:inline-flex;align-items:center;min-height:44px}
+.smoothies-product-focus{display:grid;gap:14px;padding:18px;margin-bottom:18px;border:1px solid #efd8e3;border-radius:18px;background:#fff9f5;overflow-wrap:anywhere}
+.smoothies-product-focus h2{font-size:21px;font-weight:650;margin-top:4px}
+.smoothies-product-focus p{font-size:14px;color:var(--admin-muted);margin-top:6px}
+.smoothies-product-state{font-size:13px;font-weight:650;color:var(--ui-accent)}
+.smoothies-product-next{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.smoothies-catalog-note{font-size:14px;margin-bottom:14px}
+.smoothies-catalog-setup{display:grid;gap:8px;margin-top:22px}
+.smoothies-catalog-setup>h2{font-size:19px;font-weight:650}
+.smoothies-catalog-setup>p{font-size:14px;color:var(--admin-muted);margin-bottom:2px}
+.smoothies-catalog-setup>.admin-recovery{margin:0}
+@media(max-width:600px){.smoothies-product-next{align-items:stretch}.smoothies-product-next>button,.smoothies-product-next>a{justify-content:center;flex:1 1 160px}.smoothies-app .catalog-actions{grid-column:1/-1;grid-row:auto;flex-wrap:wrap}.smoothies-app .catalog-actions>*{flex:1 1 auto}}

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
 const folder = process.argv[2];
 assert.ok(folder && path.isAbsolute(folder), 'Pass an absolute prepared release directory.');
@@ -24,7 +24,8 @@ writeFileSync(config.ClipTokenFile,'REPLACE_WITH_CLIP_BASIC_TOKEN');
 const configPath = path.join(scratch, 'pos-cafe-config.json');
 writeFileSync(configPath, JSON.stringify(config));
 const powershell = path.join(process.env.SystemRoot || 'C:/Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
-const child = spawn(powershell, ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(relocated, 'Start-POS.ps1'), '-ConfigPath', configPath, '-NoBrowser'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+const updateReadyToken = randomUUID();
+const child = spawn(powershell, ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(relocated, 'Start-POS.ps1'), '-ConfigPath', configPath, '-NoBrowser'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, POS_UPDATE_READY_TOKEN: updateReadyToken } });
 let logs = ''; child.stdout.on('data', bytes => { logs += bytes; }); child.stderr.on('data', bytes => { logs += bytes; });
 try {
   let ready = false;
@@ -35,6 +36,8 @@ try {
     await new Promise(resolve => setTimeout(resolve, 500));
   }
   assert.ok(ready, 'Prepared release did not become ready: ' + logs);
+  for (let attempt = 0; attempt < 20 && !logs.includes('POS_UPDATE_READY ' + updateReadyToken); attempt++) await new Promise(resolve => setTimeout(resolve, 100));
+  assert.ok(logs.includes('POS_UPDATE_READY ' + updateReadyToken), 'Packaged launcher must emit its authenticated readiness signal.');
   const identityResponse = await fetch('http://127.0.0.1:3119/api/local-instance');
   assert.equal(identityResponse.status,200);
   assert.equal(identityResponse.headers.get('Cache-Control'),'no-store');

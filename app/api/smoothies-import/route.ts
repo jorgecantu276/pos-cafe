@@ -3,18 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 import { serverSupabase } from '@/lib/supabase-server';
 import { AccessError, requireAdministrator } from '@/lib/user-management';
 import { parseSmoothiesForm } from '@/lib/smoothies-import';
+import { requestOriginMatches } from '@/lib/request-origin';
 
 const maxBytes = 24_000_000;
-const loopback = ['127.0.0.1','localhost','[::1]'];
 
 export async function POST(request: Request) {
   if (posProfile.id !== 'smoothies') return new Response(null, { status: 404 });
   try {
-    const origin = request.headers.get('origin');
-    const url = new URL(request.url);
-    const authority = new URL(`${url.protocol}//${request.headers.get('host') || url.host}`);
-    if (!loopback.includes(url.hostname) || !loopback.includes(authority.hostname)
-      || (origin && origin !== authority.origin) || request.headers.get('x-pos-import') !== '1') {
+    if (!requestOriginMatches(request, { loopbackOnly: true }) || request.headers.get('x-pos-import') !== '1') {
       throw new AccessError('Abre la importación desde el catálogo del POS.', 403);
     }
     const caller = await serverSupabase();

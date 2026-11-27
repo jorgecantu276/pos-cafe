@@ -1,5 +1,11 @@
 # Cashier switching and multiple-tab acceptance
 
+> Development reference: use isolated synthetic state only. Historical fixture
+> counts and earlier schemas below do not establish the current Smoothies/client
+> contract. Preserve the full current migration order and verify the script's
+> prerequisites before running. No hosted deployment or production reset is implied.
+
+
 Run `npm run test:cashiers` with the dedicated staging stack running. It reserves
 loopback app/gateway ports 3111/3110 and disposable restore ports
 55460/55462/55463/55464. Leave the unrelated TV demo and normal previews running.
@@ -8,7 +14,9 @@ The command is browser-assisted, not unattended automation.
 The runner reads the guarded local staging database, makes an encrypted snapshot,
 and restores fresh local PostgreSQL, Auth and PostgREST services. All account,
 shift, recipe, customer and sale fixtures are created only in that restore. Two
-synthetic cashiers, CajaA and CajaB, have separate owned shifts. Their random test
+synthetic cashiers, CajaA and CajaB, exercise historical session isolation. Current
+single-drawer behavior must use the applicable migration-005 handoff contract;
+separate simultaneous open drawers are not a current acceptance target. Their random test
 credentials are in ignored `.staging-local/cashiers/access.json`; never publish
 that file or copy credentials into reports.
 

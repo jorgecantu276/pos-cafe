@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { migrationContract } from '../testing/migrations.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
@@ -7,11 +8,10 @@ import { createClient } from '@supabase/supabase-js';
 import { baselineStatements, fingerprint, project } from './safety.mjs';
 import { root, work } from './runtime.mjs';
 
-export async function sourceFiles() {
+export async function sourceFiles({ storage = false } = {}) {
   const snapshot = await readFile(path.join(root, 'supabase/schema.snapshot.json'), 'utf8');
-  const migration = (await Promise.all(['202610280001_secure_pos.sql','202610280002_shift_expenses.sql','202610280004_reports.sql','202610300005_single_drawer.sql','202610300006_loyalty_phone.sql','202610300007_safe_drawer_rate.sql','202610300008_employee_drawer_recovery.sql','202610300009_customer_correction.sql','202610300010_register_shortcuts.sql','202610300011_recent_tickets.sql','202610300012_business_backups.sql','202611020013_catalog_requests.sql','202611020014_customer_history.sql','202611020015_order_pager.sql','202611020016_clip_payments.sql','202611020017_inventory.sql','202611020018_required_order_pager.sql','202611020019_phone_orders.sql','202611020020_delivery_readiness.sql','202611020021_staff_revision_read.sql']
-    .map(file => readFile(path.join(root, 'supabase/migrations', file), 'utf8')))).join('\n');
-  return { snapshot, migration, hash: fingerprint(snapshot, migration) };
+  const { migration, files, omittedPlatformMigrations } = await migrationContract({ storage });
+  return { snapshot, migration, files, omittedPlatformMigrations, hash: fingerprint(snapshot, migration) };
 }
 export async function verifyIdentity(db) {
   const marker = await db.query("select to_regclass('cafe_private.staging_identity') present");

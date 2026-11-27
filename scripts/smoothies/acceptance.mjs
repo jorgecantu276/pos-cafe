@@ -6,6 +6,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import { parseEnv } from 'node:util';
 import { pathToFileURL } from 'node:url';
+import { lanOrigin } from '../customer/lan.mjs';
 
 // Never reuse an installed business: this test owns one newly created Docker
 // project and verifies its identity again before removing its test volumes.
@@ -13,6 +14,7 @@ const root = path.resolve(import.meta.dirname, '../..');
 const [zipFile, evidenceDirectory, referencePackage, ...extra] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
 assert.equal(process.version, 'v24.22.2');
+assert.equal(process.env.POS_ACCEPTANCE_DISPOSABLE, '1', 'Run only on an explicitly enrolled disposable test computer, never a business PC.');
 assert.ok(zipFile && evidenceDirectory && referencePackage && !extra.length
   && [zipFile, evidenceDirectory, referencePackage].every(file => path.isAbsolute(file)),
   'Use node scripts/smoothies/acceptance.mjs <absolute-final-zip> <absolute-evidence-directory> <absolute-built-package>.');
@@ -25,6 +27,11 @@ const fixture = path.join(scratch, 'installed');
 const secret = randomBytes(24).toString('base64url');
 const env = { ...process.env, SMOOTHIES_ADMIN_PASSWORD: secret, POS_TEST_PORTABLE_HOME: fixture,
   POS_ACCEPTANCE_ARTIFACTS: evidenceDirectory };
+const lan = process.env.POS_TEST_LAN_ORIGIN ? lanOrigin(process.env.POS_TEST_LAN_ORIGIN) : null;
+if (lan) {
+  assert.ok(['POS_TEST_LAN_CERT_FILE', 'POS_TEST_LAN_KEY_FILE', 'NODE_EXTRA_CA_CERTS'].every(name => path.isAbsolute(process.env[name] || '')),
+    'LAN acceptance requires a provisioned IP certificate/key and trusted CA on the disposable runner. Never disable TLS verification.');
+}
 const ps = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File'];
 const powershell = path.join(process.env.WINDIR, 'System32/WindowsPowerShell/v1.0/powershell.exe');
 const docker = (args, options = {}) => execFileSync('docker.exe', args,
@@ -35,6 +42,10 @@ const containers = ['ps', '-aq', ...filters];
 const volumes = ['volume', 'ls', '-q', ...filters];
 assert.equal(list(containers).length, 0, 'An existing Smoothies project is present; leave its records intact.');
 assert.equal(list(volumes).length, 0, 'Existing Smoothies volumes are present; never reset them for acceptance.');
+const existingVolumeNames = list(['volume', 'ls', '-q']);
+for (const logical of ['db-data', 'db-config', 'photos']) {
+  assert.ok(!existingVolumeNames.includes(`pos-smoothies_${logical}`), 'A reserved Smoothies volume name already exists, including an unlabelled volume. Leave it intact.');
+}
 assert.ok(!(await fetch('http://127.0.0.1:3180/api/local-instance', { signal: AbortSignal.timeout(1500) }).catch(() => null)),
   'The Smoothies app test port must be unused.');
 execFileSync(powershell, [...ps, path.join(import.meta.dirname, 'Extract-Smoothies-Update.ps1'),
@@ -89,11 +100,21 @@ async function ready(child) {
 }
 let settings, launch;
 try {
+  if (lan) {
+    await mkdir(fixture, { recursive: true });
+    const settingsFile = path.join(fixture, 'instalacion.env');
+    execFileSync(node, [path.join(packageRoot, 'app/scripts/smoothies/provision-supabase.mjs'), settingsFile], { env, windowsHide: true, stdio: 'inherit' });
+    const values = { SMOOTHIES_LAN_ORIGIN: lan.origin, SMOOTHIES_LAN_CERT_FILE: env.POS_TEST_LAN_CERT_FILE,
+      SMOOTHIES_LAN_KEY_FILE: env.POS_TEST_LAN_KEY_FILE };
+    for (const value of Object.values(values)) assert.ok(!/[\r\n"]/.test(value));
+    await writeFile(settingsFile, (await readFile(settingsFile, 'utf8')) + '\n' + Object.entries(values).map(([key, value]) => `${key}="${value}"`).join('\n') + '\n');
+  }
   install();
   settings = parseEnv(await readFile(path.join(fixture, 'instalacion.env'), 'utf8'));
   await verifyPackage(path.join(fixture, 'versiones', release.id), indexedRelease, release);
   const privateBefore = await readFile(path.join(fixture, 'instalacion.env'));
   const startup = await readFile(path.join(fixture, 'caja.env'), 'utf8');
+  if (lan) assert.ok(startup.includes(lan.origin), 'Installed launcher must retain the actual HTTPS front configuration.');
   assert.equal(settings.SMOOTHIES_MANAGED_SUPABASE, '1');
   assert.ok(!startup.includes(secret) && !startup.includes('SMOOTHIES_DATABASE_URL'));
   console.log('PASS: exact ZIP installs with its bundled Node and generates private local configuration.');
@@ -108,6 +129,22 @@ try {
   const keyBefore = await readFile(path.join(fixture, 'clave/recuperacion.key'));
   stop();
   assert.equal(await waitForExit(launch), 0);
+  if (process.env.POS_TEST_BACKUP_EXPORT_DIR) {
+    const pending = JSON.parse(await readFile(path.join(evidenceDirectory, 'external-copy-fixture.json'), 'utf8'));
+    assert.ok(pending.copiedInitially && pending.unavailablePreservedLocal);
+    launch = start(); await ready(launch);
+    let copied = false;
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const status = JSON.parse(await readFile(path.join(fixture, 'respaldos/status.json'), 'utf8'));
+      assert.equal(status.lastSuccess.filename, pending.filename, 'Startup retry must reuse the original verified archive, not take another snapshot.');
+      if (status.externalCopy?.state === 'copied' && status.externalCopy.lastSuccess?.sha256 === pending.sha256) { copied = true; break; }
+      await pause(500);
+    }
+    assert.ok(copied, 'Installed startup scheduler must retry the external copy after its media returns.');
+    assert.equal(createHash('sha256').update(await readFile(path.join(process.env.POS_TEST_BACKUP_EXPORT_DIR, pending.filename))).digest('hex'), pending.sha256);
+    console.log('PASS: installed restart retries the same verified archive after external media returns.');
+    stop(); assert.equal(await waitForExit(launch), 0);
+  }
   execFileSync(node, [`--env-file=${path.join(fixture, 'instalacion.env')}`,
     `--env-file=${path.join(fixture, 'caja.env')}`, path.join(import.meta.dirname, 'acceptance-update.mjs'),
     fixture, packageRoot, evidenceDirectory], { env, windowsHide: true, stdio: 'inherit', cwd: root });
@@ -135,12 +172,13 @@ try {
   assert.equal((await orders.json()).length, 1);
   console.log('PASS: stopped Docker, restart, authentication and installer repair retain the sale and private recovery material.');
   await writeFile(path.join(evidenceDirectory, 'acceptance.json'), JSON.stringify({
-    result: 'pass', completedAt: new Date().toISOString(), version: release.appVersion,
+    result: 'pass', completedAt: new Date().toISOString(), version: release.appVersion, lanHttps: Boolean(lan), actualDeviceAcceptance: 'pending',
     sourceCommit: release.sourceCommit, familyRelease: release.familyRelease, packageId: release.id,
     next: next.version, node: '24.22.2', zipSha256: createHash('sha256').update(await readFile(zipFile)).digest('hex'), filesSha256,
     checks: ['zip-build-equality', 'complete-file-index', 'exact-zip-install', 'private-config', 'launch-reuse', 'browser-offline', 'json-import',
       'opening-counts', 'photos', 'private-recipes', 'extra-scope', 'weekly-special', 'cash-sale',
-      'closing', 'gzip', 'backup-attachment', 'full-restore', 'signed-live-update', 'docker-restart', 'installer-repair'],
+      'closing', 'gzip', 'backup-attachment', 'full-restore', 'signed-live-update', 'docker-restart', 'installer-repair',
+      ...(process.env.POS_TEST_BACKUP_EXPORT_DIR ? ['external-ciphertext-copy', 'external-copy-failure-local-preserved', 'external-copy-restart-retry'] : [])],
   }, null, 2));
 } finally {
   settings ||= await readFile(path.join(fixture, 'instalacion.env'), 'utf8').then(parseEnv).catch(() => null);

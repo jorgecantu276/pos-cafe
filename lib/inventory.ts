@@ -28,6 +28,9 @@ export interface InventoryRequest {
 }
 export const inventoryRequestKey = (actor: string) => `cm_inventory:v1:${actor}`;
 export class InventoryRejected extends Error {}
+// This RPC-specific code confirms a rolled-back stale count/activation, not
+// PostgreSQL's generic transaction/connection uncertainty.
+export class InventoryRevisionRejected extends InventoryRejected {}
 export function inventoryStatus(item: InventoryItem) {
   if (item.mode === 'availability') return item.available ? 'Disponible' : 'Agotado';
   if (item.quantity === null) return 'Sin contar';
@@ -55,6 +58,10 @@ async function submitInventoryRequest(client: InventoryClient, storage: Storage,
   storage.setItem(key, raw);
   const { data, error } = await withDeadline(() => client.rpc(pending.rpc, { ...pending.args, p_request: pending.request, p_actor: pending.actor }), { timeoutMs });
   if (error) {
+    if (error.code === 'PIV01' && pending.rpc !== 'pos_inventory_return') {
+      if (storage.getItem(key) === raw) storage.removeItem(key);
+      throw new InventoryRevisionRejected(error.message);
+    }
     if (isDefinitiveWriteRejection(error.code)) {
       if (storage.getItem(key) === raw) storage.removeItem(key);
       throw new InventoryRejected(error.message);

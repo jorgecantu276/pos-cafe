@@ -105,7 +105,12 @@ export class ClipGateway {
         if (!response.ok || data.pinpad_request_id !== id || data.reference !== `pos-${request}` || clipCents(data.amount) !== clipCents(p.quote.total)) continue;
         const detail = data.detail as {pages?:{total_results?:number;total?:number};results?:Record<string,unknown>[]} | undefined;
         const results = detail?.results;
-        const paid = clipCents(data.amount_paid), tip = clipCents(data.tip_amount);
+        const canceled = data.status === 'CANCELED' || data.status === 'REJECTED';
+        // CLIP omits these totals on some canceled requests. Only that final
+        // non-paid status may omit them; the complete zero-paid detail below
+        // still has to agree before releasing the original request's fence.
+        const paid = clipCents(canceled ? data.amount_paid ?? 0 : data.amount_paid);
+        const tip = clipCents(canceled ? data.tip_amount ?? 0 : data.tip_amount);
         if (tip !== 0) continue;
         // Only a provider-authenticated lookup can bind a notification to this order.
         if (!p.provider_id) {
@@ -114,8 +119,10 @@ export class ClipGateway {
         }
         const evidence = { reference:data.reference,amount_cents:clipCents(data.amount),paid_cents:paid,tip_cents:tip,
           currency:'MXN',device:p.terminal_serial,status:data.status,transaction:'' };
-        if (['CANCELED','REJECTED'].includes(String(data.status)) && paid === 0 && Array.isArray(results)
-          && detail?.pages?.total_results === results.length && results.every(r => r.status !== 'approved' && clipCents(r.paid_amount) === 0)) {
+        if (canceled && paid === 0 && Array.isArray(results)
+          && detail?.pages?.total_results === results.length && results.every(r =>
+            typeof r.status === 'string' && ['canceled','rejected','declined'].includes(r.status.toLowerCase())
+            && clipCents(r.paid_amount) === 0 && clipCents(r.tip_amount ?? 0) === 0 && clipCents(r.amount_refunded ?? 0) === 0)) {
           await clipRpc(this.db, 'pos_clip_settle', { ...this.args(p),p_provider:id,p_outcome:'failed',p_evidence:evidence });
         } else if (['COMPLETED','APPROVED'].includes(String(data.status)) && paid === clipCents(p.quote.total)
           && Array.isArray(results) && results.length === 1 && detail?.pages?.total_results === 1 && detail?.pages?.total === 1) {

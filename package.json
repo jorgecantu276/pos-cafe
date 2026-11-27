@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test": "tsx --test tests/*.test.ts",
     "test:db": "node --import tsx scripts/test-database.mjs",
+    "test:storage-contract": "node scripts/testing/storage-contract.mjs",
     "test:printing": "node scripts/printing/http-drill.mjs",
     "staging:prepare": "node scripts/staging/local.mjs prepare",
     "staging:start": "node scripts/staging/local.mjs start",

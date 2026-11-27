@@ -9,7 +9,7 @@ import { errorMessage } from '@/lib/pos-types';
 import LoadFailure from '@/app/LoadFailure';
 import { announceCatalogChange } from '@/lib/catalog-management';
 import { SettingsGroup, SettingsRow } from '../Settings';
-import { readInventoryRequest, saveInventoryRequest,
+import { InventoryRevisionRejected, readInventoryRequest, saveInventoryRequest,
   type InventoryChange, type InventoryItem, type InventoryMovement, type InventoryRequest } from '@/lib/inventory';
 import { InventoryWorkspace } from './InventoryWorkspace';
 import './inventory.css';
@@ -20,6 +20,7 @@ export default function InventoryPage() {
   const router = useRouter();
   const [before, setBefore] = useState<number | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const load = useCallback(async (signal: AbortSignal): Promise<InventoryData> => {
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) throw new Error('Inicia sesión para consultar el inventario.');
@@ -63,7 +64,15 @@ export default function InventoryPage() {
       setNotice('Inventario actualizado.'); await reload(); return true;
     } catch (error) {
       setFailure(errorMessage(error));
-      try { setData(current => ({ ...current, pending: readInventoryRequest(localStorage, data.actor) })); }
+      if (error instanceof InventoryRevisionRejected) {
+        setConfirmed(false);
+        setWorkspaceRevision(current => current + 1);
+        await reload();
+      }
+      try {
+        const pending = readInventoryRequest(localStorage, data.actor);
+        setData(current => current.actor === data.actor ? { ...current, pending } : current);
+      }
       catch { setFailure('No se pudo leer el cambio pendiente. No guardes otro todavía.'); }
       return false;
     } finally { inFlight.current = false; setBusy(false); }
@@ -82,7 +91,7 @@ export default function InventoryPage() {
     {data.pending && <div className="inventory-recovery" role="status"><strong>Hay un cambio sin confirmar.</strong><button disabled={busy || loading} onClick={() => void save()}>Revisar cambio pendiente</button></div>}
     {failure && <p className="inventory-error" role="alert">{failure}</p>}
     {notice && <p role="status">{notice}</p>}
-    <InventoryWorkspace hideTitle items={data.items} history={data.history} disabled={busy || loading || Boolean(data.pending)} onSave={save}
+    <InventoryWorkspace key={workspaceRevision} hideTitle items={data.items} history={data.history} disabled={busy || loading || Boolean(data.pending)} onSave={save}
       onRefresh={() => void reload()} before={before} onHistoryPage={setBefore} />
   </div>;
 }
