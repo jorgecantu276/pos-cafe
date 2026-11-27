@@ -19,6 +19,10 @@ permissions:
 
 jobs:
   cafe-exact-application:
+    # Draft asset visibility requires write authorization after numeric read403.
+    # The shell token is exposed only to the early GET-only download step.
+    permissions:
+      contents: write
     runs-on: windows-2025
     timeout-minutes: 75
     env:
