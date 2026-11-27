@@ -63,7 +63,7 @@ jobs:
       - run: npm test
       - name: Signed Cafe updater and immutable publication contracts
         run: |
-          node --test scripts/windows/auto-update.test.mjs
+          node --test scripts/windows/auto-update.test.mjs scripts/windows/cafe-enrollment.test.mjs
           node --experimental-strip-types --test tests/github-release.test.ts
       - run: npm run test:db
         env:

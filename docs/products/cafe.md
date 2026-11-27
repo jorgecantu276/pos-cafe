@@ -47,6 +47,16 @@ The core cashier journey is: open or receive the drawer → identify products/op
 
 ## Next milestones, in order
 
+### CD integration — November 26, 2026
+
+The delivery candidate now combines the current Café business contracts and
+Smoothies LAN/recipe workflow without changing Café's direct backend, auth-cookie
+defaults or photo URLs. `docs/family-delivery.md` describes the exact three-package
+build and acceptance-bound publication. `docs/cafe-enrollment.md` adds supervised
+bootstrap with retained configuration/shortcut, Windows ACLs and a separate enable
+gate. These are engineering changes; the first actual Café PC report remains
+pending. The owner plans to run the reviewed diagnostic kit after closing.
+
 ### Integration review — November 25, 2026
 
 The reviewed source starts at local `4a78f59` on top of delivery source `6eab492`. GitHub CLI confirmed that Café delivery PR #31 and the cumulative #29/#30 stack remain drafts; remote `main` is a separate revision. No stack was merged and no installed/provider configuration was changed.

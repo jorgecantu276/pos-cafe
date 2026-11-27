@@ -28,7 +28,7 @@ Los componentes `PrototypeRegister` y `WorkspaceRegister` son apariencias de los
 
 Un guardado incierto conserva cuenta, identidad y payload hasta confirmar el resultado. La recuperación es una acción explícita: guardar un dato nuevo no reproduce silenciosamente otro pendiente. El recetario persiste una prueba por cuenta antes del RPC y bloquea nuevas pruebas hasta reconciliarla. El descarte de una venta pendiente tiene un límite de espera y solo retira su marcador tras confirmar el abandono.
 
-La revisión local del 25 de noviembre de 2026 no integra las ramas distintas ni acredita publicación, instalación o papel físico. Los resultados frescos y los siguientes gates pertenecen al [plan de Café](products/cafe.md); los informes fechados anteriores siguen siendo históricos.
+La revisión local del 25 de noviembre de 2026 no integró las ramas distintas. La candidata de CD del 26 de noviembre combina ambos perfiles y conserva el transporte directo de Café y el acceso LAN de Smoothies. Los siguientes gates pertenecen al [plan de Café](products/cafe.md) y a la [entrega de familia](family-delivery.md); la integración no acredita publicación, instalación ni papel físico.
 
 ## Prueba local de Papelería
 
