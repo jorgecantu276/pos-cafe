@@ -26,7 +26,14 @@ function contained(root, relative) {
 }
 async function tree(directory) {
   assert.ok((await lstat(directory)).isDirectory(), 'Package directory required.');
-  assert.equal(await realpath(directory), path.resolve(directory), 'Packages cannot use directory links.');
+  // Windows runner TEMP may use a legitimate 8.3 alias (RUNNER~1). Compare
+  // filesystem kinds, not path spelling, while refusing junctions at any level.
+  for (let current = path.resolve(directory);;) {
+    assert.equal((await lstat(current)).isSymbolicLink(), false, 'Packages cannot use directory links.');
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
   const entries = [];
   async function visit(folder, prefix = '') {
     for (const item of (await readdir(folder, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {

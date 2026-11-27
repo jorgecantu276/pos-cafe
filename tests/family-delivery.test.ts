@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileHash, requiredFamilyChecks, writeFamilyCandidate, verifyFamilyCandidate, verifyAcceptedFamily } from '../scripts/releases/family-evidence.mjs';
+import { fileHash, requiredFamilyChecks, inspectFamilyCandidate, writeFamilyCandidate, verifyFamilyCandidate, verifyAcceptedFamily } from '../scripts/releases/family-evidence.mjs';
 import { acceptanceTemplate } from '../scripts/releases/family-delivery.mjs';
 import { posVersions } from '../scripts/releases/version-info.mjs';
 
@@ -78,4 +78,11 @@ test('acceptance template never manufactures qualification and refuses to overwr
   assert.equal(template.state, 'NOT_QUALIFIED'); assert.equal(template.reviewer, null);
   assert.ok(template.checks.every((check: { result: string }) => check.result === 'NOT_RUN'));
   await assert.rejects(acceptanceTemplate(f.candidateFile, file), /exist/i);
+});
+
+test('ordinary Windows path aliases are allowed but a linked package directory remains refused', async t => {
+  const f = await fixture(t);
+  await verifyFamilyCandidate(f.candidateFile);
+  await symlink(path.join(f.root, 'cafe'), path.join(f.root, 'linked-cafe'), process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(inspectFamilyCandidate(f.root, { ...f.layout, cafe: 'linked-cafe' }), /Package directory required|directory links/);
 });

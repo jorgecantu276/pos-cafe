@@ -3,8 +3,14 @@
 The native repository's `POS family delivery candidate` workflow builds Café,
 Smoothies and native Papelería together, using the existing builders and common
 family verifier. It reads public web source at an exact commit; no cross-repository
-private token or signing key is needed. `POS_WEB_CANDIDATE_SHA` selects that commit
-for PR/main runs. Manual dispatch can select `web_sha` explicitly.
+private token or signing key is needed. Main changes and an hourly source check
+select the current web main commit after its exact push/manual verification run
+passes. Unchanged source reuses a nonexpired candidate from a successful family
+run with the same native and web commits. Missing/in-progress/failed source CI
+is reported as `waiting-source-ci`; it never means a package was built.
+`POS_WEB_CANDIDATE_SHA` pins integration PR tests; manual dispatch selects
+`web_sha` explicitly and requests a fresh candidate. Reads are bounded, so an
+unusually busy history can conservatively rebuild rather than infer acceptance.
 
 Ordinary runs use a synthetic loopback Café target. A manual `customer_target`
 build requires `CAFE_PUBLIC_TARGET_JSON` in the private native repository,
