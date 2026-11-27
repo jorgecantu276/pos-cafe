@@ -9,6 +9,7 @@ param(
     [string]$EvidenceDirectory
 )
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'Hosted-LanTrust.psm1') -Force -DisableNameChecking
 
 # This driver is intentionally unavailable on an operator's or development PC.
 # The workflow owns a new hosted Windows 2025 VM and its WSL Docker daemon.
@@ -49,8 +50,7 @@ $privateEvidence = Join-Path $work 'acceptance-private'
 $null = New-Item -ItemType Directory -Path $privateEvidence
 $phase = 'host-validation'
 $result = 'fail'
-$temporaryThumbprint = $null
-$temporaryCertificateHash = $null
+$temporaryTrustIdentity = $null
 $temporaryTrustChanged = $false
 $temporaryTrustRemoved = $true
 $acceptance = $null
@@ -264,7 +264,8 @@ console.log('Original candidate manifest, full file index and every file verifie
         (Join-Path $warmDirectory 'supabase\compose.yml'),'pull') 'image-prefetch.private.log'
     Write-Host 'Prefetched the original local-backend images before the offline installer rehearsal.'
 
-    $phase = 'synthetic-lan-trust'
+    $phase = 'synthetic-lan-certificate'
+    Write-Host 'Starting bounded synthetic LAN certificate generation.'
     $routes = @(Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop | Sort-Object RouteMetric,InterfaceMetric)
     $address = $null
     foreach ($route in $routes) {
@@ -276,8 +277,9 @@ console.log('Original candidate manifest, full file index and every file verifie
     $origin = 'https://' + $address + ':3443'
     $certificateDirectory = Join-Path $work 'https'
     $certificateLog = Join-Path $work 'certificate.json'
-    & $bundledNode (Join-Path $reference 'app\scripts\smoothies\provision-lan.mjs') $origin $certificateDirectory 1>$certificateLog 2>(Join-Path $work 'certificate.private.log')
-    if ($LASTEXITCODE -ne 0) { throw 'The synthetic LAN certificate could not be provisioned.' }
+    $certificateJson = Invoke-HostedBoundedProcess -Executable $bundledNode -Arguments @((Join-Path $reference 'app\scripts\smoothies\provision-lan.mjs'),$origin,$certificateDirectory) -Seconds 120
+    [IO.File]::WriteAllText($certificateLog, $certificateJson, [Text.UTF8Encoding]::new($false))
+    Write-Host 'Bounded synthetic LAN certificate generation completed.'
     $certificate = Get-RehearsalJson $certificateLog
     if ($certificate.origin -cne $origin) { throw 'The certificate origin differs from the selected host interface.' }
     foreach ($file in @($certificate.certFile,$certificate.keyFile,$certificate.publicCertificate)) {
@@ -286,15 +288,13 @@ console.log('Original candidate manifest, full file index and every file verifie
     }
     $publicPem = [IO.Path]::ChangeExtension([string]$certificate.publicCertificate, '.pem')
     if (!(Test-Path -LiteralPath $publicPem -PathType Leaf)) { throw 'The generated public CA PEM is missing.' }
-    $ca = New-Object Security.Cryptography.X509Certificates.X509Certificate2([string]$certificate.publicCertificate)
-    $thumbprint = $ca.Thumbprint
-    if ($thumbprint -cnotmatch '^[A-F0-9]{40}$' -or (Test-Path -LiteralPath ('Cert:\CurrentUser\Root\' + $thumbprint))) { throw 'The synthetic authority must be new on this disposable VM.' }
-    $temporaryThumbprint = $thumbprint
-    $hash = [Security.Cryptography.SHA256]::Create()
-    try { $temporaryCertificateHash = [Convert]::ToBase64String($hash.ComputeHash($ca.RawData)) } finally { $hash.Dispose() }
+    $temporaryTrustIdentity = New-HostedLanTrustIdentity $certificate.publicCertificate
     $temporaryTrustRemoved = $false
-    Import-Certificate -FilePath $certificate.publicCertificate -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+    $phase = 'synthetic-lan-machine-trust'
+    Write-Host 'Starting bounded exact synthetic machine-root import.'
+    Add-HostedLanTrust $temporaryTrustIdentity
     $temporaryTrustChanged = $true
+    Write-Host 'Bounded exact synthetic machine-root import completed.'
 
     $env:NODE_EXTRA_CA_CERTS = $publicPem
     $env:POS_TEST_LAN_ORIGIN = $origin
@@ -345,17 +345,11 @@ console.log('Original candidate manifest, full file index and every file verifie
             $ownedContextRemoved = $true
         } catch { $result = 'fail'; $phase = 'owned-transport-cleanup' }
     }
-    if ($temporaryThumbprint) {
+    if ($temporaryTrustIdentity) {
         try {
-            $certificatePath = 'Cert:\CurrentUser\Root\' + $temporaryThumbprint
-            if (Test-Path -LiteralPath $certificatePath) {
-                $stored = Get-Item -LiteralPath $certificatePath
-                $hash = [Security.Cryptography.SHA256]::Create()
-                try { $storedHash = [Convert]::ToBase64String($hash.ComputeHash($stored.RawData)) } finally { $hash.Dispose() }
-                if ($storedHash -cne $temporaryCertificateHash) { throw 'The temporary certificate identity changed.' }
-                Remove-Item -LiteralPath $certificatePath -Force
-            }
-            $temporaryTrustRemoved = !(Test-Path -LiteralPath $certificatePath)
+            Remove-HostedLanTrust $temporaryTrustIdentity
+            $temporaryTrustRemoved = $true
+            Write-Host 'Exact temporary synthetic machine root removed.'
         } catch { $temporaryTrustRemoved = $false }
         if (!$temporaryTrustRemoved) { $result = 'fail'; $phase = 'temporary-trust-cleanup' }
     }
@@ -366,6 +360,7 @@ console.log('Original candidate manifest, full file index and every file verifie
         originalCandidateModified = $originalCandidateModified; candidateIntegrity = @{ before = $candidateIntegrityBefore; after = $candidateIntegrityAfter }
         platform = $platformProof; tlsVerification = 'enabled'; actualDeviceAcceptance = 'pending'
         temporaryTrustChanged = $temporaryTrustChanged; temporaryTrustRemoved = $temporaryTrustRemoved
+        temporaryTrustStore = 'LocalMachine\Root'
         ownedProxyRemoved = $ownedProxyRemoved; ownedContextRemoved = $ownedContextRemoved
     }
     if ($failureExitCode -ne $null) { $proof.childExitCode = $failureExitCode }

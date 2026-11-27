@@ -258,7 +258,11 @@ jobs:
         with:
           node-version: 24.22.2
       - name: Test transport helpers without installing product dependencies
-        run: node --experimental-strip-types --test tests/hosted-docker-pipe.test.ts tests/hosted-wsl-docker.test.ts tests/staging-safety.test.ts
+        run: node --experimental-strip-types --test tests/hosted-docker-pipe.test.ts tests/hosted-wsl-docker.test.ts tests/staging-safety.test.ts tests/hosted-lan-trust.test.ts
+      - name: Probe bounded synthetic trust and exact cleanup before WSL
+        shell: pwsh
+        timeout-minutes: 5
+        run: ./scripts/testing/Test-HostedLanTrust.ps1
       - name: Probe genuine isolated hosted WSL Docker transport only
         shell: pwsh
         run: ./scripts/testing/Start-HostedWslDocker.ps1
@@ -270,6 +274,7 @@ jobs:
             ${{ runner.temp }}/pos-wsl-engine-*/transport-diagnostic.json
             ${{ runner.temp }}/pos-wsl-engine-*/canary-forwarding.json
             ${{ runner.temp }}/pos-wsl-engine-*/engine.json
+            ${{ runner.temp }}/pos-lan-trust-*/trust-probe.json
             ${{ runner.temp }}/pos-wsl-engine-*/bootstrap-events.jsonl
           if-no-files-found: warn
           retention-days: 14
