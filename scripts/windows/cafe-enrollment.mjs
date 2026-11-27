@@ -101,7 +101,7 @@ export async function inspectEnrollment(options, dependencies = {}) {
   const now = Date.now();
   const inputs = {};
   for (const field of ['installed', 'bootstrap']) inputs[field] = await normalPath(options[field], true);
-  for (const field of ['config', 'shortcut', 'key', 'manifest', 'support', 'approval']) inputs[field] = await normalPath(options[field]);
+  for (const field of ['config', 'shortcut', 'key', 'manifest', 'support', 'approval', 'reporter']) inputs[field] = await normalPath(options[field]);
   assert.equal(path.extname(inputs.shortcut).toLowerCase(), '.lnk', 'Select the existing Caja shortcut.');
   for (const file of Object.values(inputs)) assert.ok(!/[\r\n"]/.test(file), 'Unsupported path characters.');
   const configBytes = await readFile(inputs.config);
@@ -130,10 +130,11 @@ export async function inspectEnrollment(options, dependencies = {}) {
   await verifyPackage(inputs.bootstrap, signed, inputs.bootstrap, baseline);
   await verifyPackage(inputs.installed, { commit: baseline.sourceCommit, filesSha256: hash(await readFile(path.join(inputs.installed, 'SHA256.json'))) }, inputs.installed, baseline);
   for (const file of ['Open-Caja.ps1', 'auto-update.mjs', 'Extract-POS-Update.ps1']) await normalPath(path.join(inputs.bootstrap, file));
-  const privateFiles = [inputs.config, inputs.key, inputs.support, inputs.approval, inputs.manifest,
+  const privateFiles = [inputs.config, inputs.key, inputs.support, inputs.approval, inputs.manifest, inputs.reporter, inputs.shortcut,
     await normalPath(config.PrintDataDirectory, true), await normalPath(config.ReceiptIssuerFile),
     await normalPath(config.BackupDirectory || path.join(path.dirname(inputs.config), 'pos-cafe-backups'), true),
     await normalPath(config.BackupRecoveryKeyFile || path.join(path.dirname(inputs.config), 'pos-cafe-backup-recovery.key'))];
+  if (config.ClipTokenFile) privateFiles.push(await normalPath(config.ClipTokenFile));
   for (const file of privateFiles) {
     for (const folder of [inputs.installed, inputs.bootstrap, inputs.config + '.updates']) assert.ok(!inside(folder, file), 'Private files must remain outside version/update folders.');
   }
@@ -151,6 +152,15 @@ export async function inspectEnrollment(options, dependencies = {}) {
   assert.equal(support.backendIdentitySha256, backendIdentitySha256);
   assert.match(support.repository || '', /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/);
   assert.match(support.publisher || '', /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/, 'The accepted report publisher is required.');
+  const reporter = await json(inputs.reporter);
+  assert.equal(reporter.protocol, 3, 'Use the accepted existing private reporter.');
+  assert.equal(reporter.MachineSha256, machineSha256);
+  assert.equal(reporter.BackendIdentitySha256, backendIdentitySha256);
+  assert.equal(reporter.Repository, support.repository);
+  assert.equal(reporter.PublisherLogin, support.publisher);
+  assert.equal(path.resolve(reporter.ConfigPath).toLowerCase(), inputs.config.toLowerCase());
+  if (options.enabling) assert.equal(path.resolve(reporter.InstallDirectory).toLowerCase(), inputs.bootstrap.toLowerCase(),
+    'Rebind the existing reporter with its guarded -ActualizarRutaCaja installer before accepting the bootstrap report.');
   const approval = await json(inputs.approval);
   assert.equal(approval.format, 'pos-cafe-enrollment-approval-v1');
   assert.ok(typeof approval.independentReviewer === 'string' && approval.independentReviewer.trim(), 'Record independent final package acceptance.');
@@ -212,6 +222,7 @@ async function sameFile(file, expected) {
 /** Changes only config and the existing shortcut, after fresh complete validation. */
 export async function applyEnrollment(plan, receiptFile, dependencies = {}) {
   assert.equal(plan.format, 'pos-cafe-enrollment-plan-v1');
+  assert.equal(typeof plan.enabling, 'boolean', 'The plan must name its enrollment operation.');
   assert.equal(recent(plan.createdAt, Date.now()), true, 'The enrollment plan expired.');
   const receipt = path.resolve(receiptFile);
   await normalPath(path.dirname(receipt), true);
@@ -228,17 +239,24 @@ export async function applyEnrollment(plan, receiptFile, dependencies = {}) {
     const current = await inspectEnrollment({ ...plan.inputs, enabling: plan.enabling }, dependencies);
     assert.deepEqual(current.bindings, plan.bindings, 'Bound inputs changed after review.');
     assert.deepEqual(current.desiredShortcut, plan.desiredShortcut, 'The shortcut changed after review.');
-    assert.equal(current.installedCommit, plan.installedCommit); assert.equal(current.bootstrapCommit, plan.bootstrapCommit);
+    for (const field of ['machineSha256', 'backendIdentitySha256', 'installedCommit', 'bootstrapCommit', 'bootstrapFilesSha256', 'publicKeySha256', 'reportUrl', 'changedDatabaseContract']) {
+      assert.equal(current[field], plan[field], `The plan ${field} changed after review.`);
+    }
     const backup = receipt + '.previous.json';
-    await writeFile(backup, JSON.stringify({ configBase64: originalConfig.toString('base64'), shortcutBase64: originalShortcut.toString('base64') }), { flag: 'wx', mode: 0o600 });
+    // Windows ignores POSIX mode bits. Apply the original config's access ACL
+    // while both files are empty, before writing any client credential bytes.
+    await writeFile(backup, '', { flag: 'wx', mode: 0o600 });
+    await (dependencies.copyAcl || native.copyAcl)(plan.inputs.config, backup);
+    await writeFile(backup, JSON.stringify({ configBase64: originalConfig.toString('base64'), shortcutBase64: originalShortcut.toString('base64') }));
     await writeFile(receipt, JSON.stringify({ format: 'pos-cafe-enrollment-receipt-v1', state: 'prepared', backup }), { flag: 'wx', mode: 0o600 });
     receiptOwned = true;
     const config = JSON.parse(originalConfig.toString('utf8').replace(/^\uFEFF/, ''));
     const updated = { ...config, AutoUpdate: plan.enabling === true, AutoUpdatePublicKeyFile: plan.inputs.key };
     const configBytes = Buffer.from(JSON.stringify(updated, null, 2) + '\n');
     changedConfigHash = hash(configBytes);
-    await writeFile(configTemporary, configBytes, { flag: 'wx', mode: 0o600 });
+    await writeFile(configTemporary, '', { flag: 'wx', mode: 0o600 });
     await (dependencies.copyAcl || native.copyAcl)(plan.inputs.config, configTemporary);
+    await writeFile(configTemporary, configBytes);
     if (!plan.enabling) {
       await (dependencies.writeShortcut || native.writeShortcut)(shortcutTemporary, plan.desiredShortcut);
       await (dependencies.copyAcl || native.copyAcl)(plan.inputs.shortcut, shortcutTemporary);
@@ -252,7 +270,7 @@ export async function applyEnrollment(plan, receiptFile, dependencies = {}) {
       completedAt: new Date().toISOString(), machineSha256: plan.machineSha256, backendIdentitySha256: plan.backendIdentitySha256,
       installedCommit: plan.installedCommit, bootstrapCommit: plan.bootstrapCommit, publicKeySha256: plan.publicKeySha256,
       reportUrl: plan.reportUrl, configSha256: changedConfigHash, shortcutSha256: shortcutChanged ? changedShortcutHash : plan.bindings.shortcut,
-      backup, nextGate: plan.enabling ? 'Observe one exact signed compatible update and recovery.' : 'Run the fixed shortcut once, accept its genuine report, then inspect an enable plan.' };
+      backup, nextGate: plan.enabling ? 'Observe one exact signed compatible update and recovery.' : 'Use the existing support installer -ActualizarRutaCaja to bind this bootstrap, run the fixed shortcut, accept its genuine verified report, then inspect an enable plan.' };
     await writeFile(receipt, JSON.stringify(result, null, 2) + '\n', { mode: 0o600 });
     return result;
   } catch (error) {

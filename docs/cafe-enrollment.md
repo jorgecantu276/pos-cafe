@@ -56,6 +56,7 @@ node scripts/windows/cafe-enrollment.mjs inspect `
   --key C:\actual\private\update-public.pem `
   --manifest C:\actual\private\pos-update.json `
   --support C:\actual\private\accepted-support-reader.json `
+  --reporter C:\actual\existing-support\settings-v5.json `
   --approval C:\actual\private\enrollment-approval.json `
   --output C:\actual\private\enrollment-plan.json
 node scripts/windows/cafe-enrollment.mjs apply `
@@ -75,10 +76,29 @@ them. Failure restores only files still matching this operation's changed bytes.
 The receipt and backup contain private material: keep their directory restricted
 to the operator/maintainer and outside source, releases and cloud sync.
 
-The first application leaves `AutoUpdate:false`. Open the fixed shortcut once,
+The first application leaves `AutoUpdate:false`. Rebind the **existing** accepted
+support installation to the new bootstrap with its existing guarded installer:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  C:\actual\existing-support\agent-v5\Instalar-Soporte-GitHub.ps1 `
+  -PlanPath C:\actual\reviewed-kit\setup-plan.private.json `
+  -InstallDirectory C:\actual\accepted-bootstrap `
+  -ConfigPath C:\actual\private\pos-cafe-config.json `
+  -SupportHome C:\actual\existing-support -ActualizarRutaCaja
+```
+
+The maintainer resolves those paths from the already accepted support settings
+and reviewed kit. This reuses its task/identity/transport and preserves support
+state; do not reinstall a guessed kit or manually edit reporter identity. A fresh
+`inspect-enable` refuses while `settings-v5.json` still selects the old package.
+The old reporter cannot authenticate a new bootstrap by following an old path.
+
+Open the fixed shortcut once,
 confirm the correct business and preserved operational state, obtain its genuine
 `verified_server` report, and independently accept that bootstrap/report context.
-Then create a fresh `inspect-enable` plan with the same arguments and a new output
+Then create a fresh `inspect-enable` plan with the same arguments, updated accepted
+report URL/approval, and a new output
 path, and apply it with a new receipt path. Enabling refuses until the shortcut
 already selects the reviewed bootstrap and the current report identifies it.
 The existing updater then downloads only signed compatible packages and retains
