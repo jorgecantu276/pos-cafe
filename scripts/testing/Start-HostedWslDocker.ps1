@@ -10,6 +10,29 @@ if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hos
     throw 'This bootstrap requires a fresh explicitly enrolled GitHub-hosted Windows 2025 job.'
 }
 $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
+function Quote-WindowsArguments([string[]]$Values) {
+    ($Values | ForEach-Object {
+        $quoted = [Text.StringBuilder]::new('"'); $slashes = 0
+        foreach ($character in $_.ToCharArray()) {
+            if ($character -eq '\') { $slashes++; continue }
+            if ($character -eq '"') { [void]$quoted.Append('\', $slashes * 2 + 1) }
+            else { [void]$quoted.Append('\', $slashes) }
+            [void]$quoted.Append($character); $slashes = 0
+        }
+        [void]$quoted.Append('\', $slashes * 2); [void]$quoted.Append('"'); $quoted.ToString()
+    }) -join ' '
+}
+function Assert-OwnedKeepAlive($Process, $Receipt, [string]$ExpectedExecutable) {
+    if ($Receipt.owner -cnotmatch '^[a-f0-9]{32}$' -or $Receipt.distribution -cne 'Ubuntu-24.04' -or
+        $Receipt.keepAliveExecutable -ine $ExpectedExecutable -or $Process.ExecutablePath -ine $ExpectedExecutable -or
+        $Process.ProcessId -ne $Receipt.keepAlivePid -or
+        !$Process.CommandLine.Contains('POS_HOSTED_OWNER=' + $Receipt.owner) -or
+        !$Process.CommandLine.Contains('--distribution') -or !$Process.CommandLine.Contains($Receipt.distribution) -or
+        !$Process.CommandLine.Contains('/usr/bin/env') -or !$Process.CommandLine.Contains('sleep') -or !$Process.CommandLine.Contains('infinity') -or
+        ([DateTimeOffset]::Parse($Receipt.keepAliveStartedAt)).UtcTicks -ne $Process.CreationDate.ToUniversalTime().Ticks) {
+        throw 'Refusing to stop a reused or unowned WSL keepalive PID.'
+    }
+}
 if ($Cleanup) {
     $receiptPath = [IO.Path]::GetFullPath($env:POS_TEST_WSL_RECEIPT)
     if (!$receiptPath.StartsWith($runnerTemp + '\', [StringComparison]::OrdinalIgnoreCase) -or
@@ -37,6 +60,16 @@ if ($Cleanup) {
         Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
     }
     Write-Host 'Removed the owned OpenSSH fixture keys.'
+    $expectedWsl = (Get-Command wsl.exe -ErrorAction Stop).Source
+    if ($receipt.keepAlivePid -le 0) { throw 'The WSL keepalive identity is missing.' }
+    $keepAliveProcess = Get-CimInstance Win32_Process -Filter ('ProcessId=' + [int]$receipt.keepAlivePid)
+    if ($keepAliveProcess) {
+        Assert-OwnedKeepAlive $keepAliveProcess $receipt $expectedWsl
+        Stop-Process -Id ([int]$receipt.keepAlivePid) -ErrorAction Stop
+        Write-Host 'Stopped the verified owned WSL keepalive.'
+    } else {
+        Write-Host 'The owned WSL keepalive had already exited.'
+    }
     return
 }
 $owner = [guid]::NewGuid().ToString('N')
@@ -190,7 +223,15 @@ systemctl enable --now pos-hosted-ssh
 docker info --format '{{.OSType}}'
 '@.Replace('__OWNER__', $owner).Replace('__GUEST_IP__', $guestAddress).Replace('__PUBLIC_KEY__', (Get-Content -LiteralPath ($keyFile + '.pub') -Raw).Trim()).Replace("`r`n", "`n") | Set-Content -LiteralPath $guestScript -Encoding utf8NoBOM
     [void](Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestScript)))
-    $keepAlive = Start-Process -FilePath 'wsl.exe' -ArgumentList @('--distribution', $distribution, '--user', 'root', '--', 'sleep', 'infinity') -WindowStyle Hidden -PassThru
+    $wslExecutable = (Get-Command wsl.exe -ErrorAction Stop).Source
+    $keepAliveArguments = Quote-WindowsArguments @('--distribution', $distribution, '--user', 'root', '--',
+        '/usr/bin/env', "POS_HOSTED_OWNER=$owner", 'sleep', 'infinity')
+    $keepAlive = Start-Process -FilePath $wslExecutable -ArgumentList $keepAliveArguments -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput (Join-Path $WorkDirectory 'keepalive.stdout.log') `
+        -RedirectStandardError (Join-Path $WorkDirectory 'keepalive.stderr.log')
+    $keepAliveIdentity = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $keepAlive.Id)
+    if (!$keepAliveIdentity) { throw 'The owned WSL keepalive exited before its identity was captured.' }
+    $keepAliveStartedAt = $keepAliveIdentity.CreationDate.ToUniversalTime().ToString('o')
     $hostPublicKey = (Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'cat', '/etc/ssh/ssh_host_ed25519_key.pub')).Trim()
     if ($hostPublicKey -notmatch '^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$') { throw 'The owned guest host key was not obtained.' }
     [IO.File]::WriteAllText($knownHostsFile, "[$guestAddress]:22222 $hostPublicKey`n", [Text.UTF8Encoding]::new($false))
@@ -203,16 +244,7 @@ docker info --format '{{.OSType}}'
     # Start-Process owns file-backed stdio rather than the transient step's
     # console handles. Quote Windows argv explicitly, including embedded quotes
     # in OpenSSH options and any spaces in the owned temporary directory.
-    $sshCommandLine = ($sshArguments | ForEach-Object {
-        $quoted = [Text.StringBuilder]::new('"'); $slashes = 0
-        foreach ($character in $_.ToCharArray()) {
-            if ($character -eq '\') { $slashes++; continue }
-            if ($character -eq '"') { [void]$quoted.Append('\', $slashes * 2 + 1) }
-            else { [void]$quoted.Append('\', $slashes) }
-            [void]$quoted.Append($character); $slashes = 0
-        }
-        [void]$quoted.Append('\', $slashes * 2); [void]$quoted.Append('"'); $quoted.ToString()
-    }) -join ' '
+    $sshCommandLine = Quote-WindowsArguments $sshArguments
     $tunnel = Start-Process -FilePath $ssh -ArgumentList $sshCommandLine -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $WorkDirectory 'ssh.stdout.log') `
         -RedirectStandardError (Join-Path $WorkDirectory 'ssh.stderr.log')
@@ -303,7 +335,8 @@ services:
        tunnelPid = $tunnel.Id; sshExecutable = $ssh; keyFile = $keyFile; knownHostsFile = $knownHostsFile;
        windowsHostUnchanged = $true;
        windowsDaemonId = $windowsInfo.ID; windowsServicePid = $windowsServicePid;
-       keepAlivePid = $keepAlive.Id; completedAt = [DateTimeOffset]::UtcNow.ToString('o');
+       keepAlivePid = $keepAlive.Id; keepAliveExecutable = $wslExecutable; keepAliveStartedAt = $keepAliveStartedAt;
+       completedAt = [DateTimeOffset]::UtcNow.ToString('o');
        parity = @{ composeBindSha256 = $composeHash; rawBindSha256 = $rawHash; binaryCopySha256 = $expectedHash; loopbackPorts = @(58000,55432,55541,55542,55543,55544) } } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $receipt -Encoding utf8NoBOM
     foreach ($entry in @("POS_CAFE_REAL_DOCKER=$docker", 'POS_TEST_WSL_ENGINE=1', 'COMPOSE_CONVERT_WINDOWS_PATHS=1', 'DOCKER_HOST=tcp://127.0.0.1:2375', "POS_TEST_WSL_RECEIPT=$receipt")) {
