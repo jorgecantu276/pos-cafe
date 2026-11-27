@@ -29,6 +29,7 @@ export function localDocker(endpoint) {
 
 // This exception is available only to the explicitly enrolled fresh hosted VM.
 // Ordinary developer/store checks still use localDocker's original endpoints.
+/** @param {Record<string, string | undefined>} env */
 export function hostedDockerContext(context, engine, receipt, env = process.env, platform = process.platform, now = Date.now()) {
   assert.equal(platform, 'win32');
   assert.equal(env.GITHUB_ACTIONS, 'true'); assert.equal(env.RUNNER_ENVIRONMENT, 'github-hosted');
