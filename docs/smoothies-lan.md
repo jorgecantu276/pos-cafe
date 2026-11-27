@@ -199,6 +199,11 @@ comprobación compartida exige la identidad del runner desechable, recibo fresco
 y el ID/etiqueta/kernel del motor real. Los contextos remotos siguen rechazados;
 el servicio Docker Windows de la VM permanece intacto.
 El trabajo cierra solo su conexión y retira sus claves temporales al terminar.
+Para diagnosticar este entorno, `probe_rehearsal_host` reutiliza la misma
+preparación y limpieza, pero omite compilación, ZIP y aceptación del producto.
+Su trabajo y artefacto dicen explícitamente `test-platform-only`; ese resultado
+no califica una versión. Ambos modos simultáneos se rechazan. El ensayo completo
+sigue requiriendo los siete controles normales y su ZIP exacto.
 
 Además verifica copia cifrada, medio ausente sin perder el respaldo local y
 reintento del mismo archivo al reiniciar. El artefacto `rehearsal.json` contiene

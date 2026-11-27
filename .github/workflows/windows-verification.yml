@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      probe_rehearsal_host:
+        description: Verify only the disposable test platform; no candidate or installed acceptance
+        type: boolean
+        default: false
       run_installed_acceptance:
         description: Run final-ZIP LAN acceptance on a fresh hosted Windows/WSL2 VM
         type: boolean
@@ -21,6 +25,7 @@ concurrency:
 
 jobs:
   integration:
+    if: ${{ !inputs.probe_rehearsal_host }}
     name: Auth and backend integration (${{ matrix.script }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -45,6 +50,7 @@ jobs:
       - name: Exercise one isolated Auth/backend scenario on its own runner
         run: npm run ${{ matrix.script }}
   verify:
+    if: ${{ !inputs.probe_rehearsal_host }}
     runs-on: windows-latest
     timeout-minutes: 20
     env:
@@ -86,6 +92,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows/smoke-release.mjs $releaseFolder
   smoothies-package:
+    if: ${{ !inputs.probe_rehearsal_host }}
     name: Portable Smoothies package (Windows)
     runs-on: windows-latest
     timeout-minutes: 25
@@ -169,6 +176,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   smoothies-backend:
+    if: ${{ !inputs.probe_rehearsal_host }}
     name: Smoothies import and cash recovery
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -188,8 +196,12 @@ jobs:
       - run: node --import tsx scripts/smoothies/import-drill.mjs
       - run: node --import tsx scripts/smoothies/local-sale-drill.mjs
   smoothies-installed-lan:
-    name: Final ZIP installation and LAN acceptance (hosted Windows/WSL2)
-    if: github.event_name == 'workflow_dispatch' && inputs.run_installed_acceptance
+    name: ${{ inputs.probe_rehearsal_host && 'Disposable test platform only (no product acceptance)' || 'Final ZIP installation and LAN acceptance (hosted Windows/WSL2)' }}
+    if: >-
+      always() && github.event_name == 'workflow_dispatch' &&
+      (inputs.probe_rehearsal_host || (inputs.run_installed_acceptance &&
+      needs.verify.result == 'success' && needs.smoothies-package.result == 'success' &&
+      needs.smoothies-backend.result == 'success' && needs.integration.result == 'success'))
     needs: [verify, smoothies-package, smoothies-backend, integration]
     runs-on: windows-2025
     timeout-minutes: 60
@@ -207,19 +219,25 @@ jobs:
           node-version: 24.22.2
           cache: npm
       - run: npm ci
-      - name: Prepare the isolated engine and rehearse this run's exact ZIP
+      - name: ${{ inputs.probe_rehearsal_host && 'Verify only the disposable test platform and cleanup' || 'Prepare the isolated engine and rehearse the exact candidate ZIP' }}
         shell: pwsh
         run: |
+          $platformOnly = '${{ inputs.probe_rehearsal_host }}' -eq 'true'
+          if ($platformOnly -and '${{ inputs.run_installed_acceptance }}' -eq 'true') { throw 'Choose either platform-only diagnostics or full installed acceptance.' }
           try {
             ./scripts/testing/Start-HostedWslDocker.ps1
-            ./scripts/testing/Run-HostedSmoothiesRehearsal.ps1 -SourceRunId $env:GITHUB_RUN_ID -SourceCommit $env:GITHUB_SHA -ExpectedZipSha256 '${{ needs.smoothies-package.outputs.zip_sha256 }}'
+            if ($platformOnly) {
+              ./scripts/testing/Run-HostedSmoothiesRehearsal.ps1 -PlatformOnly -SourceRunId $env:GITHUB_RUN_ID -SourceCommit $env:GITHUB_SHA
+            } else {
+              ./scripts/testing/Run-HostedSmoothiesRehearsal.ps1 -SourceRunId $env:GITHUB_RUN_ID -SourceCommit $env:GITHUB_SHA -ExpectedZipSha256 '${{ needs.smoothies-package.outputs.zip_sha256 }}'
+            }
           } finally {
             if ($env:POS_TEST_WSL_RECEIPT) { ./scripts/testing/Start-HostedWslDocker.ps1 -Cleanup }
           }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: smoothies-installed-acceptance-${{ github.sha }}
+          name: ${{ inputs.probe_rehearsal_host && 'smoothies-test-platform-only' || 'smoothies-installed-acceptance' }}-${{ github.sha }}
           path: ${{ runner.temp }}/smoothies-rehearsal-evidence/rehearsal.json
           if-no-files-found: warn
           retention-days: 14

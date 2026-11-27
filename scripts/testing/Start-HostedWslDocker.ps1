@@ -135,6 +135,37 @@ function Wait-Native([scriptblock]$Probe, [int]$Seconds, [string]$Message) {
     throw $Message
 }
 
+function Write-OwnedFailureDiagnostics {
+    # Observe before teardown. Never boot a stopped guest while investigating
+    # whether WSL itself exited, and never read fixture private-key material.
+    foreach ($entry in @(@{ name = 'ssh'; process = $tunnel }, @{ name = 'keepalive'; process = $keepAlive })) {
+        if ($entry.process) {
+            $entry.process.Refresh()
+            $state = if ($entry.process.HasExited) { 'exited code ' + $entry.process.ExitCode } else { 'running' }
+            Write-Host ('Owned failure snapshot: ' + $entry.name + ' PID ' + $entry.process.Id + ' ' + $state)
+        }
+        $logFile = Join-Path $WorkDirectory ($entry.name + '.stderr.log')
+        if (Test-Path -LiteralPath $logFile) {
+            foreach ($line in @(Get-Content -LiteralPath $logFile -Tail 15 -ErrorAction SilentlyContinue)) {
+                if ($line -match '(?i)password|PRIVATE KEY|authorization|token|secret') { continue }
+                Write-Host ('Owned ' + $entry.name + ' stderr: ' + $line.Substring(0, [Math]::Min(400, $line.Length)))
+            }
+        }
+    }
+    try {
+        $running = Native 'wsl.exe' @('--list', '--running', '--quiet') -TimeoutSeconds 8
+        $guestRunning = $distribution -cin @($running -split '\r?\n' | ForEach-Object { $_.Trim() })
+        Write-Host ('Owned failure snapshot: guest already running = ' + $guestRunning)
+        if ($createdDistro -and $guestRunning) {
+            $probe = 'test "$(cat /etc/pos-hosted-rehearsal)" = "' + $owner + '" || exit 90; ' +
+                'printf "Owned guest service state:\n"; systemctl is-active docker pos-hosted-ssh; ' +
+                'journalctl --no-pager -n 25 -u docker -u pos-hosted-ssh; ' +
+                'printf "Owned guest keepalive:\n"; pgrep -af "sleep infinity" || true'
+            Write-Host (Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'bash', '-c', $probe) -TimeoutSeconds 10)
+        }
+    } catch { Write-Host ('Owned guest diagnostic unavailable: ' + $_.Exception.Message) }
+}
+
 try {
     if ($env:DOCKER_HOST -or $env:DOCKER_CONTEXT) { throw 'A preselected Docker override is not a fresh default runner.' }
     if ((Docker @('context', 'show')).Trim() -cne 'default') { throw 'Leave an existing nondefault Docker context intact.' }
@@ -293,7 +324,7 @@ services:
         target: /fixture
         read_only: true
 "@ | Set-Content -LiteralPath $composeFile -Encoding utf8NoBOM
-    $rawName = 'pos-hosted-raw-' + $owner; $rawId = $null
+    $rawName = 'pos-hosted-raw-' + $owner; $rawId = $null; $canaryFailure = $null
     try {
         [void](Docker @('compose', '--project-name', $project, '-f', $composeFile, 'up', '-d'))
         $canaryId = (Docker @('compose', '--project-name', $project, '-f', $composeFile, 'ps', '-q', 'canary')).Trim()
@@ -313,13 +344,27 @@ services:
         $rawId = (Native $rawWrapper @('create', '--name', $rawName, '--label', "mx.pos-hosted-rehearsal=$owner", '-v', "${canary}:/fixture/canary.txt:ro", 'alpine:3.22', 'sha256sum', '/fixture/canary.txt')).Trim()
         $rawHash = (Docker @('start', '--attach', $rawId)).Split(' ')[0]
         if ($rawHash -cne $expectedHash) { throw 'The attested raw Docker CLI bind does not expose the intended host bytes.' }
+    } catch {
+        $canaryFailure = $_
+        throw
     } finally {
-        if ($rawId) {
-            $rawOwner = (Docker @('inspect', '--format', '{{index .Config.Labels "mx.pos-hosted-rehearsal"}}', $rawId)).Trim()
-            if ($rawOwner -cne $owner) { throw 'Refusing to remove an unowned canary container.' }
-            [void](Docker @('rm', $rawId))
+        $cleanupFailure = $null
+        try {
+            if ($rawId) {
+                $rawOwner = (Native $docker @('inspect', '--format', '{{index .Config.Labels "mx.pos-hosted-rehearsal"}}', $rawId) -TimeoutSeconds 15).Trim()
+                if ($rawOwner -cne $owner) { throw 'Refusing to remove an unowned canary container.' }
+                [void](Native $docker @('rm', $rawId) -TimeoutSeconds 15)
+            }
+        } catch { $cleanupFailure = $_ }
+        try {
+            if (Test-Path -LiteralPath $composeFile) {
+                [void](Native $docker @('compose', '--project-name', $project, '-f', $composeFile, 'down', '--volumes') -TimeoutSeconds 45)
+            }
+        } catch { if (!$cleanupFailure) { $cleanupFailure = $_ } }
+        if ($cleanupFailure) {
+            if ($canaryFailure) { Write-Host ('Secondary canary cleanup failure: ' + $cleanupFailure.Exception.Message) }
+            else { throw $cleanupFailure }
         }
-        if (Test-Path -LiteralPath $composeFile) { [void](Docker @('compose', '--project-name', $project, '-f', $composeFile, 'down', '--volumes')) }
     }
     $windowsAfter = Docker @('--host', $endpoint.Trim(), 'info', '--format', '{{json .}}') | ConvertFrom-Json
     $serviceAfter = Get-CimInstance Win32_Service -Filter "Name='docker'"
@@ -345,14 +390,23 @@ services:
     $env:POS_TEST_WSL_RECEIPT = $receipt
     Write-Host "Owned real WSL Docker engine ready; parity receipt: $receipt"
 } catch {
-    if ($tunnel -and !$tunnel.HasExited) { $tunnel.Kill(); $tunnel.WaitForExit() }
+    $bootstrapFailure = $_
+    try { Write-OwnedFailureDiagnostics } catch { Write-Host 'Owned failure snapshot could not complete.' }
+    try {
+        if ($tunnel -and !$tunnel.HasExited) { $tunnel.Kill(); [void]$tunnel.WaitForExit(5000) }
+    } catch { Write-Host 'Secondary teardown failure while stopping the owned SSH process.' }
     if ($keyFile) {
         foreach ($file in @($keyFile, ($keyFile + '.pub'), $knownHostsFile)) {
             if ($file) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }
         }
     }
-    if ($keepAlive -and !$keepAlive.HasExited) { $keepAlive.Kill($true); $keepAlive.WaitForExit() }
-    if ($createdDistro) { & wsl.exe --terminate $distribution | Out-Null }
+    try {
+        if ($keepAlive -and !$keepAlive.HasExited) { $keepAlive.Kill($true); [void]$keepAlive.WaitForExit(5000) }
+    } catch { Write-Host 'Secondary teardown failure while stopping the owned WSL keepalive.' }
+    if ($createdDistro) {
+        try { [void](Native 'wsl.exe' @('--terminate', $distribution) -TimeoutSeconds 10) }
+        catch { Write-Host 'Secondary teardown failure while terminating the owned guest.' }
+    }
     if ($selectedLinux) { Remove-Item Env:DOCKER_HOST -ErrorAction SilentlyContinue }
-    throw
+    throw $bootstrapFailure
 }

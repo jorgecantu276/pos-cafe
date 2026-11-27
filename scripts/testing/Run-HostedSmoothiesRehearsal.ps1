@@ -6,7 +6,8 @@ param(
     [ValidatePattern('^[a-f0-9]{64}$')][string]$ExpectedZipSha256 = '1ba631fc5812cfef2f8aee5b7267aa69d481f7c5e3a794e36ddd82ee50d54767',
     [AllowEmptyString()][ValidatePattern('^(?:[a-f0-9]{64})?$')][string]$ExpectedIndexSha256 = 'd49f81fe40ca4370c8530df7c8975ae88b78fb38f58e9c9ae5c5c22085d6305c',
     [AllowEmptyString()][ValidatePattern('^(?:[a-f0-9]{16})?$')][string]$ExpectedPackageId = '91d0185345dfb706',
-    [string]$EvidenceDirectory
+    [string]$EvidenceDirectory,
+    [switch]$PlatformOnly
 )
 $ErrorActionPreference = 'Stop'
 
@@ -18,6 +19,9 @@ if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hos
     throw 'This rehearsal requires a fresh GitHub-hosted Windows 2025 runner.'
 }
 if ($SourceRunId -le 0 -or $ArtifactId -lt 0) { throw 'Select one immutable candidate run and artifact.' }
+if ($PlatformOnly -and ([string]$SourceRunId -cne [string]$env:GITHUB_RUN_ID -or $SourceCommit -cne $env:GITHUB_SHA)) {
+    throw 'A platform-only probe must identify its actual current GitHub run and source.'
+}
 if ($SourceRunId -ne 45881982067 -or $SourceCommit -cne '6904d8c500f05647f8a00dd7b6b292aa80a8a8a3') {
     if (!$PSBoundParameters.ContainsKey('ExpectedIndexSha256')) { $ExpectedIndexSha256 = '' }
     if (!$PSBoundParameters.ContainsKey('ExpectedPackageId')) { $ExpectedPackageId = '' }
@@ -39,8 +43,8 @@ if (!$EvidenceDirectory.StartsWith($runnerTemporary + '\', [StringComparison]::O
 }
 
 $node = (Get-Command 'node.exe' -ErrorAction Stop).Source
-$gh = (Get-Command 'gh.exe' -ErrorAction Stop).Source
-$docker = (Get-Command 'docker.exe' -ErrorAction Stop).Source
+$gh = if (!$PlatformOnly) { (Get-Command 'gh.exe' -ErrorAction Stop).Source } else { $null }
+$docker = if (!$PlatformOnly) { (Get-Command 'docker.exe' -ErrorAction Stop).Source } else { $null }
 if ((& $node '-p' 'process.version').Trim() -cne 'v24.22.2' -or $LASTEXITCODE -ne 0) { throw 'Use the pinned Node 24.22.2 runtime.' }
 $work = Join-Path $runnerTemporary ('smoothies-hosted-rehearsal-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $work
@@ -120,6 +124,10 @@ try {
     }
     $platformProof = Get-RehearsalJson $engineProofFile
 
+    if ($PlatformOnly) {
+        $phase = 'platform-complete'
+        $result = 'pass'
+    } else {
     $phase = 'immutable-artifact-download'
     $runJson = & $gh 'run' 'view' ([string]$SourceRunId) '--repo' $repository '--json' 'headSha,status,conclusion' 2>$null
     if ($LASTEXITCODE -ne 0) { throw 'The selected source run could not be verified.' }
@@ -268,6 +276,7 @@ console.log('Original candidate manifest, full file index and every file verifie
     $candidateIntegrityAfter = 'verified'; $originalCandidateModified = $false
     $phase = 'complete'
     $result = 'pass'
+    }
 } catch {
     # Raw child output and generated credentials remain only in this disposable
     # VM. The exported failure describes its phase, never logs or exception text.
@@ -288,22 +297,33 @@ console.log('Original candidate manifest, full file index and every file verifie
         } catch { $temporaryTrustRemoved = $false }
         if (!$temporaryTrustRemoved) { $result = 'fail'; $phase = 'temporary-trust-cleanup' }
     }
+    if ($PlatformOnly) {
+        $proof = [ordered]@{
+            protocol = 1; scope = 'test-platform-only'; result = $result; phase = $phase; completedAt = [DateTime]::UtcNow.ToString('o')
+            sourceRunId = [long]$env:GITHUB_RUN_ID; sourceCommit = $env:GITHUB_SHA; platform = $platformProof
+            actualDeviceAcceptance = 'pending'; qualified = $false
+        }
+    } else {
     $proof = [ordered]@{
-        protocol = 1; result = $result; phase = $phase; completedAt = [DateTime]::UtcNow.ToString('o')
+        protocol = 1; scope = 'installed-lan'; result = $result; phase = $phase; completedAt = [DateTime]::UtcNow.ToString('o')
         repository = $repository; sourceRunId = $SourceRunId; artifactId = $ArtifactId
         sourceCommit = $SourceCommit; packageId = $ExpectedPackageId; zipSha256 = $ExpectedZipSha256; filesSha256 = $ExpectedIndexSha256
         originalCandidateModified = $originalCandidateModified; candidateIntegrity = @{ before = $candidateIntegrityBefore; after = $candidateIntegrityAfter }
         platform = $platformProof; tlsVerification = 'enabled'; actualDeviceAcceptance = 'pending'
         temporaryTrustChanged = $temporaryTrustChanged; temporaryTrustRemoved = $temporaryTrustRemoved
     }
+    }
     if ($failureExitCode -ne $null) { $proof.childExitCode = $failureExitCode }
     if ($failureCode) { $proof.failureCode = $failureCode }
     if ($failureScript) { $proof.failureScript = $failureScript; $proof.failureLine = $failureLine }
     if ($failureDiagnostics.Count) { $proof.failureDiagnostics = $failureDiagnostics }
-    if ($result -ceq 'pass') {
+    if (!$PlatformOnly -and $result -ceq 'pass') {
         $proof.checks = @($acceptance.checks | Where-Object { $requiredChecks -ccontains [string]$_ })
     }
     [IO.File]::WriteAllText((Join-Path $EvidenceDirectory 'rehearsal.json'), ($proof | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding($false)))
     Write-Host ($proof | ConvertTo-Json -Depth 5 -Compress)
 }
-if ($result -cne 'pass') { throw ('The unchanged-candidate hosted rehearsal failed during ' + $phase + '. Only sanitized evidence was exported.') }
+if ($result -cne 'pass') {
+    $failureScope = if ($PlatformOnly) { 'The hosted test-platform check' } else { 'The unchanged-candidate hosted rehearsal' }
+    throw ($failureScope + ' failed during ' + $phase + '. Only sanitized evidence was exported.')
+}
