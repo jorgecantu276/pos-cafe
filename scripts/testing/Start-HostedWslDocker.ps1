@@ -49,7 +49,11 @@ function Native {
             stderrSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($diagnostics))).ToLowerInvariant() }
         [IO.File]::AppendAllText((Join-Path $WorkDirectory 'bootstrap-events.jsonl'), ($event | ConvertTo-Json -Compress) + "`n", [Text.UTF8Encoding]::new($false))
         [IO.File]::WriteAllText((Join-Path $WorkDirectory 'native-stderr.log'), $diagnostics)
-        if ($process.ExitCode -ne 0) { throw "$(Split-Path -Leaf $Executable) failed: $diagnostics $result" }
+        if ($process.ExitCode -ne 0) {
+            $failure = [InvalidOperationException]::new("$(Split-Path -Leaf $Executable) failed: $diagnostics $result")
+            $failure.Data['ExitCode'] = $process.ExitCode
+            throw $failure
+        }
         return $result.Replace([string][char]0, '').TrimEnd("`r", "`n")
     } finally {
         $process.Dispose()
@@ -261,6 +265,7 @@ services:
                 $diagnostic.client2992Stderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
             } catch { $diagnostic.client2992Stdout = 'unavailable' }
             $guestControlPid = $null
+            $directPhase = 'network-discovery'
             try {
                 # Diagnostic only: compare Windows against the same WSL daemon
                 # without the localhost-forwarder. The temporary guest listener
@@ -274,49 +279,82 @@ services:
                 $guestAddress = Private-IPv4 ([string]$guestAddresses[0].local)
                 $windowsGateway = Private-IPv4 ([string]$guestRoutes[0].gateway)
                 if ($guestAddress -ceq $windowsGateway) { throw 'The WSL guest and its Windows gateway must differ.' }
+                $directPhase = 'windows-peer-identity'
+                if (@(Get-NetIPAddress -AddressFamily IPv4 -IPAddress $windowsGateway -ErrorAction SilentlyContinue).Count -ne 1) { throw 'The WSL gateway is not a unique local Windows interface.' }
                 $guestControlScript = Join-Path $WorkDirectory 'guest-transport-control.sh'
                 $guestControlText = @'
 #!/bin/bash
 set -euo pipefail
 test "$(cat /etc/pos-hosted-rehearsal)" = "$3"
 pidfile="/run/pos-transport-$3.pid"
+unit="pos-transport-$3.service"
+binding="TCP4-LISTEN:2376,bind=$1,range=$2/32,reuseaddr,fork"
 if [ "$4" = start ]; then
   test ! -e "$pidfile"
   test -z "$(ss -ltnH 'sport = :2376')"
-  socat "TCP4-LISTEN:2376,bind=$1,range=$2/32,reuseaddr,fork" UNIX-CONNECT:/var/run/docker.sock </dev/null >"/run/pos-transport-$3.log" 2>&1 &
-  child=$!
-  printf '%s\n' "$child" > "$pidfile"
+  test "$(systemctl show "$unit" --property=LoadState --value)" = not-found
+  systemd-run --quiet --unit="$unit" --collect --description="POS hosted transport $3" /usr/bin/socat "$binding" UNIX-CONNECT:/var/run/docker.sock
   sleep 0.2
-  kill -0 "$child"
-  printf '%s\n' "$child"
+  child=$(systemctl show "$unit" --property=MainPID --value)
+  test "$child" -gt 0
+  printf '%s\n' "$child" > "$pidfile"
 else
   child=$(cat "$pidfile")
   test "$child" = "$5"
-  test "$(cat "/proc/$child/comm")" = socat
-  arguments=$(tr '\0' ' ' < "/proc/$child/cmdline")
-  case "$arguments" in *"TCP4-LISTEN:2376,bind=$1,range=$2/32,reuseaddr,fork"*) ;; *) exit 8 ;; esac
-  kill -- "$child"
+fi
+test "$(systemctl show "$unit" --property=Description --value)" = "POS hosted transport $3"
+test "$(systemctl show "$unit" --property=MainPID --value)" = "$child"
+systemctl is-active --quiet "$unit"
+test "$(cat "/proc/$child/comm")" = socat
+arguments=$(tr '\0' ' ' < "/proc/$child/cmdline")
+test "$arguments" = "/usr/bin/socat $binding UNIX-CONNECT:/var/run/docker.sock "
+entry=$(systemctl show "$unit" --property=ExecStart --value)
+case "$entry" in "{ path=/usr/bin/socat ; argv[]=/usr/bin/socat $binding UNIX-CONNECT:/var/run/docker.sock ; "*) ;; *) exit 8 ;; esac
+if [ "$4" = stop ]; then
+  systemctl stop "$unit"
   rm -- "$pidfile"
+  test -z "$(ss -ltnH 'sport = :2376')"
+elif [ "$4" = start ]; then
+  printf '%s\n' "$child"
+elif [ "$4" = check ]; then
+  printf 'owned-listener-active\n'
+else
+  exit 9
 fi
 '@
                 Write-LinuxScript $guestControlScript $guestControlText
                 [void](Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', '-n', (Guest-Path $guestControlScript)) -TimeoutSeconds 30)
+                $directPhase = 'listener-start'
                 $guestControlPid = (Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestControlScript), $guestAddress, $windowsGateway, $owner, 'start') -TimeoutSeconds 30).Trim()
                 if ($guestControlPid -cnotmatch '^[1-9][0-9]*$') { throw 'The temporary guest listener ownership is unavailable.' }
+                $directPhase = 'listener-liveness'
+                [void](Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestControlScript), $guestAddress, $windowsGateway, $owner, 'check', $guestControlPid) -TimeoutSeconds 30)
+                $diagnostic.directGuestListenerAlive = $true
                 $directEndpoint = 'tcp://' + $guestAddress + ':2376'
+                $directPhase = 'daemon-identity'
                 $directEngine = Native -Executable $docker -Arguments @('--host', $directEndpoint, 'info', '--format', '{{json .}}') -TimeoutSeconds 30 | ConvertFrom-Json
                 if ($directEngine.ID -cne $observed.ID -or $directEngine.OSType -cne 'linux' -or "mx.pos-hosted-rehearsal=$owner" -cnotin $directEngine.Labels) { throw 'The direct diagnostic endpoint is not the exact owned daemon.' }
+                $directPhase = 'exec-byte-control'
                 $directOutput = Native -Executable $docker -Arguments @('--host', $directEndpoint, 'exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30 -CloseInput
                 $diagnostic.directGuestDaemon = 'same-owned-daemon'
                 $diagnostic.directGuestStdout = Canary-Measurement $directOutput $expectedHash
                 $diagnostic.directGuestStderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
-            } catch { $diagnostic.directGuestStdout = 'unavailable' }
+            } catch {
+                $diagnostic.directGuestStdout = 'unavailable'
+                $diagnostic.directGuestFailurePhase = $directPhase
+                $diagnostic.directGuestFailureType = $_.Exception.GetType().Name
+                $diagnostic.directGuestFailureExitCode = $_.Exception.Data['ExitCode']
+            }
             finally {
                 if ($guestControlPid -cmatch '^[1-9][0-9]*$') {
                     try {
                         [void](Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestControlScript), $guestAddress, $windowsGateway, $owner, 'stop', $guestControlPid) -TimeoutSeconds 30)
                         $diagnostic.directGuestListenerRemoved = $true
-                    } catch { $diagnostic.directGuestListenerRemoved = $false }
+                    } catch {
+                        $diagnostic.directGuestListenerRemoved = $false
+                        $diagnostic.directGuestCleanupType = $_.Exception.GetType().Name
+                        $diagnostic.directGuestCleanupExitCode = $_.Exception.Data['ExitCode']
+                    }
                 }
             }
             Write-Host ('Synthetic canary transport diagnostics: ' + ($diagnostic | ConvertTo-Json -Compress))

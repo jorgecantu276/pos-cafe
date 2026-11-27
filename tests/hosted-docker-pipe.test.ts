@@ -161,7 +161,7 @@ $originalApi=$env:DOCKER_API_VERSION
 $childApi=Native -Executable $Node -Arguments @('-e','process.stdout.write(process.env.DOCKER_API_VERSION)') -ApiVersion '1.44'
 if($childApi -cne '1.44' -or $env:DOCKER_API_VERSION -cne $originalApi){throw 'API version must affect only the explicit child process'}
 $failed=$false
-try{Native -Executable $Node -Arguments @('-e','process.stderr.write("synthetic command failed");process.exit(7)')}catch{$failed=$_.Exception.Message.Contains('synthetic command failed')}
+try{Native -Executable $Node -Arguments @('-e','process.stderr.write("synthetic command failed");process.exit(7)')}catch{$failed=$_.Exception.Message.Contains('synthetic command failed') -and $_.Exception.Data['ExitCode'] -eq 7}
 if(!$failed){throw 'nonzero exit not reported'}
 $bounded=$false; $timer=[Diagnostics.Stopwatch]::StartNew()
 try{Native -Executable $Node -Arguments @('-e','setInterval(()=>{},1000)') -TimeoutSeconds 1}catch{$bounded=$_.Exception.Message.Contains('deadline')}
