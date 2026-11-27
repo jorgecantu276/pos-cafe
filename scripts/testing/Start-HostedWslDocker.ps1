@@ -29,11 +29,14 @@ if ($Cleanup) {
         if ($tunnelProcess.ExecutablePath -ine $expectedSsh -or !$ownedCommand.Contains($receipt.keyFile.Replace('\', '/')) -or
             !$ownedCommand.Contains($receipt.knownHostsFile.Replace('\', '/'))) { throw 'Refusing to stop a reused or unowned tunnel PID.' }
         Stop-Process -Id ([int]$receipt.tunnelPid) -ErrorAction Stop
+        Write-Host 'Stopped the verified owned OpenSSH tunnel.'
+    } else {
+        Write-Host 'The owned OpenSSH tunnel had already exited.'
     }
     foreach ($file in @($receipt.keyFile, ($receipt.keyFile + '.pub'), $receipt.knownHostsFile)) {
         Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
     }
-    Write-Host 'Stopped the owned OpenSSH tunnel and removed its fixture keys.'
+    Write-Host 'Removed the owned OpenSSH fixture keys.'
     return
 }
 $owner = [guid]::NewGuid().ToString('N')
@@ -191,16 +194,28 @@ docker info --format '{{.OSType}}'
     $hostPublicKey = (Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'cat', '/etc/ssh/ssh_host_ed25519_key.pub')).Trim()
     if ($hostPublicKey -notmatch '^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$') { throw 'The owned guest host key was not obtained.' }
     [IO.File]::WriteAllText($knownHostsFile, "[$guestAddress]:22222 $hostPublicKey`n", [Text.UTF8Encoding]::new($false))
-    $sshArguments = @('-F', 'NUL', '-N', '-T', '-p', '22222', '-i', $keyFile,
+    $sshArguments = @('-F', 'NUL', '-n', '-N', '-T', '-p', '22222', '-i', $keyFile,
         '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'IdentityAgent=none',
         '-o', 'StrictHostKeyChecking=yes', '-o', ('UserKnownHostsFile="' + $knownHostsFile.Replace('\', '/') + '"'),
         '-o', 'GlobalKnownHostsFile=NUL', '-o', 'ExitOnForwardFailure=yes',
         '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
         '-L', '127.0.0.1:2375:127.0.0.1:2376', "root@$guestAddress")
-    $sshStart = [Diagnostics.ProcessStartInfo]::new()
-    $sshStart.FileName = $ssh; $sshStart.UseShellExecute = $false; $sshStart.CreateNoWindow = $true
-    foreach ($argument in $sshArguments) { $sshStart.ArgumentList.Add($argument) }
-    $tunnel = [Diagnostics.Process]::Start($sshStart)
+    # Start-Process owns file-backed stdio rather than the transient step's
+    # console handles. Quote Windows argv explicitly, including embedded quotes
+    # in OpenSSH options and any spaces in the owned temporary directory.
+    $sshCommandLine = ($sshArguments | ForEach-Object {
+        $quoted = [Text.StringBuilder]::new('"'); $slashes = 0
+        foreach ($character in $_.ToCharArray()) {
+            if ($character -eq '\') { $slashes++; continue }
+            if ($character -eq '"') { [void]$quoted.Append('\', $slashes * 2 + 1) }
+            else { [void]$quoted.Append('\', $slashes) }
+            [void]$quoted.Append($character); $slashes = 0
+        }
+        [void]$quoted.Append('\', $slashes * 2); [void]$quoted.Append('"'); $quoted.ToString()
+    }) -join ' '
+    $tunnel = Start-Process -FilePath $ssh -ArgumentList $sshCommandLine -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput (Join-Path $WorkDirectory 'ssh.stdout.log') `
+        -RedirectStandardError (Join-Path $WorkDirectory 'ssh.stderr.log')
     $linuxInfo = Wait-Native { (Docker @('--host', 'tcp://127.0.0.1:2375', 'info', '--format', '{{json .}}')) | ConvertFrom-Json } 120 'Waiting for the owned WSL Linux engine on Windows loopback.'
     if ($linuxInfo.OSType -cne 'linux' -or "mx.pos-hosted-rehearsal=$owner" -cnotin $linuxInfo.Labels) { throw 'The guest daemon identity was not established.' }
     $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 2375 -ErrorAction Stop)
@@ -294,6 +309,7 @@ services:
     foreach ($entry in @("POS_CAFE_REAL_DOCKER=$docker", 'POS_TEST_WSL_ENGINE=1', 'COMPOSE_CONVERT_WINDOWS_PATHS=1', 'DOCKER_HOST=tcp://127.0.0.1:2375', "POS_TEST_WSL_RECEIPT=$receipt")) {
         Add-Content -LiteralPath $env:GITHUB_ENV -Value $entry -Encoding utf8NoBOM
     }
+    $env:POS_TEST_WSL_RECEIPT = $receipt
     Write-Host "Owned real WSL Docker engine ready; parity receipt: $receipt"
 } catch {
     if ($tunnel -and !$tunnel.HasExited) { $tunnel.Kill(); $tunnel.WaitForExit() }

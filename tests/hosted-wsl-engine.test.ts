@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, symlink, unlink, link, copyFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { verifyHostedWslEngine } from '../scripts/testing/hosted-wsl-engine.mjs';
@@ -97,5 +97,29 @@ test('receipt files stay bounded and inside the owned temporary tree without par
     await writeFile(f.receiptFile, 'x'.repeat(65_537));
     await assert.rejects(verifyHostedWslEngine({ env: f.env, platform: 'win32', inspectActual: f.inspectActual, now: f.now }), /bounded regular/);
     assert.equal(f.calls, 0);
+  } finally { await f.clean(); }
+});
+
+test('default executable inspection distinguishes command failure from empty JSON and redacts private stderr', async () => {
+  const f = await fixture();
+  try {
+    // This temporary executable is the pinned Node binary under a fixture name.
+    // NODE_OPTIONS exits before its nominal "info" argument can load anything;
+    // no Docker, SSH or WSL executable is called by this test.
+    await unlink(f.docker); await link(process.execPath, f.docker).catch(() => copyFile(process.execPath, f.docker));
+    const failure = (stage: string, check: (details: Record<string, unknown>) => void) => (error: unknown) => {
+      assert.ok(error instanceof Error);
+      const prefix = 'Hosted WSL Docker inspection failed: '; assert.ok(error.message.startsWith(prefix));
+      const details = JSON.parse(error.message.slice(prefix.length)); assert.equal(details.stage, stage); check(details);
+      assert.ok(!error.message.includes(f.base)); return true;
+    };
+    await assert.rejects(verifyHostedWslEngine({ env: { ...f.env, NODE_OPTIONS: '--not-an-allowed-node-option' }, platform: 'win32', now: f.now }),
+      failure('docker-info-command', details => { assert.ok(typeof details.code === 'number'); assert.equal(details.stdoutBytes, 0); assert.equal(details.killed, false); }));
+    const preload = path.join(f.base, 'inspect-fixture.cjs');
+    const token = 'x'.repeat(60);
+    await writeFile(preload, 'process.stderr.write(' + JSON.stringify('socket closed\nC:\\private\\customer\\keys.pem\npostgresql://admin:CANARY@localhost/database\n' + token) + ');process.exit(0);');
+    await assert.rejects(verifyHostedWslEngine({ env: { ...f.env, NODE_OPTIONS: '--require=' + JSON.stringify(preload) }, platform: 'win32', now: f.now }),
+      failure('docker-info-json', details => { assert.equal(details.code, 0); assert.equal(details.stdoutBytes, 0); assert.match(String(details.stderr), /socket closed/);
+        assert.doesNotMatch(String(details.stderr), /CANARY|customer|postgresql:\/\//); assert.ok(!String(details.stderr).includes(token)); }));
   } finally { await f.clean(); }
 });

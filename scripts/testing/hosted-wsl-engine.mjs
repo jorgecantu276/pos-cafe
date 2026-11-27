@@ -12,13 +12,36 @@ const contained = (parent, child) => { const relative = path.relative(parent, ch
 const localAbsolute = value => typeof value === 'string' && path.isAbsolute(value) && !/^(?:\\\\|\/\/)/.test(value);
 const samePath = (left, right) => process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
 
+function safeStderr(value) {
+  if (typeof value !== 'string') return '';
+  const safe = value
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/gi, '[redacted token]')
+    .replace(/^.*(?:password|passwd|secret|authorization|api.?key|access_token|refresh_token).*$/gim, '[redacted sensitive line]')
+    .replace(/\bpostgres(?:ql)?:\/\/[^\s"'<>]+/gi, '[redacted database URL]')
+    .replace(/\b[A-Z]:[\\/][^\r\n]*/gim, '[redacted Windows path]')
+    .replace(/\/(?:home|mnt|root|tmp|run)\/[^\s"'<>]+/gi, '[redacted runner path]')
+    .replace(/[A-Za-z0-9_+/=\-]{32,}/g, '[redacted long value]');
+  return safe.split(/\r?\n/).filter(line => line.trim()).slice(-12).map(line => line.slice(0, 250)).join('\n').slice(-2048);
+}
+
+function inspectionFailure(stage, result = {}, error = {}) {
+  const code = Number.isSafeInteger(error.code) || typeof error.code === 'string' && /^[A-Z][A-Z0-9_]{1,40}$/.test(error.code) ? error.code : null;
+  const stdout = typeof result.stdout === 'string' ? result.stdout : typeof error.stdout === 'string' ? error.stdout : '';
+  const stderr = typeof result.stderr === 'string' ? result.stderr : typeof error.stderr === 'string' ? error.stderr : '';
+  return Error('Hosted WSL Docker inspection failed: ' + JSON.stringify({ stage, code,
+    signal: typeof error.signal === 'string' && /^SIG[A-Z0-9]{1,16}$/.test(error.signal) ? error.signal : null,
+    killed: error.killed === true, stdoutBytes: Buffer.byteLength(stdout), stderrBytes: Buffer.byteLength(stderr), stderr: safeStderr(stderr) }));
+}
+
 async function inspectDocker(docker, env) {
+  let result;
   try {
-    const result = await execute(docker, ['info', '--format', '{{json .}}'], {
+    result = await execute(docker, ['info', '--format', '{{json .}}'], {
       env, windowsHide: true, timeout: 30_000, maxBuffer: 1024 * 1024,
     });
-    return JSON.parse(result.stdout);
-  } catch { throw Error('The attested hosted WSL Docker engine is unavailable.'); }
+  } catch (error) { throw inspectionFailure('docker-info-command', {}, error); }
+  try { return JSON.parse(result.stdout); }
+  catch { throw inspectionFailure('docker-info-json', result, { code: 0 }); }
 }
 
 /**
