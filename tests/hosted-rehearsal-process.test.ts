@@ -48,3 +48,48 @@ try {
     path.resolve('scripts/testing/Run-HostedSmoothiesRehearsal.ps1'), process.execPath, directory], { windowsHide: true, timeout: 15_000 });
   assert.match(result.stdout, /failed-parent-returned-with-owned-writer-alive/);
 });
+
+test('actual image warmup retries only explicit registry throttling and preserves terminal failures', { skip: process.platform !== 'win32' }, async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'pos-image-prefetch-'));
+  const script = path.join(directory, 'test.ps1');
+  await writeFile(script, String.raw`
+param($Driver,$WorkDirectory)
+$ErrorActionPreference='Stop';$work=$WorkDirectory
+$tokens=$null;$parseErrors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile($Driver,[ref]$tokens,[ref]$parseErrors)
+$function=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-HostedImagePrefetch'},$true)
+if(!$function -or $parseErrors.Count){throw 'Actual prefetch helper missing'}
+Invoke-Expression $function.Extent.Text
+function Start-Sleep {param($Seconds) $script:delays += [int]$Seconds}
+function Invoke-PrivateRehearsalCommand {
+  param($Executable,$Arguments,$LogName)
+  if($Executable -cne 'fixture-docker' -or ($Arguments -join '|') -cne 'compose|--parallel|1|--project-name|smoothies-rehearsal-image-prefetch|-f|fixture compose.yml|pull|--policy|missing'){throw 'Original bounded missing-only command changed'}
+  $message=$script:messages[$script:calls];$script:calls++
+  if($null -eq $message){return}
+  [IO.File]::WriteAllText((Join-Path $work ($LogName+'.stdout.log')),'')
+  [IO.File]::WriteAllText((Join-Path $work ($LogName+'.stderr.log')),$message)
+  $script:failureExitCode=$script:exitCode;$script:failureDiagnostics=@('synthetic terminal failure')
+  throw 'Synthetic private registry failure'
+}
+function Check-Case($Messages,$ExitCode,$ExpectedCalls,$ShouldPass,$ExpectedDelays) {
+  $script:messages=$Messages;$script:exitCode=$ExitCode;$script:calls=0;$script:delays=@()
+  $script:failureExitCode=$null;$script:failureCode='synthetic-prior';$script:failureDiagnostics=@()
+  $passed=$false;try{Invoke-HostedImagePrefetch 'fixture-docker' 'fixture compose.yml';$passed=$true}catch{}
+  if($passed -ne $ShouldPass -or $script:calls -ne $ExpectedCalls -or ($script:delays -join ',') -cne $ExpectedDelays){throw 'Wrong selective retry or finite backoff'}
+  if($passed -and ($script:failureExitCode -ne $null -or $script:failureCode -ne $null -or $script:failureDiagnostics.Count)){throw 'Successful retry retained obsolete failure metadata'}
+  if(!$passed -and $script:failureExitCode -ne $ExitCode){throw 'Terminal failure metadata was lost'}
+}
+Check-Case @('error from registry: Rate exceeded','HTTP/1.1 429 Too Many Requests',$null) 1 3 $true '15,30'
+Check-Case @('error from registry: Rate exceeded','error from registry: Rate exceeded','error from registry: Rate exceeded') 1 3 $false '15,30'
+Check-Case @('HTTP 429; unauthorized') 1 1 $false ''
+Check-Case @('HTTP 429; HTTP/1.1 403 Forbidden') 1 1 $false ''
+Check-Case @('HTTP 429; manifest unknown') 1 1 $false ''
+Check-Case @('HTTP 429; context deadline exceeded') -1 1 $false ''
+Check-Case @('ordinary network failure') 1 1 $false ''
+Check-Case @('layer aaaa429bbbb failed') 1 1 $false ''
+'selective-prefetch-backoff-ok'
+`);
+  const result = await promisify(execFile)('pwsh.exe', ['-NoProfile', '-NonInteractive', '-File', script,
+    path.resolve('scripts/testing/Run-HostedSmoothiesRehearsal.ps1'), directory], { windowsHide: true, timeout: 15_000 });
+  assert.match(result.stdout, /selective-prefetch-backoff-ok/);
+});

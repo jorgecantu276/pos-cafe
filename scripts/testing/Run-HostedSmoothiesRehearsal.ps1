@@ -120,6 +120,28 @@ function Get-RehearsalJson {
     return (Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json)
 }
 
+function Invoke-HostedImagePrefetch([string]$Docker, [string]$ComposeFile) {
+    foreach ($attempt in 1..3) {
+        $logName = 'image-prefetch-attempt-' + $attempt + '.private.log'
+        try {
+            Invoke-PrivateRehearsalCommand $Docker @('compose','--parallel','1','--project-name','smoothies-rehearsal-image-prefetch','-f',$ComposeFile,'pull','--policy','missing') $logName
+            # A genuine successful pull supersedes only prior warmup failures.
+            $script:failureExitCode = $null; $script:failureCode = $null; $script:failureScript = $null
+            $script:failureLine = $null; $script:failureDiagnostics = @()
+            return
+        } catch {
+            $privateTail = (@(Get-Content -LiteralPath (Join-Path $work ($logName + '.stdout.log')) -Tail 125 -ErrorAction SilentlyContinue) +
+                @(Get-Content -LiteralPath (Join-Path $work ($logName + '.stderr.log')) -Tail 125 -ErrorAction SilentlyContinue)) -join "`n"
+            $throttled = $privateTail -match '(?im)(?:error from registry:\s*Rate exceeded|HTTP(?:/[0-9.]+)?\s+429\b|(?:unexpected status|status code)[^\r\n]*\b429\b)'
+            $otherFailure = $privateTail -match '(?im)(?:unauthorized|authentication required|failed to authorize|no basic auth credentials|access denied|denied:|HTTP(?:/[0-9.]+)?\s+40[13]\b|(?:unexpected status|status code)[^\r\n]*\b40[13]\b|manifest unknown|manifest[^\r\n]*not found|no matching manifest|context deadline exceeded|i/o timeout|TLS handshake timeout|timed? out)'
+            if ($attempt -eq 3 -or $script:failureExitCode -le 0 -or !$throttled -or $otherFailure) { throw }
+            $delaySeconds = 15 * $attempt
+            Write-Host ('Original image registry throttled warmup attempt ' + $attempt + '; retrying missing original tags in ' + $delaySeconds + 's.')
+            Start-Sleep -Seconds $delaySeconds
+        }
+    }
+}
+
 function Invoke-OwnedProxy([ValidateSet('check','stop')][string]$Action) {
     $proxy = $engineReceipt.proxy
     $helper = Join-Path ([IO.Path]::GetDirectoryName($engineReceiptPath)) 'guest-transport-control.sh'
@@ -267,8 +289,7 @@ console.log('Original candidate manifest, full file index and every file verifie
     $null = New-Item -ItemType Directory -Path $warmDirectory
     $warmSettings = Join-Path $warmDirectory 'instalacion.env'
     Invoke-PrivateRehearsalCommand $bundledNode @((Join-Path $reference 'app\scripts\smoothies\provision-supabase.mjs'),$warmSettings) 'image-config.private.log'
-    Invoke-PrivateRehearsalCommand $docker @('compose','--project-name','smoothies-rehearsal-image-prefetch','-f',
-        (Join-Path $warmDirectory 'supabase\compose.yml'),'pull') 'image-prefetch.private.log'
+    Invoke-HostedImagePrefetch $docker (Join-Path $warmDirectory 'supabase\compose.yml')
     Write-Host 'Prefetched the original local-backend images before the offline installer rehearsal.'
 
     $phase = 'synthetic-lan-certificate'
