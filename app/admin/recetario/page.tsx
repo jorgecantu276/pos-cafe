@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation';
 import RecipeBook from './RecipeBook';
 import './recipe-book.css';
 
-export default function RecipeBookPage() {
+export default async function RecipeBookPage({ searchParams }: { searchParams: Promise<{ receta?: string; nueva?: string }> }) {
   if (posProfile.id !== 'smoothies') notFound();
-  return <RecipeBook />;
+  const query = await searchParams;
+  const recipe = typeof query.receta === 'string' ? query.receta : undefined;
+  return <RecipeBook key={`${recipe ?? ''}:${query.nueva === '1'}`} initialRecipe={recipe} startNew={query.nueva === '1'} />;
 }

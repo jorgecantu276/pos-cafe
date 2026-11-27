@@ -5,6 +5,7 @@ import path from 'node:path';
 import { signSmoothiesUpdate } from './sign-smoothies-update.mjs';
 import { publishVerifiedRelease } from './github-release.mjs';
 import { createHash } from 'node:crypto';
+import { verifyAcceptedFamily } from './family-evidence.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const repo = 'jorgecantu276/pos-cafe';
@@ -17,10 +18,13 @@ assert.equal(git(['status', '--porcelain']), '', 'Commit the reviewed final sour
 execFileSync(process.execPath, ['scripts/releases/versions.mjs', 'verify', cafe, smoothies, papeleria], { cwd: root, stdio: 'inherit', windowsHide: true });
 const release = JSON.parse(readFileSync(path.join(smoothies, 'release.json'), 'utf8'));
 assert.equal(release.sourceCommit, git(['rev-parse', 'HEAD']), 'Publish only the current reviewed source commit.');
+await verifyAcceptedFamily({ candidateFile: process.env.POS_FAMILY_CANDIDATE, acceptanceFile: process.env.POS_FAMILY_ACCEPTANCE,
+  sourceCommit: release.sourceCommit, directories: { cafe, smoothies, papeleria }, product: 'smoothies', zip });
 assert.ok(readFileSync(notes, 'utf8').trim());
 const tag = release.familyRelease;
-const remoteTag = git(['ls-remote', 'github', 'refs/tags/' + tag]).split(/\s/)[0];
-assert.equal(remoteTag, release.sourceCommit, 'Push the lightweight family tag for this exact commit first.');
+const remoteTag = JSON.parse(gh(['api', `repos/${repo}/git/ref/tags/${tag}`]));
+assert.equal(remoteTag.object.type, 'commit', 'Use a lightweight family tag.');
+assert.equal(remoteTag.object.sha, release.sourceCommit, 'Push the lightweight family tag for this exact commit first.');
 await signSmoothiesUpdate({ keyFile: privateKey, packageDirectory: smoothies, zipFile: zip,
   zipUrl: 'https://github.com/' + repo + '/releases/download/' + tag + '/' + path.basename(zip), outputFile: envelope });
 const assetUrl = 'https://github.com/' + repo + '/releases/download/' + tag + '/' + path.basename(zip);

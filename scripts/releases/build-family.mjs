@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { posVersions } from './version-info.mjs';
+import { writeFamilyCandidate } from './family-evidence.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const [cafeTarget, nativeCheckout, outputDirectory] = process.argv.slice(2);
@@ -34,6 +35,10 @@ const papeleria = path.join(nativeExtracted, 'PapeleriaPOS');
 run(['scripts/releases/versions.mjs', 'verify', cafe, smoothies, papeleria]);
 const smoothiesZip = path.join(outputDirectory, 'POS-Smoothies-' + version + '.zip');
 archive('Create', smoothies, smoothiesZip);
+const cafeZip = path.join(outputDirectory, 'POS-Cafe-' + execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim().slice(0, 7) + '.zip');
+archive('Create', cafe, cafeZip);
+await writeFamilyCandidate(outputDirectory, { cafe: 'cafe', smoothies: 'smoothies', papeleria: 'native-extracted/PapeleriaPOS',
+  cafeZip: path.basename(cafeZip), smoothiesZip: path.basename(smoothiesZip), papeleriaZip: path.relative(outputDirectory, nativeZip).replaceAll('\\', '/') });
 writeFileSync(path.join(outputDirectory, 'family-packages.json'), JSON.stringify({ version, familyRelease,
-  cafe, smoothies, papeleria, smoothiesZip, nativeZip }, null, 2), { flag: 'wx' });
+  cafe, smoothies, papeleria, cafeZip, smoothiesZip, nativeZip }, null, 2), { flag: 'wx' });
 console.log('Built and synchronized ' + familyRelease + '. Installer acceptance must pass before publishing.');

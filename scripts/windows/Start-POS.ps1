@@ -1,5 +1,7 @@
 ﻿param([string]$ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'pos-cafe-config.json'), [switch]$NoBrowser, [switch]$DesktopApp)
 $ErrorActionPreference = 'Stop'
+# Cafe retains its direct backend and loopback-only launcher contract.
+Remove-Item Env:POS_LAN_MODE, Env:POS_PUBLIC_ORIGIN -ErrorAction SilentlyContinue
 
 function Get-CafeHash([string]$Value) {
   $hash = [System.Security.Cryptography.SHA256]::Create()

@@ -3,6 +3,7 @@ import { serverSupabase } from '@/lib/supabase-server';
 import { ClipGateway, ClipNotSent, clipProviderId, clipRpc, clipStaff } from '@/lib/clip-server';
 import { clipSettings } from '@/lib/clip-config';
 import { AccessError } from '@/lib/user-management';
+import { requestOriginMatches } from '@/lib/request-origin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,10 +16,7 @@ const failure = (error: unknown) => reply({error:error instanceof AccessError ? 
 export async function POST(request: Request) {
   try {
     const caller = await serverSupabase(), actor = await clipStaff(caller);
-    // Next can normalize the internal URL to localhost while the browser uses
-    // 127.0.0.1. Validate against the received Host, as the print API does.
-    const url=new URL(request.url),authority=new URL(`${url.protocol}//${request.headers.get('host')||url.host}`);
-    if (request.headers.get('origin') !== authority.origin) throw new AccessError('Origen de solicitud inválido.',403);
+    if (!requestOriginMatches(request, { requireOrigin: true })) throw new AccessError('Origen de solicitud inválido.',403);
     const raw = await request.text();
     if (raw.length > 256_000) throw new AccessError('Pedido demasiado grande.',400);
     const body = JSON.parse(raw);

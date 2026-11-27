@@ -11,7 +11,7 @@ and move a recipe to the menu deliberately. It must feel like her business, not
 a Café copy. Selling continues without internet on a Windows PC; an iPad on the
 same Wi-Fi is her operating device, using the existing POS web workflow in Safari.
 The PC owns the application, local backend and retained state. This LAN browser
-path remains an implementation milestone; the current package is PC-only.
+path is integrated in the candidate source; actual device acceptance remains.
 
 The owner's November 25 clarification supersedes the earlier read-only mirror
 guidance. One product includes both the POS and its menu intake form. The form
@@ -31,11 +31,34 @@ where source and API architecture are shared with Café.
 | Prepare inventory before opening | Planned inventory and opening-count workflow | Planned quantity is not real stock. Blank remains pending; explicit zero is confirmed only through a physical count. Recount after unit changes. |
 | Enjoy learning without accidentally changing sales | Private recipe book, saved trials/comparison, inactive catalog draft and explicit activation | Recipe notes stay private; exact recipe-to-product link and safe navigation preserve work. Do not create another trial to recover a transient success message. |
 | Make daily work clear and appealing | `lib/pos-profile.ts`, Smoothies register/admin, special-of-week and builder | Product-specific extras, responsive totals/color, visible folio/change and connected workflows; historical previews are not onsite usability acceptance. |
-| Operate from her iPad, including internet loss | PC-local runtime, one HTTPS LAN front and same-origin browser API | Not integrated. Next and browser Supabase still use PC loopback; printer/import routes also reject LAN origins. Historical PC offline checks do not establish an iPad workflow. |
+| Operate from her iPad, including internet loss | PC-local runtime, one HTTPS LAN front and same-origin browser API | Candidate integrates login/cookies, photos, print/import/backup origins and private certificate setup. Actual Safari, device trust, reboot and internet-loss acceptance remain. |
 | Preserve the whole business | `lib/smoothies-backup-assets.mjs`, restore-local/restore-contract tools | Encrypted database plus catalog photos and print journal; off-PC destination and separately retained key must be established. |
 | Receive compatible updates automatically | Signed pilot feed, `scripts/smoothies/auto-update.mjs`, `Launch-Smoothies.ps1` | Signature/hash/product/channel checks, no downgrade, unchanged database contract, closed-shift/payment/printing gate, failed-start fallback. Installed client enrollment is not evidenced. |
+| Configure the destination without another development pass | `config/smoothies-site.example.json`, `scripts/smoothies/site-plan.mjs`, existing installer | Unknown live values stay null; private package-bound checklist stays pending. Actual device/menu/count facts still required. |
+| Keep an encrypted copy outside the PC | Existing backup scheduler plus verified external-copy helper/status | Destination is optional until supplied. Independent failure/retry status preserves the good local backup; real device separation and restore remain acceptance. |
+| Inspect installation health for support | Single sanitized `support-report.mjs` behind the existing Support shortcut | App identity, TLS expiry, backup/external copy and installed signing-key status. Device acceptance and remote reporting enrollment remain explicit. |
 
 ## Progress and unfinished work
+
+- The portable package now carries site-value placeholders, an unaccepted live
+  checklist, external encrypted-copy automation and sanitized support diagnostics.
+  CI preserves the exact candidate ZIP. Explicit installed LAN rehearsal creates
+  a fresh hosted Windows 2025/Ubuntu WSL2 environment with verified real Docker
+  transport and synthetic trusted HTTPS. It tests encrypted export, unavailable
+  media and restart retry, alongside installation, normal operation and recovery.
+  Its result is recorded by exact source/ZIP in the run artifact; actual PC,
+  iPad Safari, network and printer observations remain separate live acceptance.
+- First installation checks resolved Docker volume names as well as project,
+  logical-volume and instance labels. An unlabelled or foreign existing disk is
+  refused without deletion or relabelling. Private reporting likewise binds its
+  remote record to machine and backend fingerprints, beyond the display label.
+
+- The current source review brings the independently accepted shared recipe
+  recovery and bounded checkout-abandonment fixes into this variant. Recipe
+  requests survive reload under their original account, cannot be replaced by
+  another new save, and use the verified account for the RPC. The existing
+  recipe deep links, exact menu-product state and explicit activation remain.
+  This source correction does not update a published package or installation.
 
 - Historical readiness work published `pos-v1.0.0-rc.3` with a signed Smoothies
   updater. Publication does not establish a client installation. Test counts in
@@ -53,12 +76,12 @@ where source and API architecture are shared with Café.
 
 ## Next milestones and completion criteria
 
-### Complete the existing browser workflow on the LAN
+### Complete device acceptance for the integrated LAN workflow
 
-1. Reuse the family's existing private-IP HTTPS front and backend proxy contract;
+1. The candidate reuses the family's existing private-IP HTTPS front and backend proxy contract;
    keep Next, Auth/Storage and PostgreSQL on the PC/loopback. Use one configured
    public origin and shared origin validation for browser reads and writes.
-2. Apply that same origin to login/cookies, catalog, receipt/phone print outbox,
+2. The configured origin now covers login/cookies, catalog, receipt/phone print outbox,
    menu import and backups. Allow only the Smoothies RPCs actually used. Extend
    existing handlers; do not add an alternate checkout or remote-desktop workflow.
 3. Keep canonical backend photo URLs in saved catalog records and rewrite only
@@ -77,7 +100,7 @@ where source and API architecture are shared with Café.
    all-three family promotion contract.
 3. Enroll the actual PC once: local stack, branded shortcut, private settings,
    backup/key locations and update trust. Record actual installation identity.
-4. After the LAN implementation above, on destination equipment prove reboot and
+4. Using the [LAN setup](../smoothies-lan.md), on destination equipment prove reboot and
    iPad browser operation: select products/extras, enter payment, save one sale, reconnect/reopen
    without duplication and reconcile the saved record with internet disconnected
    but LAN active. Accept printers if required and confirm opening counts.

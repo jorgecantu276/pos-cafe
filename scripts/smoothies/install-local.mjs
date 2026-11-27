@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { readSmoothiesLan } from './lan.mjs';
 
 const action = process.argv[2];
 assert.ok(['check','write'].includes(action), 'Usa el instalador de Windows.');
@@ -17,7 +18,14 @@ const startup = {
   SMOOTHIES_BACKUP_DIR: env.SMOOTHIES_BACKUP_DIR || path.join(localDirectory, 'respaldos'),
   SMOOTHIES_BACKUP_KEY_FILE: env.SMOOTHIES_BACKUP_KEY_FILE || path.join(localDirectory, 'clave', 'recuperacion.key'),
 };
+if (env.SMOOTHIES_BACKUP_EXPORT_DIR) {
+  assert.ok(path.isAbsolute(env.SMOOTHIES_BACKUP_EXPORT_DIR), 'Elige una ruta absoluta para la copia externa.');
+  startup.SMOOTHIES_BACKUP_EXPORT_DIR = env.SMOOTHIES_BACKUP_EXPORT_DIR;
+}
 if (env.SMOOTHIES_PORTABLE === '1') startup.SMOOTHIES_PORTABLE = '1';
+const lan = await readSmoothiesLan(env, { sourceRoot: root });
+if (lan) Object.assign(startup, { SMOOTHIES_LAN_ORIGIN: lan.origin,
+  SMOOTHIES_LAN_CERT_FILE: lan.certFile, SMOOTHIES_LAN_KEY_FILE: lan.keyFile });
 const localPath = value => value && path.isAbsolute(value) && !/^(?:\\\\|\/\/)/.test(value);
 const contains = (parent, child) => {
   const relative = path.relative(parent, child);

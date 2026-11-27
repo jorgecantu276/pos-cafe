@@ -1,0 +1,2 @@
+# The vendored transport has a byte-pinned hash shared with private operations.
+scripts/smoothies/SupportTransport.psm1 text eol=lf

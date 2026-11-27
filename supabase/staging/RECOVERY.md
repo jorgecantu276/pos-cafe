@@ -1,5 +1,11 @@
 # Local backup, restore and deployment rollback drill
 
+> Development reference: use isolated synthetic state only. Historical fixture
+> counts and earlier schemas below do not establish the current Smoothies/client
+> contract. Preserve the full current migration order and verify the script's
+> prerequisites before running. No hosted deployment or production reset is implied.
+
+
 Run `npm run test:recovery` with the existing local staging services running. Ports 55460, 55462–55464 and 3110–3112 must be free. The ordinary previews at 3000/3101 remain separate. This command is a development acceptance drill, not a production deployment installer or hosted Supabase restore command.
 
 ## What is backed up

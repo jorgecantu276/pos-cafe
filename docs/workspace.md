@@ -1,5 +1,12 @@
 # Touch workspace
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 The October 30 redesign uses iOS-inspired light surfaces, rounded controls and restrained blue accents. Cashier identity stays visible, the payment area stays fixed, and forms fit the café screen without hiding their actions. Plain Spanish labels and all employee-recovery controls remain intact. No external font download or heavy blur is required.
 
 The default register keeps the original owner's workflow: catalog on the left, current order on the right, item adjustments on tap and payment. The rejected Juniper prototype and original owner register remain available with server environment `POS_REGISTER_UI=prototype` or `POS_REGISTER_UI=owner`; restart the server after changing appearance. The default is `workspace`. All three use the same current checkout, reporting, shift and recovery contracts.

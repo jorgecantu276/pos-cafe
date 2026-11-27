@@ -18,7 +18,7 @@ export default function ServiceWorkerRegistration() {
       if (busy || stopped) return;
       busy = true;
       try {
-        const response = await fetch('/api/local-instance', { cache: 'no-store', signal: AbortSignal.timeout(2500) });
+        const response = await fetch('/api/app-version', { cache: 'no-store', signal: AbortSignal.timeout(2500) });
         if (!response.ok || stopped) return;
         const identity = await response.json();
         if (identity.protocol !== 1 || !/^[a-f0-9]{16}$/.test(identity.packageId)) return;

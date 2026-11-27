@@ -6,16 +6,11 @@ import { AccessError, isAuthUnavailable } from './user-management';
 import { readReceiptIssuer } from './receipt-issuer-server';
 import { withDeadline } from './request-deadline';
 import {dispatchPhonePreparation,ensurePhonePreparation,readPhonePreparation} from './phone-preparation-server';
+import { requestOriginMatches } from './request-origin';
 
 export function requireLocalPrintRequest(request: Request) {
-  const url = new URL(request.url), origin = request.headers.get('origin');
-  // Next may normalize request.url to its listening hostname (localhost), while
-  // Chrome used 127.0.0.1. Compare Origin to the actual loopback Host header.
-  const authority = new URL(`${url.protocol}//${request.headers.get('host') || url.host}`);
-  const local = ['127.0.0.1', 'localhost', '[::1]'];
-  if (!local.includes(url.hostname) || !local.includes(authority.hostname)
-    || (origin && origin !== authority.origin) || request.headers.get('x-pos-print') !== '1')
-    throw new AccessError('Abre el POS en la PC de caja para imprimir automáticamente.', 403);
+  if (!requestOriginMatches(request, { loopbackOnly: true }) || request.headers.get('x-pos-print') !== '1')
+    throw new AccessError('Abre el POS desde la dirección configurada del negocio para imprimir.', 403);
 }
 
 export async function handlePrintRequest(request: Request, client: SupabaseClient, journal: PrintJournal, config: PrintConfig) {

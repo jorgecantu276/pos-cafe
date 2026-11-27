@@ -4,6 +4,13 @@
 
 # October 30 review fixes
 
+> Scope: inherited shared-source reference. Café-specific examples and dated
+> acceptance results below are historical; they are not Smoothies menu, printer,
+> provider, rate or deployment defaults. Use [Smoothies progress](products/smoothies.md)
+> and [local operation](smoothies-local.md) for this product. No old deployment
+> authorization is renewed by this document.
+
+
 The reviewed baseline was `feea91f`. These changes address reproduced software
 defects and the verified runtime issue. PR #1 remains draft and main is not merged.
 

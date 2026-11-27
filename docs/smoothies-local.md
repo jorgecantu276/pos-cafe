@@ -2,7 +2,7 @@
 
 > Procedimiento del paquete local, no prueba de una tienda desplegada. El propietario identifica solo Café como producto en vivo. Consultar [plan de Smoothies](products/smoothies.md) y verificar el paquete exacto antes de inscripción o actualización.
 
-El POS, las ventas, el recetario y las fotos del catálogo quedan en la PC de caja. El objetivo es que la estudiante de chef lo opere desde Safari en su iPad por la red Wi‑Fi del local. El paquete actual solo funciona desde la PC; el acceso web LAN aún requiere implementación y aceptación. POS y formulario de menú son componentes del mismo producto Smoothies.
+El POS, las ventas, el recetario y las fotos del catálogo quedan en la PC de caja. La candidata integra el acceso desde Safari en el iPad por la red Wi‑Fi del local. La aceptación del paquete exacto y de los equipos reales sigue pendiente. POS y formulario de menú son componentes del mismo producto Smoothies.
 
 ## Preparar la caja local
 
@@ -42,14 +42,19 @@ En **Catálogo → Extras**, usa **Nuevo extra** o **Editar**, marca los product
 
 En **Catálogo → Especial de la semana**, elige un smoothie activo y guarda. La tarjeta aparece arriba del menú de caja y abre la preparación. Para rotar el especial, elige otro producto o selecciona **Sin especial**. El vaso toma un color según el nombre del smoothie y la preparación muestra los extras asignados a ese producto.
 
-Abre **Recetario** desde caja y guarda la primera prueba. **Nueva prueba** copia los ingredientes y la preparación anterior para que puedas ajustar cantidades. **Preparar para venta** lleva el nombre y el precio a **Catálogo → Inactivos**. Desde allí puedes revisar la ficha, editarla y activarla. Las pruebas y notas quedan en el recetario.
+Abre **Recetario** desde caja y guarda la primera prueba. **Hacer otra prueba** copia los ingredientes y la preparación anterior para que puedas ajustar cantidades. **Llevar al menú → Crear borrador** lleva el nombre y el precio a **Catálogo → Inactivos**. Desde allí puedes revisar la ficha, editarla y activarla. Las pruebas y notas quedan en el recetario.
 
-## Acceso desde el iPad: pendiente de integración
+Si no se confirma un guardado, usa **Revisar prueba pendiente**, incluso después
+de cerrar y volver a abrir la página. Ese paso comprueba la misma prueba; no
+crees otra para recuperar un resultado incierto. Esta recuperación pertenece al
+candidato revisado y requiere su entrega aceptada antes de usarse en el negocio.
 
-Ella debe poder seleccionar productos, usar el recetario y cobrar desde Safari en el iPad. El paquete actual escucha en `127.0.0.1:3180` en la PC y el navegador se conecta a Supabase por loopback; esa dirección en el iPad apunta al propio iPad. Compartir el escritorio de Windows no completa el flujo web solicitado.
+## Acceso desde Safari en el iPad
 
-La siguiente entrega debe integrar el frente HTTPS local y el proxy del backend en el mismo POS, incluyendo sesiones, fotos, importación, respaldos y el diario de impresión de la PC. Consulta el [plan de implementación y aceptación](products/smoothies.md#complete-the-existing-browser-workflow-on-the-lan). La instalación acordará IP privada, certificado y acceso de la red local; la base seguirá en la PC. No se configura un segundo POS ni una segunda base en el iPad.
+Ella selecciona productos, usa el recetario y cobra desde Safari en el iPad. La PC conserva la aplicación, Supabase, las fotos, los respaldos y el diario de impresión. El frente HTTPS se configura con una dirección privada de esa PC; el navegador utiliza el mismo origen para sus solicitudes.
+
+Consulta la [configuración LAN y aceptación](smoothies-lan.md). El instalador prepara la configuración privada y el certificado; se acepta su autoridad en los dispositivos. Usa la misma dirección HTTPS en la PC y en el iPad. Tras esta actualización se requiere iniciar sesión una vez con la nueva cookie específica de Smoothies; las operaciones pendientes conservan su identidad y cuenta.
 
 Con los dos equipos en la red del local, desconecta la salida del router a internet sin apagar su Wi‑Fi. **Desde el iPad**, selecciona una bebida y sus extras, cobra en efectivo y comprueba el cambio y el folio guardado en la PC. Desconecta/reconecta el iPad y reabre la sesión: debe permanecer una sola venta y conservarse el inventario y el recetario. Prueba también el arranque después de reiniciar Windows. El pago con tarjeta se registra después de aprobarlo en la terminal.
 
-Esta prueba se ejecuta después de integrar el acceso LAN. La implementación y la aceptación en la PC y el iPad del negocio siguen pendientes; los ensayos históricos de venta local no las sustituyen.
+La integración pertenece al candidato revisado. La aceptación en la PC y el iPad del negocio sigue pendiente; los ensayos sintéticos no la sustituyen.

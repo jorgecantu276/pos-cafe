@@ -69,14 +69,11 @@ try {
     await page.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
-      if (url.origin === 'http://127.0.0.1:58000') {
-        const headers = { 'Access-Control-Allow-Origin': base, 'Access-Control-Allow-Headers': '*',
-          'Access-Control-Allow-Methods': 'POST,GET,OPTIONS' };
-        if (request.method() === 'OPTIONS') return route.fulfill({ status: 200, headers, body: '' });
+      if (url.origin === base && url.pathname === '/api/backend/rest/v1/rpc/pos_login_profiles') {
         const key = request.headers().apikey;
         rpcKeys.push(key);
         const valid = releasedConfig && key === publicKey && request.headers().authorization === `Bearer ${publicKey}`;
-        return route.fulfill({ status: valid ? 200 : 401, contentType: 'application/json', headers,
+        return route.fulfill({ status: valid ? 200 : 401, contentType: 'application/json',
           body: JSON.stringify(valid ? [{ id: '00000000-0000-4000-8000-000000000001',
             full_name: 'Administrador', username: 'admin', avatar_url: null }]
             : { message: 'Public config was not ready or the client used the baked placeholder.' }) });

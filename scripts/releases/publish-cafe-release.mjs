@@ -8,6 +8,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { publishVerifiedRelease } from './github-release.mjs';
 import { readSignedUpdate, extractWindowsZip, verifyPackage } from '../windows/auto-update.mjs';
+import { verifyAcceptedFamily } from './family-evidence.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), repo = 'jorgecantu276/pos-cafe';
 const [key, cafe, smoothies, native, zip, envelope, notes, ...from] = process.argv.slice(2);
@@ -22,6 +23,8 @@ const release = JSON.parse(readFileSync(path.join(cafe, 'release.json'), 'utf8')
 assert.equal(release.product, 'cafe');
 assert.equal(release.fixtureOnly, false);
 assert.equal(release.sourceCommit, git(['rev-parse', 'HEAD']));
+await verifyAcceptedFamily({ candidateFile: process.env.POS_FAMILY_CANDIDATE, acceptanceFile: process.env.POS_FAMILY_ACCEPTANCE,
+  sourceCommit: release.sourceCommit, directories: { cafe, smoothies, papeleria: native }, product: 'cafe', zip });
 assert.ok(!from.includes(release.sourceCommit));
 assert.ok(readFileSync(notes, 'utf8').trim(), 'Release notes are required.');
 const tag = 'pos-' + release.sourceCommit.slice(0, 7);

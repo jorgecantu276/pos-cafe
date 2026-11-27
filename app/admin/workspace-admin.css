@@ -157,7 +157,7 @@
 
 /* Shared administration controls and dialogs. */
 .workspace-admin .admin-description { color: #59687c; font-size: 14px; line-height: 1.45; }
-.workspace-admin main .admin-primary-button, .workspace-admin main .admin-secondary-button, .workspace-admin main .admin-danger-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 11px 18px; border: 1px solid #d9e1eb; font: inherit; font-weight: 600; text-decoration: none; }
+.workspace-admin main .admin-primary-button, .workspace-admin main .admin-secondary-button, .workspace-admin main .admin-danger-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 11px 18px; border: 1px solid #d9e1eb; border-radius: 12px; font: inherit; font-weight: 600; text-decoration: none; }
 .workspace-admin main .admin-primary-button { background: var(--admin-blue); border-color: var(--admin-blue); color: #fff; }
 .workspace-admin main .admin-primary-button:hover:not(:disabled) { background: #005bb5; border-color: #005bb5; }
 .workspace-admin main .admin-secondary-button { color: #25334a; background: #fff; }
@@ -322,7 +322,7 @@
 .smoothies-app #especial-semanal{scroll-margin-top:88px}
 .smoothie-today{display:grid;gap:12px;margin-bottom:20px;padding:16px;background:linear-gradient(115deg,#fff3e7,#fbe9f0);border:1px solid #f1ded7}
 .smoothie-today>header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
-.smoothie-today>nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.smoothie-today>nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
 .smoothie-today :is(.smoothie-today-sales,nav>a){min-width:0;display:flex;align-items:center;gap:12px;border:1px solid var(--ui-line);background:#fffdfb;color:var(--ui-ink);padding:11px 12px;border-radius:13px;text-decoration:none}
 .smoothie-today a:hover{border-color:#c987a4}
 .smoothie-today a>svg{flex:none;color:var(--ui-accent)}

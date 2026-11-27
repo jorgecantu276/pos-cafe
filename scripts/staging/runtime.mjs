@@ -20,6 +20,12 @@ const cli = path.join(path.dirname(require.resolve('supabase/package.json')), cl
 // Pre-create the primary network; Windows also needs explicit published IPs.
 export const network = `supabase_network_${project}`;
 
+export function realDockerExecutable() {
+  const executable = process.env.POS_CAFE_REAL_DOCKER || (localDockerBin && path.join(localDockerBin, 'docker.exe'));
+  assert.ok(executable && path.isAbsolute(executable) && existsSync(executable), 'A configured installed Docker CLI is required');
+  return executable;
+}
+
 export function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd: root, windowsHide: true, ...options, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -49,8 +55,7 @@ export async function prepare(allowStoppedConfigDrift = false) {
 export async function cliRun(args) {
   let env = { ...process.env };
   if (process.platform === 'win32') {
-    const real = localDockerBin && path.join(localDockerBin, 'docker.exe');
-    assert.ok(real && existsSync(real), 'The installed per-user Docker CLI is required');
+    const real = realDockerExecutable();
     const bin = path.join(work, 'docker-bin'); await mkdir(bin, { recursive: true });
     const launcher = path.join(bin, 'docker.exe');
     const compiler = path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET/Framework64/v4.0.30319/csc.exe');

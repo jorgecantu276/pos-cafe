@@ -1,10 +1,17 @@
 import { createBrowserClient } from '@supabase/ssr'
 import { supabasePublicKey } from './supabase-public-config'
 import { operationsDemoAuth } from './operations-demo-auth'
+import { posProfile } from './pos-profile'
+import { browserSupabaseUrl, supabaseStorageKey, supabaseCookieOptions } from './supabase-connection'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 function createClient() {
-  return createBrowserClient(supabaseUrl, supabasePublicKey(), operationsDemoAuth(supabaseUrl))
+  if (posProfile.id !== 'smoothies') return createBrowserClient(supabaseUrl, supabasePublicKey(), operationsDemoAuth(supabaseUrl))
+  const origin = typeof window === 'undefined' ? process.env.POS_PUBLIC_ORIGIN : window.location.origin
+  return createBrowserClient(browserSupabaseUrl(supabaseUrl, typeof window === 'undefined' ? undefined : origin), supabasePublicKey(), {
+    auth: { storageKey: supabaseStorageKey(supabaseUrl) }, cookieOptions: supabaseCookieOptions(supabaseUrl, origin),
+    ...operationsDemoAuth(supabaseUrl),
+  })
 }
 type BrowserClient = ReturnType<typeof createClient>
 let client: BrowserClient | undefined

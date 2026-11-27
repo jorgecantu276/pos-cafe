@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      run_installed_acceptance:
+        description: Run final-ZIP LAN acceptance on a fresh hosted Windows/WSL2 VM
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,7 +45,7 @@ jobs:
         run: npm run ${{ matrix.script }}
   verify:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       NEXT_TELEMETRY_DISABLED: '1'
       NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:55451
@@ -65,7 +70,17 @@ jobs:
           POS_RECEIPT_CONTRACT_EVIDENCE: ${{ runner.temp }}/pos-receipt-contract.json
       - run: npm audit
       - run: npm audit --omit=dev
-      - run: npm run build:verify
+      - name: Build the Cafe profile with its existing direct backend contract
+        run: npm run build:verify
+        env:
+          NEXT_PUBLIC_POS_PROFILE: cafe
+      - name: Build and exercise the Smoothies LAN profile
+        run: npm run build:verify
+        env:
+          NEXT_PUBLIC_POS_PROFILE: smoothies
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:59999
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-public-key-for-build-only
+          POS_VERIFY_LAN: '1'
       - run: npm run test:printing
         env:
           POS_RECEIPT_CONTRACT_EVIDENCE: ${{ runner.temp }}/pos-receipt-contract.json
@@ -82,6 +97,8 @@ jobs:
     name: Portable Smoothies package (Windows)
     runs-on: windows-latest
     timeout-minutes: 25
+    outputs:
+      zip_sha256: ${{ steps.candidate.outputs.sha256 }}
     env:
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
@@ -106,7 +123,7 @@ jobs:
           node scripts/smoothies/package-windows.mjs $release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          foreach ($entry in 'node.exe', 'app/server.js', 'Instalar POS Smoothies.cmd') {
+          foreach ($entry in 'node.exe', 'app/server.js', 'Instalar POS Smoothies.cmd', 'smoothies-site.example.json', 'smoothies-reporting.example.json', 'app/scripts/smoothies/site-plan.mjs', 'app/scripts/smoothies/support-report.mjs', 'app/scripts/smoothies/export-backup.mjs', 'app/scripts/smoothies/Publish-BackupCopy.ps1', 'app/scripts/smoothies/BackendOwnership.psm1', 'app/scripts/smoothies/Install-SmoothiesSupport.ps1', 'app/scripts/smoothies/Report-SmoothiesSupport.ps1', 'app/scripts/smoothies/SupportTransport.psm1', 'app/lib/business-backup-export.mjs') {
             if (!(Test-Path -LiteralPath (Join-Path $release $entry) -PathType Leaf)) {
               throw "Package file missing: $entry"
             }
@@ -131,8 +148,34 @@ jobs:
           if (Select-String -LiteralPath $compose -Pattern '__[A-Z_]+__' -Quiet) {
             throw 'Unresolved placeholder in the generated Compose template.'
           }
+          $site = Join-Path $fixture 'site.json'
+          & $nodeExe (Join-Path $release 'app/scripts/smoothies/site-plan.mjs') init $site
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $plan = & $nodeExe (Join-Path $release 'app/scripts/smoothies/site-plan.mjs') inspect $site | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $plan.configurationReady -or $plan.liveAcceptance -ne 'pending') { throw 'Blank live values cannot qualify an installation.' }
+          & $nodeExe (Join-Path $release 'app/scripts/smoothies/site-plan.mjs') checklist $site (Join-Path $fixture 'live-acceptance.json')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $nodeExe (Join-Path $release 'app/scripts/smoothies/support-report.mjs') $fixture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $disabled = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $release 'app/scripts/smoothies/Install-SmoothiesSupport.ps1') -Root $fixture -ConfigurationPath (Join-Path $release 'smoothies-reporting.example.json') | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $disabled.installed -or $disabled.publication -or $disabled.state -ne 'disabled') { throw 'The placeholder reporting template must never enroll or publish.' }
           node scripts/smoothies/smoke-portable-config.mjs $release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve the exact uninstalled candidate ZIP
+        id: candidate
+        shell: pwsh
+        run: |
+          $release = Join-Path $env:RUNNER_TEMP 'pos-smoothies-portable'
+          $zip = Join-Path $env:RUNNER_TEMP 'smoothies-candidate.zip'
+          [IO.Compression.ZipFile]::CreateFromDirectory($release, $zip)
+          $sha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "sha256=$sha"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoothies-windows-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/smoothies-candidate.zip
+          if-no-files-found: error
+          retention-days: 14
   smoothies-backend:
     name: Smoothies import and cash recovery
     runs-on: ubuntu-24.04
@@ -152,3 +195,37 @@ jobs:
         run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55540-55569
       - run: node --import tsx scripts/smoothies/import-drill.mjs
       - run: node --import tsx scripts/smoothies/local-sale-drill.mjs
+  smoothies-installed-lan:
+    name: Final ZIP installation and LAN acceptance (hosted Windows/WSL2)
+    if: github.event_name == 'workflow_dispatch' && inputs.run_installed_acceptance
+    needs: [verify, smoothies-package, smoothies-backend, integration]
+    runs-on: windows-2025
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    env:
+      POS_ACCEPTANCE_DISPOSABLE: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.2
+          cache: npm
+      - run: npm ci
+      - name: Establish a real isolated Linux Docker engine and verify Windows transport
+        shell: pwsh
+        run: ./scripts/testing/Start-HostedWslDocker.ps1
+      - name: Install and rehearse this run's exact candidate with synthetic LAN values
+        shell: pwsh
+        run: |
+          ./scripts/testing/Run-HostedSmoothiesRehearsal.ps1 -SourceRunId $env:GITHUB_RUN_ID -SourceCommit $env:GITHUB_SHA -ExpectedZipSha256 '${{ needs.smoothies-package.outputs.zip_sha256 }}'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: smoothies-installed-acceptance-${{ github.sha }}
+          path: ${{ runner.temp }}/smoothies-rehearsal-evidence/rehearsal.json
+          if-no-files-found: warn
+          retention-days: 14

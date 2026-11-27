@@ -1,44 +1,27 @@
-# Tamaños y leches
+# Sizes and product-specific options
 
-Caja muestra una sola tarjeta **Iced Coffee** y una sola tarjeta **Matcha**.
-Dentro de cada ficha, el selector de 16 oz / 20 oz aparece junto al nombre.
-Después se eligen sabor o preparación, leche y notas. Cambiar el tamaño conserva
-una preparación equivalente y sus opciones compatibles. Si esa preparación no
-existe en el otro tamaño, hay que elegir una antes de agregarla a la orden.
+A size is a real catalog presentation with its own permanent product ID and price.
+Café retains its accepted catalog, prices, exclusive milk choices and saved
+receipt contracts. For Smoothies, the client's approved JSON defines names,
+sizes, prices, milk choices and eligible extras; Café's menu is not a default.
+See [local import workflow](smoothies-local.md).
 
-El tamaño identifica un producto real del catálogo: nombres terminados en
-`16 oz` o `20 oz`, con su propio ID y precio. Las opciones de preparación omiten
-el tamaño porque ya está visible en el selector. Los productos anteriores
-conservan sus IDs; tickets guardados y pedidos telefónicos conservan sus precios.
+Changing size preserves only compatible preparation/options. If no equivalent
+exists, require a new choice before adding the item. Server validation remains
+authoritative; an old cart with no-longer-eligible extras must be reviewed.
 
-| Bebida | 16 oz | 20 oz |
-| --- | --- | --- |
-| Iced Coffee, sabores habituales | $95 | $125 |
-| Iced Coffee Flan | $130 | No disponible |
-| Matcha Cariño | $105 | $140 |
-| Matcha Fresa / Mango | $115 | No disponible como esa misma preparación |
-| Matcha Cold foam Fresa / Mango | No disponible | $140 |
-| Matcha Ceremonial | $140 | No disponible |
+Distinguish a single-choice milk replacement from extras that can be combined.
+Importing the same approved file must not duplicate products/options. A corrected
+file preserves identities and lets the operator review actual changes. Planned
+inventory is separate from physical counts.
 
-Iced Coffee conserva el grupo **Tipo de Leche**: entera, deslactosada y
-deslactosada light sin recargo; almendra, avena, coco y Lala 100 suman $15.
-Matcha usa **Leche alternativa**, con las seis leches existentes sin recargo y
-Lala 100 sin recargo con el ajuste de noviembre. El ajuste sustituye **Fruta
-extra** por **Cold foam extra** a $15 en las siete presentaciones de Matcha.
-Ceremonial muestra el extra en una sola sección. Los cambios conservan los
-identificadores y precios base de los productos.
+The shared migration `202611050023_alternative_milk_choice.sql` guards an exclusive
+alternative-milk group across manual checkout, provider quotes and phone orders.
+Check the current local migration contract rather than assuming a historical Café
+backend deployment applies to this installation. Existing receipts and phone
+quotes retain their original accepted price/options.
 
-**Chai Latte** conserva la tarjeta de 16 oz, con **Frío** y **Caliente** a $95.
-Avena, almendra y coco cuestan $15 adicionales en el grupo **Tipo de Leche**.
-
-La migración 023 exige una sola elección de leche alternativa en venta manual,
-cotización CLIP y pedidos telefónicos. La actualización del catálogo se aplicó
-con guardas de revisión y solicitudes auditadas, conservando las filas anteriores
-de inventario. Las nuevas presentaciones empiezan en modo de disponibilidad,
-sin cantidades inventadas. Los borradores con un extra que ya no corresponde
-deben revisarse; no se modifica una solicitud de cobro pendiente.
-
-El ajuste de noviembre está en
-[`scripts/catalog/november-matcha-extras.sql`](../scripts/catalog/november-matcha-extras.sql).
-La prueba `npm run test:db` lo aplica a un catálogo de ensayo en PostgreSQL
-local y comprueba los importes nuevos y la recuperación de tickets anteriores.
+`npm run test:db` exercises option validation and historical receipt recovery on
+an isolated synthetic catalog. The Café-specific catalog script
+`scripts/catalog/november-matcha-extras.sql` is a historical client adjustment,
+not a Smoothies setup/default menu or permission to run that SQL.
