@@ -197,6 +197,7 @@ function Write-CanaryForwardingDiagnostics([string]$Container, [string]$Expected
         if ($containerInfo.Config.Labels.'mx.pos-hosted-rehearsal' -cne $owner) { throw 'Unowned canary diagnostic refused.' }
         $report.container = @{ running = $containerInfo.State.Running; status = $containerInfo.State.Status; bindings = $containerInfo.NetworkSettings.Ports }
         $report.windowsDynamicTcpRange = (Native -Executable 'netsh.exe' -Arguments @('int','ipv4','show','dynamicport','tcp') -TimeoutSeconds 10)
+        $report.windowsExcludedTcpRanges = (Native -Executable 'netsh.exe' -Arguments @('int','ipv4','show','excludedportrange','protocol=tcp') -TimeoutSeconds 10)
         foreach ($port in @(58000,55432,55541,55542,55543,55544)) {
             $row = @{ port = $port; windowsConnections = @(Get-CanaryWindowsConnections $port) }
             try {
