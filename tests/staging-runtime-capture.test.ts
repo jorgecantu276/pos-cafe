@@ -25,7 +25,9 @@ test('actual staging capture preserves early critical causes before progress evi
   const directory = await mkdtemp(path.join(tmpdir(), 'pos-runtime-progress-'));
   const fixture = path.join(directory, 'progress.cjs');
   const token = 'eyJ' + 'a'.repeat(40) + '.' + 'b'.repeat(40) + '.' + 'c'.repeat(40);
-  await writeFile(fixture, `const fs=require('node:fs');fs.writeSync(2,'FATAL early stderr cause ${token}\\n');fs.writeSync(1,'Error: early stdout cause postgres://user:private-canary@127.0.0.1/db\\n');const progress='pull progress '.repeat(160000)+'\\n';fs.writeSync(2,progress);fs.writeSync(1,progress);process.exit(9);`);
+  // Neutral progress separates the real failure from any context retained for
+  // ordinary chatter, so the pre-fix four-window saturation truly loses it.
+  await writeFile(fixture, `const fs=require('node:fs'),nl=String.fromCharCode(10);fs.writeSync(2,['registry download progress','daemon starting image','registry image metadata','daemon image ready','download progress one','download progress two','download progress three','FATAL early stderr cause ${token}',''].join(nl));fs.writeSync(1,'Error: early stdout cause postgres://user:private-canary@127.0.0.1/db'+nl);const progress='pull progress '.repeat(160000)+nl;fs.writeSync(2,progress);fs.writeSync(1,progress);process.exit(9);`);
   await assert.rejects(run(process.execPath, [fixture]), error => {
     assert.ok(error instanceof Error); assert.match(error.message, /failed \(9\)/);
     assert.match(error.message, /FATAL early stderr cause/); assert.match(error.message, /Error: early stdout cause/);

@@ -51,7 +51,7 @@ export function run(command, args, options = {}) {
 }
 function outputCapture() { return { tail: '', pending: '', critical: [], following: 0 }; }
 function captureLine(capture, line) {
-  if (/\b(?:error|fatal|panic|failed to|registry|daemon|rate exceeded|unexpected status|ERR_ASSERTION)\b/i.test(line) && capture.critical.length < 4) {
+  if (/\b(?:error|fatal|panic|failed to|rate exceeded|unexpected status|ERR_ASSERTION)\b/i.test(line) && capture.critical.length < 4) {
     capture.critical.push([redact(line).slice(0, 512)]); capture.following = 2;
   } else if (capture.following > 0) {
     capture.critical[capture.critical.length - 1].push(redact(line).slice(0, 512)); capture.following--;
