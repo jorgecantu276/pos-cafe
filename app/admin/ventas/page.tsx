@@ -93,7 +93,7 @@ export default function VentasPage() {
         <div className="workspace-sales-list" aria-label="Tickets">{filteredOrders.map(order => <button type="button" key={order.id} onClick={() => setSelectedOrder(order)}>
           <span><strong>#{String(order.ticket_number ?? order.id.split('-')[0]).padStart(4, '0')}</strong><small>{reportDate(order.created_at, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</small></span>
           <span className="workspace-sales-items">{order.order_items.map(item => { const info=item.product_snapshot || (Array.isArray(item.products) ? item.products[0] : item.products); return item.quantity+' × '+(info?.name || 'Producto'); }).join(', ')}{isCanceled(order.status) && <small>Cancelado</small>}{order.status === 'pending' && <small>Pendiente de revisión</small>}</span>
-          <span className="workspace-sales-amount"><strong>{reportMoney(Number(order.total))}</strong><small>{order.payment_method}</small></span>
+          <span className="workspace-sales-amount"><strong>{reportMoney(Number(order.total))}</strong><small>{order.payment_method === 'efectivo_tarjeta' ? `Mixto · Efectivo ${reportMoney(Number(order.total)-Number(order.card_amount_mxn))} + Tarjeta ${reportMoney(Number(order.card_amount_mxn))}` : order.payment_method}</small></span>
         </button>)}</div>
         {!filteredOrders.length && <p className="workspace-sales-empty">{search ? 'Sin resultados en este periodo.' : 'No hay ventas en este periodo.'}</p>}
         <ReportPagination page={report.page} pageSize={report.page_size} rows={report.summary.rows} onPage={page => setQuery({ ...query, page, asOf: report.as_of })}/>

@@ -9,6 +9,7 @@ import {openPrintWindow} from '@/lib/printing';
 import { loadReport, reportParams, reportQuery, reportDate, reportMoney, reportPeriod, type ShiftReport } from '@/lib/reports';
 import { ReportFilters, ReportPagination } from '../ReportControls';
 import { loadActiveDrawer } from '@/lib/active-drawer';
+import { paymentMethodLabel } from '@/lib/split-payment';
 import { Receipt, CreditCard, User, AlertCircle, Loader2, History, FileText } from 'lucide-react';
 
 export default function CortesPage() {
@@ -109,7 +110,7 @@ export default function CortesPage() {
                      {Object.entries(salesByMethod).length > 0 ? (
                         Object.entries(salesByMethod).map(([method, amount]) => (
                           <div key={method} className="flex justify-between items-center p-3 bg-[#f5f5f7] rounded-xl">
-                             <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">{method}</span>
+                             <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">{paymentMethodLabel(method)}</span>
                              <span className="font-black text-slate-800">${amount.toFixed(2)}</span>
                           </div>
                         ))
@@ -183,6 +184,7 @@ export default function CortesPage() {
                     <div className="text-right">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Ventas del Turno</p>
                       <p className="text-xl font-black text-[#1d1d1f] tracking-tighter">${Number(shift.total_sales).toFixed(2)}</p>
+                      {shift.payments && Object.entries(shift.payments).map(([method,amount])=><p key={method} className="text-xs text-slate-600">{paymentMethodLabel(method)}: {reportMoney(amount)}</p>)}
                     </div>
                     
                     <div className="w-px h-8 bg-slate-100 hidden md:block"></div>

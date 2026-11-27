@@ -245,3 +245,52 @@ test('receiving whole USD uses the real tender and gives peso change without inc
   },createElement(WorkspaceCheckout,{total:130,exchangeRate:16,method:'Mixto',mxn:'',usd:'9.25',orderType:'En Local',note:'',busy:false,insufficient:false,
     pagerNumber:1,onMethod:()=>{},onMXN:()=>{},onUSD:()=>{},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},onConfirm:()=>assert.fail('No USD coins')}));
 });
+
+
+test('Mixto tab splits card and peso cash, keeps approval tied to card amount and leaves MXN+USD separate',async()=>{
+  let saved:unknown;
+  function Checkout(){
+    const [method,setMethod]=useState('Efectivo'),[card,onCard]=useState(''),[mxn,onMXN]=useState(''),[usd,onUSD]=useState('');
+    return createElement(WorkspaceCheckout,{total:130,exchangeRate:16,method,card,mxn,usd,onCard,onMXN,onUSD,
+      orderType:'En Local',note:'',busy:false,insufficient:false,pagerNumber:1,
+      onMethod:value=>{setMethod(value);onCard('');onMXN('');onUSD('');},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},
+      onConfirm:()=>{saved={method,card,mxn,usd};}});
+  }
+  await render(async(screen,click)=>{
+    const confirm=()=>[...screen.querySelectorAll('button')].find(button=>button.textContent==='Confirmar pago')!;
+    assert.deepEqual([...screen.querySelectorAll('.workspace-payment-methods button')].map(b=>b.textContent),['Efectivo','MXN + USD','Tarjeta','Mixto']);
+    await click('Mixto');assert.equal(confirm().disabled,true);
+    await click('8');await click('0');
+    assert.equal(screen.querySelector<HTMLInputElement>('[aria-label="Tarjeta MXN"]')!.value,'80');
+    assert.match(screen.body.textContent!,/Efectivo por pagar: \$50.00/);
+    assert.equal(screen.querySelector('[aria-label="Recibido USD"]'),null);
+    await click('Efectivo exacto');assert.equal(confirm().disabled,true);
+    const approve=async()=>{await act(async()=>screen.querySelector<HTMLInputElement>('input[type=checkbox]')!.click());};
+    await approve();assert.equal(confirm().disabled,false);
+    const cardInput=screen.querySelector<HTMLInputElement>('[aria-label="Tarjeta MXN"]')!;
+    Object.assign(cardInput,{attachEvent:()=>{},detachEvent:()=>{}});
+    await act(async()=>cardInput.focus());
+    await click('Borrar último dígito');assert.equal(confirm().disabled,true);
+    await click('0');await approve();await click('Confirmar pago');
+    assert.deepEqual(saved,{method:'efectivo_tarjeta',card:'80',mxn:'50',usd:''});
+    await click('MXN + USD');assert.ok(screen.querySelector('[aria-label="Recibido USD"]'));
+    assert.equal(screen.querySelector('[aria-label="Tarjeta MXN"]'),null);
+    await click('Mixto');assert.equal(confirm().disabled,true);
+    assert.equal(screen.querySelector<HTMLInputElement>('[aria-label="Tarjeta MXN"]')!.value,'');
+  },createElement(Checkout));
+});
+
+for(const component of [WorkspaceCheckout,PrototypeCheckout])test(component.name+' refuses invalid splits and shows only the partial CLIP charge',async()=>{
+  for(const card of ['', '0','130','150','-1','NaN','8.001'])await render(async screen=>{
+    const button=[...screen.querySelectorAll('button')].find(b=>b.textContent?.startsWith('Cobrar '))!;
+    assert.equal(button.disabled,true,card);
+  },createElement(component,{total:130,exchangeRate:16,method:'efectivo_tarjeta',card,mxn:'130',usd:'',onCard:()=>{},
+    clipEnabled:true,orderType:'En Local',note:'',busy:false,insufficient:false,pagerNumber:1,
+    onMethod:()=>{},onMXN:()=>{},onUSD:()=>{},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},onConfirm:()=>assert.fail()}));
+  await render(async(screen,click)=>{
+    assert.match(screen.body.textContent!,/Cobrar \$80.00 en CLIP/);
+    await click('Cobrar $80.00 en CLIP');
+  },createElement(component,{total:130,exchangeRate:16,method:'efectivo_tarjeta',card:'80',mxn:'100',usd:'',onCard:()=>{},
+    clipEnabled:true,orderType:'En Local',note:'',busy:false,insufficient:false,phoneOrderLabel:'T0042',
+    onMethod:()=>{},onMXN:()=>{},onUSD:()=>{},onOrderType:()=>{},onNote:()=>{},onClose:()=>{},onConfirm:()=>{}}));
+});

@@ -63,6 +63,7 @@ export interface Sale {
   created_at: string;
   total: number;
   payment_method: string | null;
+  card_amount_mxn?: number;
   status: string | null;
   order_items: SaleItem[];
 }
@@ -78,6 +79,7 @@ export interface PastShift {
   user_name: string | null;
   total_sales: number;
   difference: number;
+  payments?: Record<string, number> | null;
 }
 export interface Coupon {
   id: string;

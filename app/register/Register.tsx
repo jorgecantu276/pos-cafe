@@ -1,6 +1,6 @@
 'use client';
 import { posProfile } from '@/lib/pos-profile';
-import { receivedCashMXN, usdCashQuote } from '@/lib/usd-cash';
+import { receivedCashMXN } from '@/lib/usd-cash';
 
 import Image from 'next/image';
 import ProductPhoto from '@/components/ProductPhoto';
@@ -35,6 +35,7 @@ import './printing.css';
 import { rememberSalePrint,rememberPhonePrint } from '@/lib/sale-printing';
 import type { ShiftReport } from '@/lib/shift';
 import { closeRequestKey, closeShift, expenseRequestKey, loadShiftSummary, recoverPendingExpenses, recoverShiftClose, restoreShiftExpenses, saveShiftExpenses, type ShiftSummary } from '@/lib/shift-state';
+import { splitPayment, splitPaymentMethod } from '@/lib/split-payment';
 import { CheckoutRejected, ClipPaymentPending, checkoutPayload, executeCheckout, readCheckoutReview, withCheckoutLock, type CheckoutReview, type SavedOrder } from '@/lib/checkout';
 import { bindCartDraft, cartDraftKey, type CartDraftBinding } from '@/lib/cart-draft';
 import { withDeadline } from '@/lib/request-deadline';
@@ -173,6 +174,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState('Efectivo');
+  const [cardAmountMXN, setCardAmountMXN] = useState<string | number>('');
   const [amountReceivedMXN, setAmountReceivedMXN] = useState<string | number>('');
   const [amountReceivedUSD, setAmountReceivedUSD] = useState<string | number>('');
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
@@ -772,6 +774,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
     setSelectedPhoneOrder(null);
     setPaymentMethod('Efectivo');
     setAmountReceivedMXN('');
+    setCardAmountMXN('');
     setAmountReceivedUSD('');
     setCheckoutStep(1);
     setShowCheckoutModal(true);
@@ -823,7 +826,7 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
       const current=await getPhoneOrder(supabase,order.id);
       if(draftOwner.current!==actor||cartDraft.current!==binding)return;
       if(current.status!=='pending')throw new Error('Este pedido ya no está por cobrar. Actualiza la lista.');
-      setSelectedPhoneOrder(current);setShowPhoneOrders(false);setPaymentMethod('Efectivo');setAmountReceivedMXN('');setAmountReceivedUSD('');setShowCheckoutModal(true);
+      setSelectedPhoneOrder(current);setShowPhoneOrders(false);setPaymentMethod('Efectivo');setCardAmountMXN('');setAmountReceivedMXN('');setAmountReceivedUSD('');setShowCheckoutModal(true);
     }catch(error){if(draftOwner.current===actor)alert(errorMessage(error));}finally{if(draftOwner.current===actor)setPhoneBusy(false);}
   };
 
@@ -886,13 +889,14 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
           if(readPhoneRequest(localStorage,draftOwner.current))throw new Error('Comprueba el pedido sin confirmar antes de cobrar.');
           const orderTotal = selectedPhoneOrder?.snapshot.total??getTotal(),orderItems=selectedPhoneOrder?.snapshot.items??items;
           if (!registerId || !orderItems.length || !Number.isFinite(orderTotal) || orderTotal <= 0 || isPaymentInsufficient) throw new Error('Revisa la orden, el turno y el importe recibido.');
-          const cash = ['Efectivo','Mixto'].includes(paymentMethod);
+          const cash = ['Efectivo','Mixto',splitPaymentMethod].includes(paymentMethod);
           if (cash && !smoothies && !Number.isInteger(parseAmount(amountReceivedUSD))) throw new Error('Recibe dólares enteros. El cambio se entrega en pesos.');
           review = { startedAt: new Date().toISOString(), total: orderTotal, requestId: selectedPhoneOrder?crypto.randomUUID():binding!.requestId(),
-            ...(clipEnabled && paymentMethod==='Tarjeta' ? {provider:'clip' as const} : {}),
+            ...(clipEnabled && (paymentMethod==='Tarjeta'||paymentMethod===splitPaymentMethod) ? {provider:'clip' as const} : {}),
             payload: checkoutPayload(orderItems, {
               register_id: registerId, expected_total: orderTotal, payment_method: paymentMethod.toLowerCase(),
               tender_mxn: cash ? parseAmount(amountReceivedMXN) : 0, tender_usd: cash ? parseAmount(amountReceivedUSD) : 0,
+              ...(paymentMethod===splitPaymentMethod?{card_amount_mxn:parseAmount(cardAmountMXN)}:{}),
               customer_id: selectedPhoneOrder?selectedPhoneOrder.customer_id??null:customerId, order_type: selectedPhoneOrder?.snapshot.order_type??orderType, order_note: selectedPhoneOrder?.snapshot.order_note??orderNote, pager_number:selectedPhoneOrder||smoothies?null:pagerNumber,
               ...(selectedPhoneOrder?{phone_order_id:selectedPhoneOrder.id,phone_order_revision:selectedPhoneOrder.revision}:{}),
             }, !smoothies),
@@ -991,13 +995,13 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
   // 🟢 LA MATEMÁTICA PROTEGIDA DEL CAMBIO
   const totalReceivedCombinedMXN = receivedCashMXN(parseAmount(amountReceivedMXN),parseAmount(amountReceivedUSD),parseAmount(exchangeRate));
   const checkoutTotal=selectedPhoneOrder?.snapshot.total??getTotal();
-  const isPaymentInsufficient = (paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && (totalReceivedCombinedMXN < checkoutTotal || (!smoothies && !Number.isInteger(parseAmount(amountReceivedUSD))));
+  const isPaymentInsufficient = paymentMethod===splitPaymentMethod ? (!splitPayment(checkoutTotal,cardAmountMXN,amountReceivedMXN).valid || parseAmount(amountReceivedUSD)!==0) : (paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && (totalReceivedCombinedMXN < checkoutTotal || (!smoothies && !Number.isInteger(parseAmount(amountReceivedUSD))));
 
   const catalogNotice = (catalogStale || catalogCheckError) && <div role="status" className="relative z-10 flex flex-wrap items-center gap-3 border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950"><span>{catalogStale ? 'El menú cambió. Actualiza y revisa el pedido antes de cobrar.' : catalogCheckError} {(selectedFamily || selectedProduct || showCheckoutModal) && 'Cierra la ventana actual para actualizar.'}{checkoutReview && 'Primero resuelve la venta pendiente.'}</span><button type="button" className="rounded-xl border bg-white px-4 py-2 font-semibold disabled:opacity-50" disabled={loading || !!selectedFamily || !!selectedProduct || showCheckoutModal || !!checkoutReview || isProcessingCheckout || isClosingShift || savingExpense || openingShift} onClick={refreshCatalog}>Actualizar menú</button></div>;
   const printStatus = <PrintDispatch key={printCheckoutKey} checkoutKey={printCheckoutKey} latestOrderId={savedSale?.id??phonePrintId} />;
   const RegisterView = appearance === 'workspace' ? WorkspaceRegister : PrototypeRegister;
   const CheckoutView = appearance === 'workspace' ? WorkspaceCheckout : PrototypeCheckout;
-  const PaymentView=selectedPhoneOrder?WorkspaceCheckout:CheckoutView;
+  const PaymentView=selectedPhoneOrder||appearance==='owner'?WorkspaceCheckout:CheckoutView;
   const customizationProps = {
     steps: dynamicSteps, index: customizationStep, extras: activeExtras,
     dbExtras: selectedProduct ? dbExtras.filter(e => e.active && extraAppliesToProduct(e, selectedProduct.id)) : [],
@@ -1571,10 +1575,10 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
       </div>
 
       </>}
-      {showCheckoutModal&&(appearance!=='owner'||selectedPhoneOrder)&&<PaymentView total={checkoutTotal} method={paymentMethod} mxn={amountReceivedMXN} usd={amountReceivedUSD} exchangeRate={parseAmount(exchangeRate)}
+      {showCheckoutModal&&(appearance!=='owner'||selectedPhoneOrder||checkoutStep===2)&&<PaymentView total={checkoutTotal} method={paymentMethod} mxn={amountReceivedMXN} usd={amountReceivedUSD} exchangeRate={parseAmount(exchangeRate)}
         pagerNumber={selectedPhoneOrder?null:pagerNumber} onPagerNumber={selectedPhoneOrder||smoothies?undefined:setPagerNumber} smoothies={smoothies} clipEnabled={clipEnabled} phoneOrderLabel={selectedPhoneOrder?`Pedido por teléfono #${selectedPhoneOrder.folio} · ${selectedPhoneOrder.contact_name}`:undefined}
-        orderType={selectedPhoneOrder?.snapshot.order_type??orderType} note={selectedPhoneOrder?.snapshot.order_note??orderNote} busy={isProcessingCheckout} insufficient={isPaymentInsufficient} onMethod={method=>{if(method===paymentMethod)return;setPaymentMethod(method);setAmountReceivedMXN('');setAmountReceivedUSD('');}}
-        onMXN={setAmountReceivedMXN} onUSD={setAmountReceivedUSD} onOrderType={selectedPhoneOrder?()=>{}:setOrderType} onNote={selectedPhoneOrder?()=>{}:setOrderNote} onConfirm={()=>void processCheckout()} onClose={()=>{setShowCheckoutModal(false);setSelectedPhoneOrder(null);}}/>}
+        orderType={selectedPhoneOrder?.snapshot.order_type??orderType} note={selectedPhoneOrder?.snapshot.order_note??orderNote} busy={isProcessingCheckout} insufficient={isPaymentInsufficient} onMethod={method=>{if(method===paymentMethod)return;setPaymentMethod(method);setCardAmountMXN('');setAmountReceivedMXN('');setAmountReceivedUSD('');}}
+        onBack={appearance==='owner'&&!selectedPhoneOrder?()=>setCheckoutStep(1):undefined} card={cardAmountMXN} onCard={setCardAmountMXN} onMXN={setAmountReceivedMXN} onUSD={setAmountReceivedUSD} onOrderType={selectedPhoneOrder?()=>{}:setOrderType} onNote={selectedPhoneOrder?()=>{}:setOrderNote} onConfirm={()=>void processCheckout()} onClose={()=>{setShowCheckoutModal(false);setSelectedPhoneOrder(null);}}/>}
       {(selectedFamily || (appearance === 'workspace' && selectedProduct)) && <WorkspaceCustomization
         {...customizationProps} product={selectedProduct} family={selectedFamily} onVariant={handleVariant}
         smoothies={smoothies && !editingItemId && selectedProduct && isSmoothie(selectedProduct) ? cards.filter(isSmoothie) : undefined}
@@ -1584,18 +1588,13 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
       {!selectedFamily && selectedProduct && appearance === 'prototype' && <PrototypeCustomization
         {...customizationProps} product={selectedProduct} />}
       {/* 🟢 CHECKOUT DIVIDIDO EN 2 PASOS */}
-      {showCheckoutModal && appearance==='owner'&&!selectedPhoneOrder && (
+      {showCheckoutModal && appearance==='owner'&&!selectedPhoneOrder&&checkoutStep===1 && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
           <div className="bg-white rounded-[32px] w-full max-w-[500px] shadow-2xl p-8 animate-in zoom-in-95 duration-200">
 
              {/* HEADER CON BOTÓN DE REGRESAR */}
              <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
-                  {checkoutStep === 2 && (
-                    <button onClick={() => setCheckoutStep(1)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200 transition-colors">
-                      <ChevronLeft size={20}/>
-                    </button>
-                  )}
                   <h3 className="text-2xl font-black italic tracking-tight text-slate-900">
                     {checkoutStep === 1 ? 'Detalles de Orden' : 'Finalizar Venta'}
                   </h3>
@@ -1634,74 +1633,6 @@ export default function POSPage({appearance='workspace',clipEnabled=false,smooth
                </div>
              )}
 
-             {/* 🟢 PASO 2: TOTALES Y MÉTODO DE PAGO */}
-             {checkoutStep === 2 && (
-               <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                 <div className="bg-[#f5f5f7] p-5 rounded-[20px] mb-6 flex flex-col gap-2 border border-slate-100">
-                    <div className="flex justify-between items-end">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Total MXN</span>
-                      <span className="text-4xl font-black tracking-tighter text-[#1d1d1f]">${getTotal().toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-end border-t border-slate-200 pt-3 mt-1">
-                      <span className={smoothies?'text-[10px] font-bold text-slate-400 uppercase tracking-widest':'text-[11px] font-bold text-slate-500 uppercase tracking-widest'}>{smoothies?'Equivalente USD':'Total USD'}</span>
-                      <span className={smoothies?'text-lg font-black text-slate-400':'text-4xl font-black tracking-tighter text-[#1d1d1f]'}>${usdCashQuote(getTotal(),parseAmount(exchangeRate))?.usd ?? '—'}</span>
-                    </div>
-                 </div>
-
-                 <div className="mb-6">
-                    <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest block mb-3">Método de Pago</label>
-                    <div className="grid grid-cols-3 gap-3">
-                      {['Efectivo', 'Mixto', 'Tarjeta'].map(method => (
-                         <button key={method} onClick={() => {
-                              setPaymentMethod(method);
-                              if (method === 'Tarjeta' || method === 'Otro') { setAmountReceivedMXN(getTotal()); setAmountReceivedUSD(''); }
-                              else { setAmountReceivedMXN(''); setAmountReceivedUSD(''); }
-                            }} className={`p-3.5 rounded-xl border-2 font-bold text-sm transition-all ${paymentMethod === method ? 'border-[#0071e3] text-[#0071e3] bg-blue-50/50' : 'border-slate-100 text-slate-600 hover:border-blue-200 bg-white'}`}>
-                            {method === 'Mixto' ? 'MXN + USD' : method}
-                          </button>
-                      ))}
-                    </div>
-                 </div>
-
-                 <div className="space-y-3 mb-8">
-                    <label className="text-[10px] font-black uppercase text-[#86868b] tracking-widest">Cantidades Recibidas</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">MXN</span>
-                        <input type="number" disabled={paymentMethod === 'Tarjeta' || paymentMethod === 'Otro'} value={amountReceivedMXN} onChange={e => setAmountReceivedMXN(e.target.value)} placeholder="0.00" className="w-full bg-[#f5f5f7] border-2 border-transparent focus:border-[#0071e3]/30 rounded-[16px] py-3.5 pl-14 pr-3 text-lg font-black outline-none disabled:opacity-60 text-right"/>
-                      </div>
-                      <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">USD</span>
-                        <input type="number" min="0" step="1" disabled={paymentMethod === 'Tarjeta' || paymentMethod === 'Otro'} value={amountReceivedUSD} onChange={e => {if(/^\d{0,8}$/.test(e.target.value))setAmountReceivedUSD(e.target.value);}} placeholder="0" className="w-full bg-[#f5f5f7] border-2 border-transparent focus:border-[#0071e3]/30 rounded-[16px] py-3.5 pl-14 pr-3 text-lg font-black outline-none disabled:opacity-60 text-right"/>
-                      </div>
-                    </div>
-
-                    {/* BLOQUE DE CAMBIO EN VERDE */}
-                    {((paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && totalReceivedCombinedMXN >= getTotal()) && (
-                      <div className="flex flex-col gap-2 bg-[#06c167]/10 p-4 rounded-xl mt-4 animate-in fade-in border border-[#06c167]/20">
-                         <div className="flex justify-between items-center">
-                           <span className="text-xs font-bold text-[#06c167] uppercase tracking-wider">{smoothies?'Cambio (MXN):':'Cambio'}</span>
-                           <span className="text-xl font-black text-[#06c167]">${(totalReceivedCombinedMXN - getTotal()).toFixed(2)}</span>
-                         </div>
-                      </div>
-                    )}
-
-                    {/* 🟢 NUEVO: BLOQUE DE FALTANTE EN COLOR VINO */}
-                    {((paymentMethod === 'Efectivo' || paymentMethod === 'Mixto') && totalReceivedCombinedMXN < getTotal() && totalReceivedCombinedMXN > 0) && (
-                      <div className="flex flex-col gap-2 bg-[#800020]/10 p-4 rounded-xl mt-4 animate-in fade-in border border-[#800020]/20">
-                         <div className="flex justify-between items-center">
-                           <span className="text-xs font-bold text-[#800020] uppercase tracking-wider">Falta cobrar (MXN):</span>
-                           <span className="text-xl font-black text-[#800020]">${(getTotal() - totalReceivedCombinedMXN).toFixed(2)}</span>
-                         </div>
-                      </div>
-                    )}
-                 </div>
-
-                 <button onClick={processCheckout} disabled={isProcessingCheckout || isPaymentInsufficient || !validPagerNumber(pagerNumber)} className="w-full bg-[#1d1d1f] text-white h-16 rounded-[20px] font-bold text-lg flex justify-center items-center gap-2 shadow-xl hover:bg-black active:scale-95 transition-all">
-                    {isProcessingCheckout ? <Loader2 className="animate-spin" /> : <><CheckCircle2 size={22}/> Confirmar pago</>}
-                 </button>
-               </div>
-             )}
           </div>
         </div>
       )}

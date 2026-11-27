@@ -1,3 +1,4 @@
+import { migrationContract } from './testing/migrations.mjs';
 import { createTestPostgres } from './testing/postgres.mjs';
 import { Client } from 'pg';
 import { readFile, mkdtemp } from 'node:fs/promises';
@@ -26,6 +27,7 @@ import { deliveryReadinessDatabaseCases } from './delivery-readiness/database-ca
 import { deliveryProjectionCases } from './delivery-readiness/projection-cases.mjs';
 import { milkChoiceCases } from './catalog/milk-choice-cases.mjs';
 import { menuUpdateCases } from './catalog/menu-update-cases.mjs';
+import { splitPaymentDatabaseCases } from './payments/split-database-cases.mjs';
 import { wholeUsdDatabaseCases } from './receipts/whole-usd-database-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
@@ -37,8 +39,8 @@ const server=createTestPostgres({databaseDir:dir,user:'postgres',password,port:5
   postgresFlags:['-h','127.0.0.1'],onLog:()=>{},onError:()=>{}});
 const clients=[];
 let assertions=0;
-async function connection(role='postgres',uid='') {
-  const c=new Client({host:'127.0.0.1',port:55439,user:'postgres',password,database:'postgres'});
+async function connection(role='postgres',uid='',database='postgres') {
+  const c=new Client({host:'127.0.0.1',port:55439,user:'postgres',password,database});
   await c.connect(); clients.push(c);
   await c.query(`set role ${role}`);
   await c.query("select set_config('request.jwt.claim.sub',$1,false)",[uid]);
@@ -275,6 +277,52 @@ try {
   console.log('PASS Windows update gate: service-only read, closed and open drawer, pending handoff and CLIP reconciliation');
   assertions+=await milkChoiceCases(db,connection);
   assertions+=await wholeUsdDatabaseCases(db,connection);
+  const retainedBeforeSplit=(await db.query("select md5(coalesce(jsonb_agg(jsonb_build_array(id,receipt_snapshot) order by id)::text,'')) receipts from orders")).rows[0].receipts;
+  await db.query(await readFile(resolve(root,'supabase/migrations/202611270026_split_payments.sql'),'utf8'));
+  assert.equal((await db.query("select md5(coalesce(jsonb_agg(jsonb_build_array(id,receipt_snapshot) order by id)::text,'')) receipts from orders")).rows[0].receipts,retainedBeforeSplit);
+  assert.equal((await db.query('select count(*)::int n from shifts where payments is not null')).rows[0].n,0);
+  assertions+=2;
+  assertions+=await splitPaymentDatabaseCases(db,connection);
+  // A separate fresh synthetic database runs baseline business suites on the
+  // final ordered schema. Earlier tests intentionally exercise retained upgrades;
+  // do not reapply old function definitions to obtain a passing regression run.
+  await Promise.all(clients.filter(client=>client!==db).map(client=>client.end()));
+  clients.splice(0,clients.length,db);
+  const finalDatabase='final_'+randomUUID().replaceAll('-','');
+  await db.query(`create database ${finalDatabase}`);
+  const finalConnect=(role='postgres',uid='')=>connection(role,uid,finalDatabase);
+  const finalDb=await finalConnect();
+  await finalDb.query(`create schema auth; create table auth.users(id uuid primary key);
+    create table auth.identities(id uuid primary key,user_id uuid,provider text,identity_data jsonb);
+    create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+    grant usage on schema public,auth to anon,authenticated,service_role;
+    grant execute on function auth.uid() to public;
+    create function public.uuid_generate_v4() returns uuid language sql as $$select gen_random_uuid()$$;`);
+  for(const sequence of snap.sequences) await finalDb.query(`create sequence public."${sequence.name}"`);
+  for(const table of snap.tables) {
+    const columns=table.columns.map(column=>`"${column.name}" ${column.type}${column.default?' default '+column.default:''}${column.not_null?' not null':''}`);
+    await finalDb.query(`create table public."${table.name}"(${columns.join(',')})`);
+  }
+  for(const table of snap.tables) for(const constraint of table.constraints.filter(value=>value.type!=='f')) await finalDb.query(`alter table public."${table.name}" add constraint "${constraint.name}" ${constraint.definition}`);
+  for(const table of snap.tables) for(const constraint of table.constraints.filter(value=>value.type==='f')) await finalDb.query(`alter table public."${table.name}" add constraint "${constraint.name}" ${constraint.definition}`);
+  for(const func of snap.functions) await finalDb.query(func.definition??func.function_definition);
+  for(const role of ['admin','cashier','barista','outsider']) {
+    await finalDb.query('insert into auth.users values($1)',[ids[role]]);
+    await finalDb.query('insert into public.profiles(id,full_name,username,role) values($1,$2,$2,$2)',[ids[role],role]);
+  }
+  const finalContract=await migrationContract();
+  for(const sql of finalContract.texts) await finalDb.query(sql);
+  await finalDb.query('update cafe_private.drawer_settings set rate=20 where singleton');
+  console.log('Verifying baseline business behavior on the fresh final migration contract');
+  const finalDefinitions=(await finalDb.query("select md5(string_agg(pg_get_functiondef(p.oid), E'\n' order by p.oid)) hash from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','cafe_private') and p.prokind='f'")).rows[0].hash;
+  assertions+=await clipDatabaseCases(finalDb,finalConnect,ids);
+  assertions+=await inventoryIntegrationCases(finalDb,finalConnect,ids);
+  assertions+=await receiptContractDatabaseCases(finalDb,finalConnect,ids);
+  assertions+=await milkChoiceCases(finalDb,finalConnect);
+  assertions+=await wholeUsdDatabaseCases(finalDb,finalConnect);
+  assertions+=await splitPaymentDatabaseCases(finalDb,finalConnect);
+  assert.equal((await finalDb.query("select md5(string_agg(pg_get_functiondef(p.oid), E'\n' order by p.oid)) hash from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','cafe_private') and p.prokind='f'")).rows[0].hash,finalDefinitions,'Regression fixtures must not replace final application functions');
+  assertions++;
   if(process.env.POS_MENU_BASELINE&&process.env.POS_MENU_UPDATE_SQL)assertions+=await menuUpdateCases(db,connection,process.env.POS_MENU_BASELINE,process.env.POS_MENU_UPDATE_SQL);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {

@@ -3,6 +3,7 @@ import type { CartItem } from '../store/useCartStore';
 import { withDeadline } from './request-deadline';
 import { validPagerNumber } from './pos-types';
 import { isDefinitiveWriteRejection } from './write-outcome';
+import { splitPayment, splitPaymentMethod } from './split-payment';
 
 export interface CheckoutPayload {
   register_id: string;
@@ -11,6 +12,7 @@ export interface CheckoutPayload {
   payment_method: string;
   tender_mxn: number;
   tender_usd: number;
+  card_amount_mxn?: number;
   customer_id: string | null;
   order_type: string;
   order_note: string;
@@ -35,6 +37,7 @@ export interface SavedOrder {
   payment_method: string;
   tender_mxn: number;
   tender_usd: number;
+  card_amount_mxn?: number;
   exchange_rate: number;
   change_mxn: number;
 }
@@ -65,6 +68,8 @@ export function readCheckoutReview(raw: string | null): CheckoutReview | null {
   return value as CheckoutReview;
 }
 export function checkoutPayload(items: readonly CartItem[], fields: Omit<CheckoutPayload, 'items'>, requiresPager = true): CheckoutPayload {
+  if (fields.payment_method === splitPaymentMethod && (fields.tender_usd !== 0 || !splitPayment(fields.expected_total, fields.card_amount_mxn ?? 0, fields.tender_mxn).valid))
+    throw new Error('Revisa el importe de tarjeta y el efectivo recibido.');
   if (fields.phone_order_id) {
     if(fields.pager_number!=null||typeof fields.phone_order_revision!=='number'||!Number.isInteger(fields.phone_order_revision)||fields.phone_order_revision<0)throw new Error('Actualiza el pedido por teléfono antes de cobrar.');
   } else if ((requiresPager || fields.pager_number != null) && !validPagerNumber(fields.pager_number)) {
@@ -93,7 +98,8 @@ export async function executeCheckout(client: Pick<SupabaseClient, 'rpc'>, pendi
     if (!response.ok || reply.requestId !== pending.requestId) throw new ClipPaymentPending(reply.error || 'No se confirmó el pago CLIP. Conserva la misma solicitud.');
     if (reply.state !== 'completed') throw new ClipPaymentPending(reply.message || 'Esperando el pago en CLIP. No vuelvas a cobrar.');
     const order = reply.order;
-    if (!order?.id || order.ticket_number == null || !Array.isArray(order.items) || !Number.isFinite(order.total) || order.total !== pending.total || order.payment_method !== 'tarjeta') throw new ClipPaymentPending('Comprobante CLIP no confirmado. Conserva el pedido.');
+    if (!order?.id || order.ticket_number == null || !Array.isArray(order.items) || !Number.isFinite(order.total) || order.total !== pending.total || order.payment_method !== pending.payload.payment_method) throw new ClipPaymentPending('Comprobante CLIP no confirmado. Conserva el pedido.');
+    if (pending.payload.payment_method === splitPaymentMethod && (order.card_amount_mxn !== pending.payload.card_amount_mxn || order.tender_mxn !== pending.payload.tender_mxn || order.tender_usd !== 0)) throw new ClipPaymentPending('No se confirmó el desglose del pago mixto. No vuelvas a cobrar.');
     if (pending.payload.pager_number != null && order.pager_number !== pending.payload.pager_number) throw new ClipPaymentPending('No se confirmó el control de entrega. Comprueba la venta antes de volver a cobrar.');
     if (pending.payload.phone_order_id && order.phone_order_id !== pending.payload.phone_order_id) throw new ClipPaymentPending('No se confirmó el pedido por teléfono. No vuelvas a cobrar.');
     return order as SavedOrder;
@@ -106,6 +112,7 @@ export async function executeCheckout(client: Pick<SupabaseClient, 'rpc'>, pendi
     throw new Error(error.message);
   }
   if (!data?.id || data.ticket_number == null || !Array.isArray(data.items) || !Number.isFinite(data.total)) throw new Error('No se confirmó la venta. Compruébala antes de volver a cobrar.');
+  if (pending.payload.payment_method === splitPaymentMethod && (data.total !== pending.total || data.payment_method !== splitPaymentMethod || data.card_amount_mxn !== pending.payload.card_amount_mxn || data.tender_mxn !== pending.payload.tender_mxn || data.tender_usd !== 0)) throw new Error('No se confirmó el desglose del pago mixto. No vuelvas a cobrar.');
   if (pending.payload.pager_number != null && data.pager_number !== pending.payload.pager_number) throw new Error('No se confirmó el control de entrega. Comprueba la venta antes de volver a cobrar.');
   if (pending.payload.phone_order_id && data.phone_order_id !== pending.payload.phone_order_id) throw new Error('No se confirmó el pedido por teléfono. No vuelvas a cobrar.');
   return data as SavedOrder;

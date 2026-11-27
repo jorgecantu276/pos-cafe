@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ShiftReport } from './shift';
 import { escapeHtml, writePrintDocument } from './printing';
 import { withDeadline } from './request-deadline';
+import { paymentMethodLabel } from './split-payment';
 
 export type SavedShift = ShiftReport & { register_id?: string; user_name?: string; opened_at?: string; created_at?: string; closed_at?: string; manager_reason?: string | null };
 const date = (value?: string) => value && Number.isFinite(Date.parse(value))
@@ -18,6 +19,7 @@ export function savedShiftHtml(report: SavedShift, reprint = false) {
     ${reprint?'<p>REIMPRESIÓN DEL CORTE GUARDADO</p>':''}<p>Cajero: ${escapeHtml(report.user_name??'Sin nombre registrado')}</p>
     <p>Apertura: ${date(report.opened_at)}<br>Cierre: ${date(report.closed_at??report.created_at)}</p><p>Folio: ${escapeHtml(report.id)}</p><hr>
     ${rows.map(([label,value])=>`<p style="display:flex;justify-content:space-between"><span>${label}</span><b>${money(value)}</b></p>`).join('')}
+    ${report.payments ? `<hr><h3>Ingresos por método</h3>${Object.entries(report.payments).map(([method,amount])=>`<p>${escapeHtml(paymentMethodLabel(method))}: ${money(amount)}</p>`).join('')}` : ''}
     ${report.expenses_detail.length?`<hr><h3>Detalle de gastos</h3>${report.expenses_detail.map(e=>`<p>${escapeHtml(e.desc)}: ${money(e.amount)}</p>`).join('')}`:''}
     ${report.manager_reason?`<p>Cierre realizado por responsable. Motivo: ${escapeHtml(report.manager_reason)}</p>`:''}
     <hr><p>Firma del cajero / responsable</p><p>________________________</p><p>Documento de control interno.</p></main>`;

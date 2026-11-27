@@ -11,13 +11,14 @@ import { printConfig } from './windows-print-server';
 import type { SaleItem } from './pos-types';
 
 function legacyReceipt(sale: { id: string; ticket_number: number; total: number; created_at: string; payment_method: string | null;
-  tender_mxn: number | null; tender_usd: number | null; exchange_rate: number | null; change_mxn: number | null; order_items: SaleItem[] }, options: ReceiptOptions) {
+  tender_mxn: number | null; tender_usd: number | null; card_amount_mxn?: number | null; exchange_rate: number | null; change_mxn: number | null; order_items: SaleItem[] }, options: ReceiptOptions) {
   if (!sale.order_items?.length || sale.order_items.some(i => !Number.isFinite(Number(i.unit_price)) || !Number.isFinite(Number(i.total_price))
     || Math.round(Number(i.unit_price) * i.quantity * 100) !== Math.round(Number(i.total_price) * 100)))
     throw new AccessError('Esta venta antigua requiere conciliación del responsable.', 409);
   const order: SavedOrder = { id: sale.id, ticket_number: sale.ticket_number, total: Number(sale.total), status: 'completed', created_at: sale.created_at,
     customer_name: 'No registrado en el comprobante original', order_type: 'Tipo de entrega no registrado', order_note: '',
     payment_method: sale.payment_method || 'No registrado', tender_mxn: Number(sale.tender_mxn ?? 0), tender_usd: Number(sale.tender_usd ?? 0),
+    card_amount_mxn: sale.card_amount_mxn == null ? undefined : Number(sale.card_amount_mxn),
     exchange_rate: Number(sale.exchange_rate ?? 0), change_mxn: Number(sale.change_mxn ?? 0),
     items: sale.order_items.map((item, index) => ({ id: String(index), quantity: item.quantity, product: {
       id: item.product_id || String(index), name: item.product_snapshot?.name || 'Producto histórico no identificado', price: Number(item.unit_price),

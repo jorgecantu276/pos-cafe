@@ -14,7 +14,9 @@ const ok = result => { assert.ifError(result.error && Error(result.error.message
 const pass = message => console.log('PASS ' + message);
 const requestedPort=process.env.POS_ADMIN_TEST_PORT??'3111';
 assert.ok(['3111','3112'].includes(requestedPort),'Only dedicated local admin test app ports 3111 and 3112 are allowed');
-const port=Number(requestedPort),url=`http://127.0.0.1:${port}`,portBase=port===3112?55501:55481;
+const port=Number(requestedPort),url=`http://127.0.0.1:${port}`;
+const portBase=Number(process.env.POS_ADMIN_TEST_BACKEND_PORT_BASE??(port===3112?55501:55481));
+assert.ok([55481,55501,55521,55541,55561].includes(portBase),'Only dedicated local backend test port families are allowed');
 try {
   console.log('Starting a new isolated synthetic Auth/PostgREST/PostgreSQL stack…');
   local = await freshLocalApi({portBase});

@@ -88,9 +88,13 @@ export function customerSaleDocument(order: SavedOrder, options: ReceiptOptions 
   if (adjustment) { add(`Importe artículos: ${money(grossCents / 100)}`); add(`Ajuste de la venta: ${money(-adjustment / 100)}`); }
   add(`TOTAL: ${money(order.total)}`, 'receipt-total');
   add('', 'separator');
-  const payment = ({ efectivo: 'EFECTIVO', tarjeta: 'TARJETA', mixto: 'MIXTO' } as Record<string, string>)[order.payment_method.toLowerCase()] || text(order.payment_method);
+  const payment = ({ efectivo: 'EFECTIVO', tarjeta: 'TARJETA', mixto: 'MIXTO', efectivo_tarjeta: 'MIXTO · EFECTIVO + TARJETA' } as Record<string, string>)[order.payment_method.toLowerCase()] || text(order.payment_method);
   add(`Pago: ${payment}`);
-  if (['efectivo', 'mixto'].includes(order.payment_method.toLowerCase())) {
+  if (order.payment_method === 'efectivo_tarjeta') {
+    add(`Efectivo aplicado: $${(order.total - Number(order.card_amount_mxn)).toFixed(2)}`);
+    add(`Tarjeta MXN: $${Number(order.card_amount_mxn).toFixed(2)}`);
+  }
+  if (['efectivo', 'mixto', 'efectivo_tarjeta'].includes(order.payment_method.toLowerCase())) {
     add(`Recibido MXN: $${order.tender_mxn.toFixed(2)}`);
     if (order.tender_usd) add(`Recibido USD: $${order.tender_usd.toFixed(2)} · TC ${order.exchange_rate.toFixed(4)}`);
     add(`Cambio: $${order.change_mxn.toFixed(2)}`);

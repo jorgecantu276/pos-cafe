@@ -6,7 +6,7 @@ import { clipSettings } from './clip-config';
 type Client = Pick<SupabaseClient, 'rpc'>;
 type Payment = {
   request_id: string; actor_id: string; state: string; terminal_serial: string; provider_id: string | null;
-  webhook_key: string; quote: {total:number}; hints: string[]; result: unknown;
+  webhook_key: string; quote: {total:number; payment_method?:string; card_amount_mxn?:number}; hints: string[]; result: unknown;
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export class ClipNotSent extends AccessError {
@@ -60,6 +60,7 @@ export class ClipGateway {
     if (!payment) throw new AccessError('Pago no encontrado.', 404);
     return payment as Payment;
   }
+  private charge(p: Payment) { return p.quote.payment_method === 'efectivo_tarjeta' ? p.quote.card_amount_mxn : p.quote.total; }
   private args(p: Payment) { return { p_request:p.request_id, p_actor:p.actor_id }; }
   private publicState(p: Payment, review = false) {
     const state = review ? 'review' : p.state;
@@ -79,7 +80,7 @@ export class ClipGateway {
         callback.searchParams.set('request', request); callback.searchParams.set('key', p.webhook_key);
         try {
           const { response, data } = await this.provider('payment', 'POST', {
-            amount:Number(p.quote.total).toFixed(2), tip_amount:'0.00', reference:`pos-${request}`,
+            amount:(clipCents(this.charge(p)) / 100).toFixed(2), tip_amount:'0.00', reference:`pos-${request}`,
             serial_number_pos:p.terminal_serial, webhook_url:callback.href,
             preferences:{ is_tip_enabled:false,is_msi_enabled:false,is_mci_enabled:false,is_dcc_enabled:false,
               is_retry_enabled:false,is_split_payment_enabled:false,is_auto_print_receipt_enabled:false,is_share_enabled:false },
@@ -102,7 +103,7 @@ export class ClipGateway {
       if (!clipProviderId(id)) continue;
       try {
         const { response, data } = await this.provider(`payment?pinpadRequestId=${encodeURIComponent(id)}`);
-        if (!response.ok || data.pinpad_request_id !== id || data.reference !== `pos-${request}` || clipCents(data.amount) !== clipCents(p.quote.total)) continue;
+        if (!response.ok || data.pinpad_request_id !== id || data.reference !== `pos-${request}` || clipCents(data.amount) !== clipCents(this.charge(p))) continue;
         const detail = data.detail as {pages?:{total_results?:number;total?:number};results?:Record<string,unknown>[]} | undefined;
         const results = detail?.results;
         const canceled = data.status === 'CANCELED' || data.status === 'REJECTED';
@@ -124,7 +125,7 @@ export class ClipGateway {
             typeof r.status === 'string' && ['canceled','rejected','declined'].includes(r.status.toLowerCase())
             && clipCents(r.paid_amount) === 0 && clipCents(r.tip_amount ?? 0) === 0 && clipCents(r.amount_refunded ?? 0) === 0)) {
           await clipRpc(this.db, 'pos_clip_settle', { ...this.args(p),p_provider:id,p_outcome:'failed',p_evidence:evidence });
-        } else if (['COMPLETED','APPROVED'].includes(String(data.status)) && paid === clipCents(p.quote.total)
+        } else if (['COMPLETED','APPROVED'].includes(String(data.status)) && paid === clipCents(this.charge(p))
           && Array.isArray(results) && results.length === 1 && detail?.pages?.total_results === 1 && detail?.pages?.total === 1) {
           const transaction = results[0], device = transaction.device as {id?:string} | undefined;
           if (transaction.status !== 'approved' || transaction.currency !== 'MXN' || device?.id !== p.terminal_serial
