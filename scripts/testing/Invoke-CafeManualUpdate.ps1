@@ -1,6 +1,10 @@
 param([string]$PlanFile,[string]$PlanSha256,[string]$ReceiptPath,[switch]$FunctionsOnly)
 $ErrorActionPreference='Stop'
 $script:CafeManualOperatorPath=[IO.Path]::GetFullPath($PSCommandPath)
+$script:CafeRuntimeHelperPath=Join-Path $PSScriptRoot 'Legacy-CafeRuntime.ps1'
+$script:CafeRuntimeHelperSha256='ca7327ccb2d5261ba8ec58e6b75d2ead28941289986729d9ab2c35fe731985c1'
+$script:CafeShiftSnapshotSha256=$null
+$script:CafeAcceptedShiftSnapshotSha256=$null
 
 function Get-CafeHash([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() }
 function Get-CafeTextHash([string]$Value) {
@@ -94,6 +98,10 @@ function Test-CafeAcceptedPlan($Plan,[string[]]$Versions) {
     if ($maintenance.format -cne 'cafe-backend-maintenance-applied-v1' -or $maintenance.state -cne 'applied' -or $maintenance.backendOrigin -cne $Plan.backendOrigin -or $maintenance.publicKeySha256 -cne $Plan.publicKeySha256 -or $maintenance.backendPlanSha256 -cne $manual.backendPlanSha256 -or $maintenance.predecessorCommit -cne $manual.predecessorCommit) { throw 'Falta evidencia de mantenimiento de backend aplicado para este plan.' }
     foreach ($field in $fields) { if ($maintenance.$field -cne $record.$field) { throw ('El mantenimiento aplicado difiere en '+$field+'.') } }
     if ((Get-CafeManualBinding $maintenance.manualMaintenance) -cne $binding) { throw 'El mantenimiento aplicado corresponde a otro contrato manual.' }
+    if ($Plan.testOnly -ne $true) {
+        if ($maintenance.shiftSnapshotSha256 -cnotmatch '^[a-f0-9]{64}$') { throw 'Falta la huella revisada del turno conservado por el mantenimiento.' }
+        $script:CafeAcceptedShiftSnapshotSha256=[string]$maintenance.shiftSnapshotSha256
+    }
     return $operationsRoot
 }
 function Assert-CafeHash([string]$Path,[string]$Expected) {
@@ -196,8 +204,11 @@ if(db.prepare('PRAGMA quick_check').get().quick_check!=='ok')throw Error();
 const pending=db.prepare("SELECT count(*) AS n FROM jobs WHERE state IS NULL OR state NOT IN ('submitted','cancelled')").get().n;db.close();db=null;
 if(pending!==0)throw Error();
 const key=c.SupabaseServiceRoleKey,headers={apikey:key,...(key.startsWith('sb_secret_')?{}:{Authorization:'Bearer '+key})};
-const r=await fetch(new URL('/rest/v1/rpc/pos_windows_update_idle',origin),{headers,redirect:'error',signal:AbortSignal.timeout(3500)});
-if(!r.ok||await r.json()!==true)throw Error();console.log(JSON.stringify({ready:true,pendingPrints:0}));
+const r=await fetch(new URL('/rest/v1/cash_registers?select=*&order=id.asc',origin),{headers:{...headers,Prefer:'count=exact'},redirect:'error',signal:AbortSignal.timeout(3500)});
+if(!r.ok)throw Error();const rows=await r.json();if(!Array.isArray(rows))throw Error();
+const range=r.headers.get('content-range');const total=range&&range.match(/\/(\d+)$/);if(!total||Number(total[1])!==rows.length)throw Error();
+const stable=rows.map(row=>Object.fromEntries(Object.keys(row).sort().map(k=>[k,row[k]])));
+console.log(JSON.stringify({ready:true,pendingPrints:0,shiftSnapshotSha256:crypto.createHash('sha256').update(JSON.stringify(stable)).digest('hex'),openShifts:rows.filter(row=>row.status==='open').length}));
 }catch{console.log(JSON.stringify({ready:false}));process.exitCode=1;}finally{db?.close();}})();
 '@
     $encoded=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($code))
@@ -216,10 +227,13 @@ if(!r.ok||await r.json()!==true)throw Error();console.log(JSON.stringify({ready:
             throw 'La revision de seguridad no respondio; se cerro solo su propio subproceso y Caja no se cambia.'
         }
         $output=[string]$stdout.Result; $null=$stderr.Result
-        if ($process.ExitCode -ne 0) { throw 'No se confirmo turno cerrado, pagos/entregas resueltos y diario de impresion libre.' }
+        if ($process.ExitCode -ne 0) { throw 'No se confirmo el turno conservado y el diario de impresion libre.' }
     } finally { $process.Dispose() }
     try { $result=$output | ConvertFrom-Json } catch { throw 'La revision no devolvio evidencia valida.' }
-    if ($result.ready -ne $true -or $result.pendingPrints -ne 0) { throw 'La revision de seguridad rechazo el cambio.' }
+    if ($result.ready -ne $true -or $result.pendingPrints -ne 0 -or $result.shiftSnapshotSha256 -cnotmatch '^[a-f0-9]{64}$') { throw 'La revision de seguridad rechazo el cambio.' }
+    if ($script:CafeAcceptedShiftSnapshotSha256 -and $script:CafeAcceptedShiftSnapshotSha256 -cne $result.shiftSnapshotSha256) { throw 'El turno actual difiere del recibo de mantenimiento; preparar evidencia vigente.' }
+    if ($script:CafeShiftSnapshotSha256 -and $script:CafeShiftSnapshotSha256 -cne $result.shiftSnapshotSha256) { throw 'El turno cambio durante el mantenimiento; detener y revisar antes de continuar.' }
+    $script:CafeShiftSnapshotSha256=[string]$result.shiftSnapshotSha256
 }
 function Get-CafeExternalSnapshot($Plan,$Config,[string[]]$Versions) {
     $files=@([string]$Plan.configPath,[string]$Config.ReceiptIssuerFile,[string]$Config.BackupRecoveryKeyFile)
@@ -244,6 +258,8 @@ function Write-CafeReceipt([string]$Path,$Receipt) {
 function Invoke-CafeManualUpdate {
     param([Parameter(Mandatory=$true)]$Plan,[Parameter(Mandatory=$true)][string]$ReceiptPath)
     if ($Plan.format -cne 'cafe-manual-maintenance-v1' -or $Plan.deliveryScope -cne 'cafe-manual-maintenance-v1') { throw 'Falta un plan privado calificado de mantenimiento manual de Cafe.' }
+    $script:CafeShiftSnapshotSha256=$null
+    $script:CafeAcceptedShiftSnapshotSha256=$null
     Test-CafeFixtureAdmission $Plan $Plan
     if ($Plan.machineSha256 -cne (Get-CafeMachineSha256)) { throw 'El plan corresponde a otra PC.' }
     if ($Plan.predecessor.sourceCommit -cnotmatch '^[a-f0-9]{40}$' -or $Plan.candidate.sourceCommit -cnotmatch '^[a-f0-9]{40}$' -or $Plan.predecessor.sourceCommit -ceq $Plan.candidate.sourceCommit) { throw 'Identidad de versiones no valida.' }
@@ -273,13 +289,28 @@ function Invoke-CafeManualUpdate {
     Test-CafeManifest $installed $Plan $Plan.predecessor.sourceCommit
     $null=Test-CafeIndexedFiles $app $Plan.predecessor.filesSha256
     if (Test-Path -LiteralPath $ReceiptPath) { throw 'Ya existe un recibo de mantenimiento. Conserva esa evidencia y revisa su estado.' }
+    # Use the previously deployed rc.6 ownership-verified stop procedure only
+    # for the real supervised entry. Synthetic fixtures never stop applications.
+    Assert-CafeHash ([string]$Plan.candidate.zipPath) ([string]$Plan.candidate.zipSha256)
+    if ($Plan.testOnly -ne $true) {
+        Assert-CafeHash $script:CafeRuntimeHelperPath $script:CafeRuntimeHelperSha256
+        . $script:CafeRuntimeHelperPath -FunctionsOnly -ConfigPath $configPath -InstallDirectory $app
+        $runtime=Get-CafeRecoverySnapshot $app $configPath
+        Assert-CafeStopPlan $runtime
+        $confirmation=Read-Host 'PAUSA todas las pestanas y dispositivos de Caja. Termina cobros, espera impresiones y deja los carritos vacios. DEJA EL TURNO ABIERTO. No uses Caja hasta reabrirla. Escribe CONTINUAR para reiniciar solo Caja e instalar el menu'
+        if ($confirmation -cne 'CONTINUAR') { throw 'Mantenimiento cancelado; Caja no se detuvo.' }
+        # Recheck the exact selected target after human readiness confirmation.
+        Assert-CafeHash $configPath ([string]$Plan.configSha256)
+        Test-CafeReady $Plan
+        Stop-CafeVerifiedInstances $app $configPath
+    }
     Assert-CafeStopped $app $config
     $before=Get-CafeExternalSnapshot $Plan $config $versions
     Test-CafeReady $Plan
     $afterProbe=Get-CafeExternalSnapshot $Plan $config $versions
     if (($before | ConvertTo-Json -Compress) -cne ($afterProbe | ConvertTo-Json -Compress)) { throw 'Los datos externos cambiaron durante la revision; no se mueve Caja.' }
     $zip=Assert-CafeExternal ([string]$Plan.candidate.zipPath) $versions
-    $receipt=[ordered]@{format='cafe-manual-maintenance-receipt-v1';state='verified-before-staging';client=$Plan.client;qualificationId=$Plan.qualificationId;sourceCommit=$Plan.candidate.sourceCommit;predecessor=$Plan.predecessor.sourceCommit;manualMaintenance=$Plan.manualMaintenance;machineSha256=$Plan.machineSha256;configSha256=$Plan.configSha256;candidateZipSha256=$Plan.candidate.zipSha256;backendIdentitySha256=$Plan.backendIdentitySha256;installDirectory=$app;stageDirectory=$stage;previousDirectory=$previous;before=$before;startedAt=[DateTime]::UtcNow.ToString('o')}
+    $receipt=[ordered]@{format='cafe-manual-maintenance-receipt-v1';state='verified-before-staging';client=$Plan.client;qualificationId=$Plan.qualificationId;sourceCommit=$Plan.candidate.sourceCommit;predecessor=$Plan.predecessor.sourceCommit;manualMaintenance=$Plan.manualMaintenance;machineSha256=$Plan.machineSha256;configSha256=$Plan.configSha256;candidateZipSha256=$Plan.candidate.zipSha256;backendIdentitySha256=$Plan.backendIdentitySha256;installDirectory=$app;stageDirectory=$stage;previousDirectory=$previous;before=$before;startedAt=[DateTime]::UtcNow.ToString('o');shiftBeforeSha256=$script:CafeShiftSnapshotSha256}
     Write-CafeReceipt $ReceiptPath $receipt
     $moved=$false
     try {
@@ -301,6 +332,8 @@ function Invoke-CafeManualUpdate {
         $null=Test-CafeIndexedFiles $app $Plan.candidate.filesSha256 -Exact
         $after=Get-CafeExternalSnapshot $Plan $config $versions
         if (($before | ConvertTo-Json -Compress) -cne ($after | ConvertTo-Json -Compress)) { throw 'La conservacion de datos requiere revision; no abras Caja hasta reconciliar el recibo.' }
+        Test-CafeReady $Plan
+        $receipt.shiftAfterSha256=$script:CafeShiftSnapshotSha256
         $receipt.after=$after; $receipt.state='installed-verified-not-started'; $receipt.completedAt=[DateTime]::UtcNow.ToString('o'); Write-CafeReceipt $ReceiptPath $receipt
         return [pscustomobject]@{state=$receipt.state;sourceCommit=$Plan.candidate.sourceCommit;previousDirectory=$previous;receiptPath=$ReceiptPath}
     } catch {

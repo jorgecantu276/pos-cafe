@@ -212,12 +212,13 @@ try{
   // produced its synthetic journal, then prove rc.6 reopens with that setting.
   predecessor.config.RequireExistingPrintJournal=true;await writeFile(predecessor.configFile,JSON.stringify(predecessor.config));
   app=await start(settings.baseline,retained,'predecessor-reopen',undefined,predecessor);await stop();
-  const summary=ok(await oldClient.rpc('pos_shift_summary',{p_register:retained.register.id}));ok(await oldClient.rpc('pos_close_shift',{p_register:retained.register.id,p_counted:summary.expected_cash,p_expenses:summary.expenses,p_preview:summary}));
+  const retainedOpenShift=(await oldDb.query('select to_jsonb(r) row from cash_registers r where id=$1',[retained.register.id])).rows[0].row;
+  check('predecessor shift remains open before menu maintenance',retainedOpenShift.status,'open');
   await install(oldDb,settings.candidate,['202611230024_inventory_revision_rejection.sql','202611270026_brownie_syrup_choice.sql']);
   await oldDb.query('begin');await applyBrownieSyrup(oldDb,await planBrownieSyrup(oldDb));await oldDb.query('commit');
   const beforeTransition=await rowsAndSequences(oldDb,ok(await createClient(retained.config.api,retained.config.service,{auth:{persistSession:false,autoRefreshToken:false}}).rpc('pos_business_backup')));
   const continuation={predecessor:{runtime:predecessor.runtime,config:predecessor.config,configFile:predecessor.configFile,transportFile:predecessor.transportFile},oldSale,
-    journalBefore:journalRows(path.join(predecessor.runtime,'printing/mock-jobs.sqlite')),configBefore:hash(await readFile(predecessor.configFile))};
+    retainedOpenShift,journalBefore:journalRows(path.join(predecessor.runtime,'printing/mock-jobs.sqlite')),configBefore:hash(await readFile(predecessor.configFile))};
   const operatorInput=path.join(settings.work,'manual-input.private.json');
   await writeFile(operatorInput,JSON.stringify({work:settings.work,operatorScript:settings.operatorScript,operatorScriptSha256:settings.operatorScriptSha256,
     configFile:predecessor.configFile,installDirectory:settings.baseline,candidateDirectory:settings.candidate,sourceTree:settings.sourceTree,
@@ -231,6 +232,7 @@ try{
   assert.equal((await json(path.join(transition.previousDirectory,'release.json'))).sourceCommit,'b776550a7a91ad1dafb21b2200a235dfe337bb6f');
   await verifyPackage(settings.baseline,await identity(settings.candidate),settings.baseline,(await identity(settings.candidate)).release);
   check('guarded folder transition preserves every business row and sequence',await rowsAndSequences(oldDb,ok(await createClient(retained.config.api,retained.config.service,{auth:{persistSession:false,autoRefreshToken:false}}).rpc('pos_business_backup'))),beforeTransition);
+  check('exact guarded operator preserves the same open shift',(await oldDb.query('select to_jsonb(r) row from cash_registers r where id=$1',[retained.register.id])).rows[0].row,retainedOpenShift);
   report.manualInstaller='exercised-under-synthetic-procedural-admission';report.operatorScriptSha256=settings.operatorScriptSha256;
   await writeFile(path.join(settings.work,'retained-continuation.private.json'),JSON.stringify(continuation),{flag:'wx',mode:0o600});
   report.lifecycle.retainedUpgrade='guarded-transition-passed';
@@ -238,7 +240,7 @@ try{
   if(settings.lifecyclePhase==='retainedVerify'){
   const retained=state.retained,oldDb=await connectFixture(retained),oldClient=await clientFor(retained),continuation=await json(path.join(settings.work,'retained-continuation.private.json'));
   const {predecessor,oldSale,journalBefore,configBefore}=continuation;
-  retained.register=ok(await oldClient.rpc('pos_open_shift',{p_request:randomUUID(),p_cash:0,p_rate:16}));
+  check('same shift remains open when candidate resumes',(await oldDb.query('select to_jsonb(r) row from cash_registers r where id=$1',[retained.register.id])).rows[0].row,continuation.retainedOpenShift);
   const oldRows=await rowsAndSequences(oldDb,ok(await createClient(retained.config.api,retained.config.service,{auth:{persistSession:false,autoRefreshToken:false}}).rpc('pos_business_backup')));
   app=await start(settings.baseline,retained,'retained',undefined,predecessor);
   const afterRows=await rowsAndSequences(oldDb,ok(await createClient(retained.config.api,retained.config.service,{auth:{persistSession:false,autoRefreshToken:false}}).rpc('pos_business_backup')));
