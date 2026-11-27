@@ -7,6 +7,8 @@ on:
       - .github/workflows/cafe-exact-qualification.yml
       - scripts/testing/Start-CafeHostedDocker.ps1
       - scripts/testing/cafe-docker-loopback.cs
+      - scripts/staging/safety.mjs
+      - scripts/staging/runtime.mjs
       - scripts/testing/local-api.mjs
       - scripts/testing/CafeHostedBoundary.psm1
       - scripts/testing/cafe-*.mjs

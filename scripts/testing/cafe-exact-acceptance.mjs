@@ -56,6 +56,7 @@ async function createFixture(portBase,folder,name){
   return {...local,actor,product,register};
 }
 if(mode==='prepare'){
+ try {
   const candidate=await json(path.join(settings.candidate,'release.json')),baseline=await json(path.join(settings.baseline,'release.json'));
   assert.equal(candidate.sourceCommit,settings.sourceCommit);assert.equal(baseline.sourceCommit,'b776550a7a91ad1dafb21b2200a235dfe337bb6f');
   assert.equal(candidate.fixtureOnly,false);assert.equal(baseline.fixtureOnly,false);assert.equal(candidate.supabaseUrl,baseline.supabaseUrl);
@@ -75,6 +76,11 @@ if(mode==='prepare'){
   for(const fixture of [current,retained,recovery]){await fixture.db.end();await fixture.disposeTools();}
   console.log(JSON.stringify({prepared:true,syntheticProjects:3}));
   process.exit(0);
+ }catch(error){
+ const message=String(error.message).split('\n')[0].replace(/https?:\/\/\S+|postgres(?:ql)?:\/\/\S+/g,'[origin]').replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,'[token]').replace(/sb_secret_[A-Za-z0-9_-]+/g,'[token]').slice(0,350);
+ await writeFile(path.join(settings.evidence,'prepare-failure.json'),JSON.stringify({phase:'prepare',errorClass:error.name,code:error.code||null,message}));
+ throw new Error('Synthetic preparation failed; see sanitized prepare-failure.json');
+ }
 }
 const boundary=await json(settings.boundaryReceipt);assert.equal(boundary.state,'active');
 assert.equal(settings.probesPassed,true,'Native and browser boundary probes must pass before customer launch.');

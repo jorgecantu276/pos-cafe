@@ -1,10 +1,10 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { localDocker, localSettings, project } from './safety.mjs';
+import { hostedDockerContext, localDocker, localSettings, project } from './safety.mjs';
 import assert from 'node:assert/strict';
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -75,7 +75,23 @@ export async function dockerCheck() {
   // Explicitly avoid environment redirects to another Docker host/context.
   if (process.env.DOCKER_HOST || process.env.DOCKER_CONTEXT) throw new Error('Unset DOCKER_HOST/DOCKER_CONTEXT before local staging');
   const context = JSON.parse(await run('docker', ['context', 'inspect']));
-  localDocker(context[0].Endpoints.docker.Host);
+  assert.equal(context.length, 1, 'One explicit Docker context is required.');
+  if (context[0].Endpoints.docker.Host.startsWith('tcp://')) {
+    const temporary = path.resolve(process.env.RUNNER_TEMP || '');
+    const file = process.env.POS_TEST_WSL_RECEIPT;
+    assert.ok(file && path.isAbsolute(file) && path.basename(file) === 'engine.json');
+    const relative = path.relative(temporary, file);
+    assert.ok(relative && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep));
+    let ancestor = path.resolve(file);
+    for (;;) {
+      const stat = await lstat(ancestor); assert.equal(stat.isSymbolicLink(), false, 'Redirected hosted Docker receipt refused.');
+      if (ancestor === path.resolve(file)) assert.ok(stat.isFile() && stat.size <= 65536);
+      if (ancestor.toLowerCase() === temporary.toLowerCase()) break;
+      const parent = path.dirname(ancestor); assert.notEqual(parent, ancestor); ancestor = parent;
+    }
+    const engine = JSON.parse(await run('docker', ['info', '--format', '{{json .}}']));
+    hostedDockerContext(context[0], engine, JSON.parse(await readFile(file, 'utf8')));
+  } else localDocker(context[0].Endpoints.docker.Host);
   if ((await run('docker', ['info', '--format', '{{.OSType}}'])).trim() !== 'linux') throw new Error('Docker Linux containers must be running');
 }
 export async function ensureLoopbackNetwork({ name, label, owner }, execute = run) {

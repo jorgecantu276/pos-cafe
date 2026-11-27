@@ -38,7 +38,7 @@ function Native {
     $start.Environment.Remove('NODE_OPTIONS') | Out-Null;$start.Environment.Remove('POS_CAFE_TEST_TRANSPORT_FILE') | Out-Null
     if ([IO.Path]::GetFileName($Executable) -ieq 'node.exe') {
         $keep=@('SystemRoot','WINDIR','PATH','PATHEXT','TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA','ProgramFiles','ProgramFiles(x86)','ComSpec','NUMBER_OF_PROCESSORS','PROCESSOR_ARCHITECTURE','PSModulePath',
-            'GITHUB_ACTIONS','RUNNER_ENVIRONMENT','RUNNER_OS','ImageOS','GITHUB_RUN_ID','RUNNER_TRACKING_ID','RUNNER_TEMP','POS_ACCEPTANCE_DISPOSABLE','NEXT_TELEMETRY_DISABLED','POS_CAFE_REAL_DOCKER','POS_TEST_WSL_ENGINE','COMPOSE_CONVERT_WINDOWS_PATHS','POS_TEST_WSL_RECEIPT','SUPABASE_SERVICES_HOSTNAME')
+            'GITHUB_ACTIONS','RUNNER_ENVIRONMENT','RUNNER_OS','ImageOS','GITHUB_RUN_ID','GITHUB_JOB','RUNNER_TRACKING_ID','RUNNER_TEMP','POS_ACCEPTANCE_DISPOSABLE','NEXT_TELEMETRY_DISABLED','POS_CAFE_REAL_DOCKER','POS_TEST_WSL_ENGINE','COMPOSE_CONVERT_WINDOWS_PATHS','POS_TEST_WSL_RECEIPT','SUPABASE_SERVICES_HOSTNAME')
         foreach ($key in @($start.Environment.Keys)) { if ($keep -inotcontains $key) { [void]$start.Environment.Remove($key) } }
     }
     $process=[Diagnostics.Process]::new();$process.StartInfo=$start
