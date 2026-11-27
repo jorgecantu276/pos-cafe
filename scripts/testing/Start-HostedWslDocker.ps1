@@ -23,7 +23,7 @@ $createdDistro = $false; $keepAlive = $null; $ownedContext = $null
 
 function Native {
     param([Parameter(Position=0)][string]$Executable, [Parameter(Position=1,ValueFromRemainingArguments=$true)][string[]]$Arguments,
-        [ValidateRange(1,900)][int]$TimeoutSeconds = 600)
+        [ValidateRange(1,900)][int]$TimeoutSeconds = 600, [switch]$CloseInput)
     # Docker emits pull progress on stderr even when create succeeds. Keep its
     # machine-readable stdout (IDs/hashes/JSON) separate from diagnostics.
     $label = (Split-Path -Leaf $Executable) + ' ' + (($Arguments | Select-Object -First 2) -join ' ')
@@ -31,10 +31,12 @@ function Native {
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $Executable; $start.UseShellExecute = $false; $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+    $start.RedirectStandardInput = $CloseInput.IsPresent
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     $process = [Diagnostics.Process]::new(); $process.StartInfo = $start
     try {
         [void]$process.Start()
+        if ($CloseInput) { $process.StandardInput.Close() }
         $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync()
         if (!$process.WaitForExit($TimeoutSeconds * 1000)) {
             $process.Kill($true); $process.WaitForExit()
@@ -63,6 +65,10 @@ function Canary-Hash([string]$Output, [string]$Expected, [string]$Boundary) {
     $actual = $Matches[1]
     if ($actual -cne $Expected) { throw "$Boundary differs: expected SHA-256 $Expected; observed SHA-256 $actual." }
     return $actual
+}
+function Canary-Measurement([string]$Output, [string]$Expected) {
+    $exact = $Output.Trim() -cmatch '^([a-f0-9]{64})[ \t]+\*?/[^\r\n]+$' -and $Matches[1] -ceq $Expected
+    return @{ characters = $Output.Length; sha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Output))).ToLowerInvariant(); exactCanaryBytes = [bool]$exact }
 }
 function Free-Ports([int[]]$Ports) {
     foreach ($port in $Ports) {
@@ -185,10 +191,12 @@ services:
         [void](Docker @('compose', '--project-name', $project, '-f', $composeFile, 'up', '-d'))
         $canaryId = (Docker @('compose', '--project-name', $project, '-f', $composeFile, 'ps', '-q', 'canary')).Trim()
         $composeOutput = Docker @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt')
+        $composeStderr = Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw
         if (!$composeOutput.Length) {
             # Genuine independent controls locate empty attach output without
             # treating an alternative path as accepted installation evidence.
             $diagnostic = [ordered]@{ windowsExecCharacters = 0; guestBind = 'unavailable'; archiveBind = 'unavailable'; interactiveCharacters = $null; ttyCharacters = $null }
+            $diagnostic.windowsExecStderr = Canary-Measurement $composeStderr $expectedHash
             try {
                 $guestOutput = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'docker', 'exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30
                 [void](Canary-Hash $guestOutput $expectedHash 'Guest Linux CLI canary bind')
@@ -202,10 +210,42 @@ services:
             try { $diagnostic.interactiveCharacters = (Native -Executable $docker -Arguments @('exec', '-i', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30).Length } catch { }
             try { $diagnostic.ttyCharacters = (Native -Executable $docker -Arguments @('exec', '-t', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30).Length } catch { }
             try {
+                $closedInput = Native -Executable $docker -Arguments @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30 -CloseInput
+                $diagnostic.closedStdin = Canary-Measurement $closedInput $expectedHash
+                $diagnostic.closedStdinStderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
+            } catch { $diagnostic.closedStdin = 'failed' }
+            try {
                 $versions = Native -Executable $docker -Arguments @('version', '--format', '{{json .}}') -TimeoutSeconds 30 | ConvertFrom-Json
                 $diagnostic.clientVersion = [string]$versions.Client.Version
                 $diagnostic.serverVersion = [string]$versions.Server.Version
+                $apiVersion = [string]$versions.Server.MinAPIVersion
+                if ($apiVersion -cnotmatch '^1\.[0-9]+$') { $apiVersion = [string]$versions.Server.ApiVersion }
+                if ($apiVersion -cmatch '^1\.[0-9]+$') {
+                    $savedDockerApiVersion = $env:DOCKER_API_VERSION
+                    try {
+                        $env:DOCKER_API_VERSION = $apiVersion
+                        $apiOutput = Native -Executable $docker -Arguments @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30
+                        $diagnostic.serverApiVersion = $apiVersion
+                        $diagnostic.serverApiStdout = Canary-Measurement $apiOutput $expectedHash
+                        $diagnostic.serverApiStderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
+                    } finally { $env:DOCKER_API_VERSION = $savedDockerApiVersion }
+                }
             } catch { }
+            try {
+                # Optional client-version control, independently pinned from the
+                # official HTTPS static distribution. Never replaces the selected
+                # installed CLI or qualifies an alternative installation path.
+                $clientArchive = Join-Path $WorkDirectory 'docker-29.9.2.zip'
+                Invoke-WebRequest -Uri 'https://download.docker.com/win/static/stable/x86_64/docker-29.9.2.zip' -OutFile $clientArchive -TimeoutSec 90
+                if ((Get-FileHash -LiteralPath $clientArchive -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'b2be959bfed1281ddaf665c0972cba9a62ce30c542b6bcce82f055bf8886bc7d') { throw 'Official client control archive differs.' }
+                $clientFolder = Join-Path $WorkDirectory 'official-client-control'
+                Expand-Archive -LiteralPath $clientArchive -DestinationPath $clientFolder
+                $clientControl = Join-Path $clientFolder 'docker/docker.exe'
+                if ((Get-FileHash -LiteralPath $clientControl -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'dd40364e3e71395fb082d91227b76bf83adfcdab4ecc719803a0ef4579a27d24') { throw 'Official client control executable differs.' }
+                $controlOutput = Native -Executable $clientControl -Arguments @('--host', 'tcp://127.0.0.1:2375', 'exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30 -CloseInput
+                $diagnostic.client2992Stdout = Canary-Measurement $controlOutput $expectedHash
+                $diagnostic.client2992Stderr = Canary-Measurement (Get-Content -LiteralPath (Join-Path $WorkDirectory 'native-stderr.log') -Raw) $expectedHash
+            } catch { $diagnostic.client2992Stdout = 'unavailable' }
             Write-Host ('Synthetic canary transport diagnostics: ' + ($diagnostic | ConvertTo-Json -Compress))
             [IO.File]::WriteAllText((Join-Path $WorkDirectory 'transport-diagnostic.json'), ($diagnostic | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
         }

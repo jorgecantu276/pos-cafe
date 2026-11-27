@@ -123,6 +123,13 @@ Invoke-Expression $functionNode.Extent.Text
 $canaryFunction=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Canary-Hash'},$true)
 if(!$canaryFunction){throw 'Canary-Hash function was not found'}
 Invoke-Expression $canaryFunction.Extent.Text
+$measurementFunction=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Canary-Measurement'},$true)
+if(!$measurementFunction){throw 'Canary-Measurement function was not found'}
+Invoke-Expression $measurementFunction.Extent.Text
+$empty=Canary-Measurement $null ('a'*64)
+if($empty.characters -ne 0 -or $empty.exactCanaryBytes -or $empty.sha256 -cne 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'){throw 'empty stream measurement changed'}
+$privateFixture='synthetic-private-diagnostic-value'
+if((Canary-Measurement $privateFixture ('a'*64)|ConvertTo-Json -Compress).Contains($privateFixture)){throw 'stream measurement leaked raw diagnostic bytes'}
 $digest='a'*64
 if((Canary-Hash ($digest+"  /fixture/canary.txt"+[Environment]::NewLine) $digest 'Synthetic bind') -cne $digest){throw 'canary SHA parser changed the measured digest'}
 $mismatch=$false
@@ -134,6 +141,8 @@ if(!$invalid){throw 'canary SHA parser accepted extra command output'}
 $actual=Native -Executable $Node -Arguments @('-e','process.stderr.write("pull progress");process.stdout.write(process.argv[1])','container id with spaces')
 if($actual -cne 'container id with spaces'){throw 'stdout or argument corruption'}
 if((Get-Content (Join-Path $WorkDirectory 'native-stderr.log') -Raw).Trim() -cne 'pull progress'){throw 'stderr lost'}
+$eof=Native -Executable $Node -Arguments @('-e','process.stdin.resume();process.stdin.on("end",()=>process.stdout.write("valid-eof"))') -CloseInput -TimeoutSeconds 3
+if($eof -cne 'valid-eof'){throw 'explicit redirected stdin did not deliver valid EOF'}
 $failed=$false
 try{Native -Executable $Node -Arguments @('-e','process.stderr.write("synthetic command failed");process.exit(7)')}catch{$failed=$_.Exception.Message.Contains('synthetic command failed')}
 if(!$failed){throw 'nonzero exit not reported'}
