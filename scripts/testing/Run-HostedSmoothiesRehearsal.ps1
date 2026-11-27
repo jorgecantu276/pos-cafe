@@ -10,6 +10,7 @@ param(
     [switch]$PlatformOnly
 )
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'HostedProcess.psm1') -Force -DisableNameChecking
 
 # This driver is intentionally unavailable on an operator's or development PC.
 # The workflow owns a new hosted Windows 2025 VM and its WSL Docker daemon.
@@ -86,15 +87,17 @@ function ConvertTo-SafeRehearsalDiagnostic {
 }
 
 function Invoke-PrivateRehearsalCommand {
-    param([string]$Executable, [string[]]$Arguments, [string]$LogName)
+    param([string]$Executable, [string[]]$Arguments, [string]$LogName, [ValidateRange(1,3600)][int]$TimeoutSeconds = 1800)
     # Never upload or print these private synthetic setup/server logs. The only
     # exported artifact is the explicitly projected acceptance JSON below.
-    $exitCode = 0
-    try { & $Executable @Arguments *> (Join-Path $work $LogName); $exitCode = $LASTEXITCODE }
-    catch { $exitCode = if ($LASTEXITCODE) { $LASTEXITCODE } else { 1 } }
+    $stdoutFile = Join-Path $work ($LogName + '.stdout.log')
+    $stderrFile = Join-Path $work ($LogName + '.stderr.log')
+    $completed = Invoke-HostedProcess -Executable $Executable -Arguments $Arguments -StdoutFile $stdoutFile -StderrFile $stderrFile -TimeoutSeconds $TimeoutSeconds
+    $exitCode = if ($completed.TimedOut) { -1 } else { $completed.ExitCode }
     if ($exitCode -ne 0) {
         $script:failureExitCode = $exitCode
-        $log = Get-Content -LiteralPath (Join-Path $work $LogName) -Tail 250 -ErrorAction SilentlyContinue | Out-String
+        $log = (@(Get-Content -LiteralPath $stdoutFile -Tail 125 -ErrorAction SilentlyContinue) +
+            @(Get-Content -LiteralPath $stderrFile -Tail 125 -ErrorAction SilentlyContinue)) -join "`n"
         foreach ($knownCode in @('ERR_ASSERTION','EADDRINUSE','ECONNREFUSED','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE','DEPTH_ZERO_SELF_SIGNED_CERT')) {
             if ($log.Contains($knownCode)) { $script:failureCode = $knownCode; break }
         }
@@ -103,6 +106,8 @@ function Invoke-PrivateRehearsalCommand {
             $script:failureLine = [int]$Matches.line
         }
         $script:failureDiagnostics = @(ConvertTo-SafeRehearsalDiagnostic $log)
+        Write-Host ('Hosted rehearsal command failed during ' + $phase + ' (exit ' + $exitCode + ').')
+        foreach ($line in $script:failureDiagnostics) { Write-Host $line }
         throw 'The bounded rehearsal command did not complete successfully.'
     }
 }

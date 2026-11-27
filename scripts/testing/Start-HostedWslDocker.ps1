@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param([string]$WorkDirectory, [switch]$Cleanup)
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'HostedProcess.psm1') -Force -DisableNameChecking
 
 # Never enroll an owner's PC, an existing WSL distro or a nonempty Docker host.
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
@@ -10,21 +11,6 @@ if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hos
     throw 'This bootstrap requires a fresh explicitly enrolled GitHub-hosted Windows 2025 job.'
 }
 $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
-function Quote-WindowsArguments([string[]]$Values) {
-    ($Values | ForEach-Object {
-        # WSL parses its own option tokens before launching Linux. Leave plain
-        # flags/values unquoted; apply Windows escaping only when needed.
-        if ($_.Length -gt 0 -and $_ -notmatch '[\s"]') { $_; return }
-        $quoted = [Text.StringBuilder]::new('"'); $slashes = 0
-        foreach ($character in $_.ToCharArray()) {
-            if ($character -eq '\') { $slashes++; continue }
-            if ($character -eq '"') { [void]$quoted.Append('\', $slashes * 2 + 1) }
-            else { [void]$quoted.Append('\', $slashes) }
-            [void]$quoted.Append($character); $slashes = 0
-        }
-        [void]$quoted.Append('\', $slashes * 2); [void]$quoted.Append('"'); $quoted.ToString()
-    }) -join ' '
-}
 function Assert-OwnedKeepAlive($Process, $Receipt, [string]$ExpectedExecutable) {
     if ($Receipt.owner -cnotmatch '^[a-f0-9]{32}$' -or $Receipt.distribution -cne 'Ubuntu-24.04' -or
         $Receipt.keepAliveExecutable -ine $ExpectedExecutable -or $Process.ExecutablePath -ine $ExpectedExecutable -or
@@ -93,25 +79,13 @@ function Native {
     # machine-readable stdout (IDs/hashes/JSON) separate from diagnostics.
     $label = (Split-Path -Leaf $Executable) + ' ' + (($Arguments | Select-Object -First 2) -join ' ')
     Write-Host "Owned host check: $label"
-    $start = [Diagnostics.ProcessStartInfo]::new()
-    $start.FileName = $Executable; $start.UseShellExecute = $false; $start.CreateNoWindow = $true
-    $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
-    foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
-    $process = [Diagnostics.Process]::new(); $process.StartInfo = $start
-    try {
-        [void]$process.Start()
-        $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync()
-        if (!$process.WaitForExit($TimeoutSeconds * 1000)) {
-            $process.Kill($true); $process.WaitForExit()
-            throw "Owned host command exceeded its ${TimeoutSeconds}s deadline: $label"
-        }
-        $result = $stdout.GetAwaiter().GetResult(); $diagnostics = $stderr.GetAwaiter().GetResult()
-        [IO.File]::WriteAllText((Join-Path $WorkDirectory 'native-stderr.log'), $diagnostics)
-        if ($process.ExitCode -ne 0) { throw "$(Split-Path -Leaf $Executable) failed: $diagnostics $result" }
-        return $result.Replace([string][char]0, '').TrimEnd("`r", "`n")
-    } finally {
-        $process.Dispose()
-    }
+    $stdoutFile = Join-Path $WorkDirectory 'native-stdout.log'
+    $stderrFile = Join-Path $WorkDirectory 'native-stderr.log'
+    $completed = Invoke-HostedProcess -Executable $Executable -Arguments $Arguments -StdoutFile $stdoutFile -StderrFile $stderrFile -TimeoutSeconds $TimeoutSeconds
+    $result = [IO.File]::ReadAllText($stdoutFile); $diagnostics = [IO.File]::ReadAllText($stderrFile)
+    if ($completed.TimedOut) { throw "Owned host command exceeded its ${TimeoutSeconds}s deadline: $label" }
+    if ($completed.ExitCode -ne 0) { throw "$(Split-Path -Leaf $Executable) failed: $diagnostics $result" }
+    return $result.Replace([string][char]0, '').TrimEnd("`r", "`n")
 }
 function Docker {
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)

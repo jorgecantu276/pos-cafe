@@ -17,6 +17,7 @@ test('hosted Native runner keeps stdout separate and bounds only its owned child
 #Requires -Version 7.2
 param([string]$Bootstrap,[string]$Node,[string]$WorkDirectory)
 $ErrorActionPreference='Stop'
+Import-Module (Join-Path (Split-Path $Bootstrap -Parent) 'HostedProcess.psm1') -Force -DisableNameChecking
 $tokens=$null; $parseErrors=$null
 $syntax=[Management.Automation.Language.Parser]::ParseFile($Bootstrap,[ref]$tokens,[ref]$parseErrors)
 if($parseErrors.Count){throw ($parseErrors|Out-String)}
@@ -69,9 +70,6 @@ try {
         if(!$rejected){throw 'A reused keepalive PID with a different start time was accepted'}
     }
 } finally { [Threading.Thread]::CurrentThread.CurrentCulture=$priorCulture }
-$quoteNode=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Quote-WindowsArguments'},$true)
-if(!$quoteNode){throw 'Windows argument helper was not found'}
-Invoke-Expression $quoteNode.Extent.Text
 $plainArguments=@('--distribution','Ubuntu-24.04','--user','root','--','/usr/bin/env',"POS_HOSTED_OWNER=$fixtureOwner",'sleep','infinity')
 if((Quote-WindowsArguments $plainArguments) -cne ($plainArguments -join ' ')){
     throw 'WSL option names and plain values must remain unquoted'
@@ -91,6 +89,42 @@ try {
         throw 'Windows argument helper changed literal arguments'
     }
 } finally {$argvProcess.Dispose()}
+$driver=Join-Path (Split-Path $Bootstrap -Parent) 'Run-HostedSmoothiesRehearsal.ps1'
+$driverAst=[Management.Automation.Language.Parser]::ParseFile($driver,[ref]$tokens,[ref]$parseErrors)
+if($parseErrors.Count){throw 'Actual rehearsal driver did not parse'}
+foreach($name in @('Invoke-PrivateRehearsalCommand','ConvertTo-SafeRehearsalDiagnostic')){
+    $driverFunction=$driverAst.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true)
+    if(!$driverFunction){throw 'Actual rehearsal function was not found'}
+    Invoke-Expression $driverFunction.Extent.Text
+}
+$writerScript=Join-Path $WorkDirectory 'owned-background-writer.cjs'
+$parentScript=Join-Path $WorkDirectory 'failed-parent.cjs'
+[IO.File]::WriteAllText($writerScript,'process.stdout.on("error",()=>{});process.stderr.on("error",()=>{});setInterval(()=>{process.stdout.write("synthetic heartbeat\n")},200)')
+[IO.File]::WriteAllText($parentScript,'const fs=require("fs"),path=require("path"),cp=require("child_process");const root=__dirname;const child=cp.spawn(process.execPath,[path.join(root,"owned-background-writer.cjs")],{detached:true,stdio:"inherit"});child.unref();fs.writeFileSync(path.join(root,"owned-processes.json"),JSON.stringify({parent:process.pid,child:child.pid}));process.stderr.write("synthetic ERR_ASSERTION before parent exit7\n");process.exit(7)')
+$work=$WorkDirectory; $phase='synthetic-assertion'; $timer=[Diagnostics.Stopwatch]::StartNew(); $failed=$false
+try {
+    try { Invoke-PrivateRehearsalCommand -Executable $Node -Arguments @($parentScript) -LogName 'synthetic-private' -TimeoutSeconds 4 }
+    catch { $failed=$true }
+    if(!$failed -or $script:failureExitCode -ne 7 -or $script:failureCode -cne 'ERR_ASSERTION' -or $timer.Elapsed.TotalSeconds -gt 3){
+        throw 'The actual rehearsal runner hid the failed parent behind descendant EOF'
+    }
+    $ownedPids=Get-Content -LiteralPath (Join-Path $WorkDirectory 'owned-processes.json') -Raw | ConvertFrom-Json
+    if(Get-CimInstance Win32_Process -Filter ('ProcessId='+$ownedPids.parent)){throw 'Synthetic parent was still alive'}
+    $writer=Get-CimInstance Win32_Process -Filter ('ProcessId='+$ownedPids.child)
+    if(!$writer -or $writer.ExecutablePath -ine $Node -or !$writer.CommandLine.Contains($writerScript)){
+        throw 'The explicitly owned background writer must remain alive when the runner returns'
+    }
+} finally {
+    $pidFile=Join-Path $WorkDirectory 'owned-processes.json'
+    if(Test-Path -LiteralPath $pidFile){
+        $ownedPids=Get-Content -LiteralPath $pidFile -Raw | ConvertFrom-Json
+        $writer=Get-CimInstance Win32_Process -Filter ('ProcessId='+$ownedPids.child)
+        if($writer -and $writer.ExecutablePath -ieq $Node -and $writer.CommandLine.Contains($writerScript)){
+            Stop-Process -Id ([int]$ownedPids.child) -ErrorAction Stop
+        }
+    }
+}
+'failed-parent-returned-with-owned-writer-alive'
 'windows-argument-roundtrip-ok'
 'keepalive-json-roundtrip-ok'
 'native-regression-ok'
@@ -101,6 +135,7 @@ try {
       assert.match(result.stdout, /native-regression-ok/);
       assert.match(result.stdout, /keepalive-json-roundtrip-ok/);
       assert.match(result.stdout, /windows-argument-roundtrip-ok/);
+      assert.match(result.stdout, /failed-parent-returned-with-owned-writer-alive/);
       assert.equal(result.stderr, '');
     } finally { await rm(directory, { recursive: true, force: true }); }
   });
