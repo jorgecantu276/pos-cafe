@@ -2,6 +2,7 @@
 
 import PagerPicker from './PagerPicker';
 import { receivedCashMXN, usdCashQuote } from '@/lib/usd-cash';
+import { splitPayment, splitPaymentMethod } from '@/lib/split-payment';
 import { posProfile } from '@/lib/pos-profile';
 import { productStockLabel, validPagerNumber } from '@/lib/pos-types';
 import { matchesMenuCard, menuCardAvailable, menuCardPrice, menuCards, type MenuCard } from '@/lib/menu-cards';
@@ -92,29 +93,33 @@ export function PrototypeCustomization({product,steps,index,extras,dbExtras,note
   </Sheet>;
 }
 
-export function PrototypeCheckout({total,method,mxn,usd,exchangeRate,orderType,note,busy,insufficient,onMethod,onMXN,onUSD,onOrderType,onNote,onConfirm,onClose,pagerNumber,onPagerNumber,clipEnabled,phoneOrderLabel}:{
+export function PrototypeCheckout({total,method,mxn,usd,card='',onCard,exchangeRate,orderType,note,busy,insufficient,onMethod,onMXN,onUSD,onOrderType,onNote,onConfirm,onClose,pagerNumber,onPagerNumber,clipEnabled,phoneOrderLabel}:{
   total:number;method:string;mxn:string|number;usd:string|number;exchangeRate:number;orderType:string;note:string;busy:boolean;insufficient:boolean;
   onMethod:(s:string)=>void;onMXN:(s:string)=>void;onUSD:(s:string)=>void;onOrderType:(s:string)=>void;onNote:(s:string)=>void;onConfirm:()=>void;onClose:()=>void;
   pagerNumber?:number|null;onPagerNumber?:(value:number|null)=>void;clipEnabled?:boolean;
   phoneOrderLabel?:string;
+  card?:string|number;onCard?:(s:string)=>void;
+  onBack?:()=>void;
 }){
-  const [currency,setCurrency]=useState<'MXN'|'USD'>('MXN'),[confirmed,setConfirmed]=useState(false),[notes,setNotes]=useState(false);
-  const cash=method==='Efectivo'||method==='Mixto',received=receivedCashMXN(Number(mxn||0),Number(usd||0),exchangeRate);
+  const [currency,setCurrency]=useState<'MXN'|'USD'|'CARD'>('MXN'),[confirmed,setConfirmed]=useState(false),[notes,setNotes]=useState(false);
+  const split=method===splitPaymentMethod,parts=splitPayment(total,card,mxn),cashDue=split?parts.cashDue:total,cardRequired=method==='Tarjeta'||split;
+  const cash=method==='Efectivo'||method==='Mixto'||split,received=receivedCashMXN(Number(mxn||0),Number(usd||0),exchangeRate);
   const wholeUSD=posProfile.id==='cafe';
-  const key=(value:string)=>{if(!(currency==='USD'&&wholeUSD?/^\d{0,8}$/:/^\d{0,8}(?:\.\d{0,2})?$/).test(value))return;(currency==='MXN'?onMXN:onUSD)(value);};
+  const key=(value:string)=>{if(!(currency==='USD'&&wholeUSD?/^\d{0,8}$/:/^\d{0,8}(?:\.\d{0,2})?$/).test(value))return;(currency==='CARD'?onCard:currency==='MXN'?onMXN:onUSD)?.(value);if(split)setConfirmed(false);};
   const quote=wholeUSD?usdCashQuote(total,exchangeRate):null;
   return <Sheet title="Cobrar orden" onClose={()=>{if(!busy)onClose();}}><div className={wholeUSD?'prototype-checkout-totals':undefined}><div className="prototype-checkout-total"><span>Total MXN</span><strong>{money(total)}</strong></div>{quote&&<div className="prototype-checkout-total"><span>Total USD</span><strong>${quote.usd}</strong></div>}</div>
     <div className="prototype-checkout-grid"><section>
       <div className="prototype-service">{['En Local','Para Llevar'].map(t=><button key={t} disabled={busy||!!phoneOrderLabel} aria-pressed={orderType===t} onClick={()=>onOrderType(t)}>{t==='En Local'?'Para aquí':'Para llevar'}</button>)}</div>
       <button disabled={busy||!!phoneOrderLabel} onClick={()=>setNotes(!notes)}>Notas de la orden{note?' · añadidas':''}</button>
       {notes&&<><textarea aria-label="Notas de la orden" disabled={busy} value={note} onChange={e=>onNote(e.target.value)} maxLength={1000}/><TouchKeyboard value={note} onChange={onNote}/></>}
-      <div className="prototype-options prototype-payment-methods">{['Efectivo','Mixto','Tarjeta'].map(m=><button key={m} disabled={busy} aria-pressed={method===m} onClick={()=>{onMethod(m);setConfirmed(false);}}>{m==='Mixto'?'MXN + USD':m}</button>)}</div>
-      {method==='Tarjeta'&&!clipEnabled&&<label className="prototype-card-confirm"><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Confirmé el cobro aprobado en la terminal.</label>}
+      <div className="prototype-options prototype-payment-methods">{(wholeUSD?['Efectivo','Mixto','Tarjeta',splitPaymentMethod]:['Efectivo','Mixto','Tarjeta']).map(m=><button key={m} disabled={busy} aria-pressed={method===m} onClick={()=>{onMethod(m);setConfirmed(false);setCurrency(m===splitPaymentMethod?'CARD':'MXN');}}>{m==='Mixto'?'MXN + USD':m===splitPaymentMethod?'Mixto':m}</button>)}</div>
+      {split&&<><label>Tarjeta MXN<input aria-label="Tarjeta MXN" inputMode="decimal" disabled={busy} value={card} onFocus={()=>setCurrency('CARD')} onChange={e=>{onCard?.(e.target.value);setConfirmed(false);}}/></label><p aria-live="polite">Efectivo por pagar: {money(cashDue)}</p></>}
+      {cardRequired&&!clipEnabled&&<label className="prototype-card-confirm"><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>{split?`Confirmé ${money(parts.cardAmount||0)} aprobado en la terminal.`:'Confirmé el cobro aprobado en la terminal.'}</label>}
       {phoneOrderLabel?<p className="phone-order-state">{phoneOrderLabel} · Paga al recoger</p>:onPagerNumber&&<PagerPicker value={pagerNumber??null} onChange={onPagerNumber} disabled={busy}/>}
-      {cash&&<><div className="prototype-service">{['MXN','USD'].map(c=><button key={c} disabled={busy} aria-pressed={currency===c} onClick={()=>setCurrency(c as 'MXN'|'USD')}>{c}</button>)}</div>
-        <label>Recibido MXN<input inputMode="decimal" disabled={busy} value={mxn} onFocus={()=>setCurrency('MXN')} onChange={e=>onMXN(e.target.value)}/></label><label>Recibido USD<input inputMode={wholeUSD?'numeric':'decimal'} disabled={busy} value={usd} onFocus={()=>setCurrency('USD')} onChange={e=>{if(!wholeUSD||/^\d{0,8}$/.test(e.target.value))onUSD(e.target.value);}}/></label>
-        {!wholeUSD&&<p>Tipo de cambio: {exchangeRate} MXN / USD</p>}<p>{received>=total?`${wholeUSD?'Cambio':'Cambio MXN'}: ${money(received-total)}`:`Faltan MXN: ${money(total-received)}`}</p></>}
-    </section>{cash&&!notes&&<section><fieldset disabled={busy}><legend>Teclado {currency}</legend><TouchKeyboard value={String(currency==='MXN'?mxn:usd)} onChange={key} numeric/></fieldset><button disabled={busy} onClick={()=>{onMXN(String(total));onUSD('');}}>Importe exacto en MXN</button></section>}</div>
-    <button className="prototype-primary" disabled={busy||insufficient||(!phoneOrderLabel&&!validPagerNumber(pagerNumber))||(method==='Tarjeta'&&!clipEnabled&&!confirmed)} onClick={()=>{if(phoneOrderLabel||validPagerNumber(pagerNumber))onConfirm();}}>{busy?'Confirmando…':method==='Tarjeta'&&clipEnabled?'Enviar a CLIP':'Confirmar pago'}</button>
+      {cash&&<>{!split&&<div className="prototype-service">{['MXN','USD'].map(c=><button key={c} disabled={busy} aria-pressed={currency===c} onClick={()=>setCurrency(c as 'MXN'|'USD')}>{c}</button>)}</div>}
+        <label>Recibido MXN<input aria-label="Recibido MXN" inputMode="decimal" disabled={busy} value={mxn} onFocus={()=>setCurrency('MXN')} onChange={e=>onMXN(e.target.value)}/></label>{!split&&<label>Recibido USD<input inputMode={wholeUSD?'numeric':'decimal'} disabled={busy} value={usd} onFocus={()=>setCurrency('USD')} onChange={e=>{if(!wholeUSD||/^\d{0,8}$/.test(e.target.value))onUSD(e.target.value);}}/></label>}
+        {!wholeUSD&&<p>Tipo de cambio: {exchangeRate} MXN / USD</p>}<p>{received>=cashDue?`${wholeUSD?'Cambio':'Cambio MXN'}: ${money(received-cashDue)}`:`Faltan MXN: ${money(cashDue-received)}`}</p></>}
+    </section>{cash&&!notes&&<section><fieldset disabled={busy}><legend>Teclado {currency==='CARD'?'tarjeta':currency}</legend><TouchKeyboard value={String(currency==='CARD'?card:currency==='MXN'?mxn:usd)} onChange={key} numeric/></fieldset><button disabled={busy} onClick={()=>{onMXN(String(cashDue));onUSD('');setCurrency('MXN');}}>Importe exacto en MXN</button></section>}</div>
+    <button className="prototype-primary" disabled={busy||insufficient||(split&&(!parts.valid||Number(usd)!==0))||(!phoneOrderLabel&&!validPagerNumber(pagerNumber))||(cardRequired&&!clipEnabled&&!confirmed)} onClick={()=>{if((phoneOrderLabel||validPagerNumber(pagerNumber))&&(!split||parts.valid))onConfirm();}}>{busy?'Confirmando…':cardRequired&&clipEnabled?split?`Cobrar ${money(parts.cardAmount||0)} en CLIP`:'Enviar a CLIP':'Confirmar pago'}</button>
   </Sheet>;
 }

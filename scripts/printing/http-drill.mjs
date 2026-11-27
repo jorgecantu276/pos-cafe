@@ -258,6 +258,14 @@ try {
   await post({ orderId: bulk });
   assert.deepEqual((await spool()).filter(job => job.orderId === bulk).map(job => job.audience), ['customer']);
   pass('A bulk order above the label limit still gets its receipt and never submits a preparation job');
+  const split = newSale(4099), splitSnapshot = orders.get(split).receipt_snapshot;
+  Object.assign(splitSnapshot,{payment_method:'efectivo_tarjeta',card_amount_mxn:120,tender_mxn:150,change_mxn:50});
+  await writeFile(faults, '{}');await post({orderId:split});
+  const splitReceipt=(await spool()).find(job=>job.orderId===split&&job.audience==='customer').document;
+  assert.match(splitReceipt.sections.flat().join(' '),/Efectivo aplicado: \$100\.00.*Tarjeta MXN: \$120\.00.*Recibido MXN: \$150\.00.*Cambio: \$50\.00/);
+  const reprint=await (await fetch(appOrigin+'/api/receipts?orderId='+split,{headers:{Cookie:cookies[0]}})).json();
+  assert.equal(reprint.source,'stored');assert.deepEqual(reprint.document,splitReceipt);
+  pass('Cash/card receipt and stored reprint preserve the card portion, net cash and peso change');
   const privateResponse = await http(); assert.match(privateResponse.headers.get('cache-control'), /private.*no-store/);
   assert.equal(methods.some(method => method.includes('/rpc/') || /^(PATCH|DELETE) /.test(method) || (method.startsWith('POST ') && !method.includes('/auth/v1/token'))), false);
   pass('Print retries perform no checkout/stock/payment writes; responses are private and uncached');

@@ -26,7 +26,7 @@ export default function CustomerHistory({ customer, onClose }: { customer: { id:
       <p>{data.summary.rows} tickets · Compras completadas {reportMoney(data.summary.sales)}</p>
       {!data.orders.length && <p>No hay compras registradas para este cliente.</p>}
       <ul className="divide-y">{data.orders.map(order => <li key={order.id} className="py-3"><details><summary className="cursor-pointer"><span className="inline-flex flex-wrap gap-x-5 gap-y-1"><strong>Folio {order.ticket_number}</strong><span>{reportDate(order.created_at)}</span><span>{reportMoney(order.total)}</span><span>{status(order.status)}</span></span></summary>
-        <p className="mt-3 text-sm">Pago: {order.payment_method ?? 'Sin registro'}</p><ul className="mt-2 space-y-2">{order.order_items.map((item, index) => {
+        <p className="mt-3 text-sm">Pago: {order.payment_method === 'efectivo_tarjeta' ? 'Mixto · efectivo + tarjeta' : order.payment_method ?? 'Sin registro'}</p><ul className="mt-2 space-y-2">{order.order_items.map((item, index) => {
           const product = Array.isArray(item.products) ? item.products[0] : item.products;
           return <li key={index} className="text-sm">{item.quantity} × {item.product_snapshot?.name ?? product?.name ?? 'Producto eliminado'} · {reportMoney(item.total_price)}{!!item.product_snapshot?.displayExtras?.length && <p className="text-slate-500">{item.product_snapshot.displayExtras.map(extra => extra.name).join(' · ')}</p>}{item.notes && <p className="text-slate-500 whitespace-pre-wrap">{item.notes}</p>}</li>;
         })}</ul>

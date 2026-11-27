@@ -45,10 +45,13 @@ begin
     'cafe_private.phone_catalog_quote(uuid,jsonb)'
   ] loop
     select pg_get_functiondef(signature::regprocedure) into definition;
-    if length(definition) - length(replace(definition, old_check, '')) <> length(old_check) then
+    if length(definition) - length(replace(definition, new_check, '')) = length(new_check) then
+      null; -- The forward split-payment migration already retains this guard.
+    elsif length(definition) - length(replace(definition, old_check, '')) = length(old_check) then
+      execute replace(definition, old_check, new_check);
+    else
       raise exception 'Revisa la validación de opciones de leche en %', signature;
     end if;
-    execute replace(definition, old_check, new_check);
   end loop;
 
   insert into public.extras (name, price, phase, active, orden_opcion)

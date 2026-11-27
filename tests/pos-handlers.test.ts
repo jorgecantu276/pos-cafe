@@ -14,6 +14,7 @@ import {beginPhoneRequest,completePhoneRequest,getPhoneOrder,phoneRequestKey,rea
 import { createCartStore,customizeProduct, useCartStore, type CartItem } from '../store/useCartStore';
 import {bindCartDraft,cartDraftKey} from '../lib/cart-draft';
 import {receivedCashMXN} from '../lib/usd-cash';
+import {splitPaymentMethod} from '../lib/split-payment';
 
 test('opening and closing denomination counts use the same decimal conversion as checkout',()=>{
   const count=handler('calculateTotalCash',{breakdown:{100:1},dollarsInBox:9,exchangeRate:'15.075',parseAmount:Number,receivedCashMXN});
@@ -123,7 +124,7 @@ test('a cashier can stop closing when unfinished printing needs attention',async
 // Exercise the actual page handlers with browser/network dependencies replaced;
 // no request reaches Supabase and no print dialog is opened by these checks.
 function handler(name: string, context: Record<string, unknown>, file='../app/register/Register.tsx'): (...args: unknown[]) => unknown {
-  context = { clipEnabled:false,pagerNumber:1,validPagerNumber,phonePending:null,phoneBusy:false,phoneError:'',phoneOrder:false,selectedPhoneOrder:null,setSelectedPhoneOrder:()=>{},readPhoneRequest,readCheckoutReview,setCheckoutReview:()=>{},draftOwner:{current:'test-user'},ClipPaymentPending,catalogStale:false, withDeadline,isDefinitiveWriteRejection,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
+  context = { splitPaymentMethod,clipEnabled:false,pagerNumber:1,validPagerNumber,phonePending:null,phoneBusy:false,phoneError:'',phoneOrder:false,selectedPhoneOrder:null,setSelectedPhoneOrder:()=>{},readPhoneRequest,readCheckoutReview,setCheckoutReview:()=>{},draftOwner:{current:'test-user'},ClipPaymentPending,catalogStale:false, withDeadline,isDefinitiveWriteRejection,setCountConfirmed:()=>{},setCustomerSearchError:()=>{},setCustomerSearching:()=>{},countConfirmed:true,confirm:()=>true,confirmClosingPrints:async()=>true, errorMessage, withCheckoutLock:async (_key:string, action:()=>Promise<unknown>)=>action(), ...context };
   const source=ts.createSourceFile('page.tsx',readFileSync(new URL(file,import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
   let body='';
   function visit(node: ts.Node) {

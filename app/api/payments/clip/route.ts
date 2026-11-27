@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       if (!clipProviderId(body.providerId)) throw new AccessError('Identificador CLIP inválido.',400);
       return reply(await gateway.status(body.requestId,null,body.providerId));
     }
-    if (body.action !== undefined || !body.payload || body.payload.payment_method !== 'tarjeta') throw new AccessError('Pedido CLIP inválido.',400);
+    if (body.action !== undefined || !body.payload || !['tarjeta','efectivo_tarjeta'].includes(body.payload.payment_method)) throw new AccessError('Pedido CLIP inválido.',400);
     // Existing payments remain recoverable by GET even after switching integration off.
     if (!clipSettings().enabled) throw new AccessError('CLIP aún no está configurado o activado.',503);
     await clipRpc(caller,'pos_clip_prepare',{p_request:body.requestId,p_payload:body.payload});

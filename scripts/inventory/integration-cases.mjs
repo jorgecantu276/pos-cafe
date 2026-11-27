@@ -36,7 +36,7 @@ export async function inventoryIntegrationCases(db,connection,ids) {
   eq((await db.query('select quantity from cafe_private.inventory_reservations where request_id=$1',[request])).rows[0].quantity,2);
   await rpc(cash,'pos_clip_prepare',[request,p]);
   eq((await db.query('select count(*)::int n from cafe_private.inventory_reservations where request_id=$1',[request])).rows[0].n,1);
-  await deny(write('count',{quantity:99}),/CLIP pendiente/);
+  await deny(write('count',{quantity:99}),/CLIP pendiente|pedido o pago pendiente/);
   await deny(toggle(false),/CLIP pendientes/);
   await rpc(service,'pos_clip_claim',[request,ids.cashier,'TESTSERIAL']);
   const provider='pinpad-'+randomUUID();await rpc(service,'pos_clip_attach',[request,ids.cashier,provider]);

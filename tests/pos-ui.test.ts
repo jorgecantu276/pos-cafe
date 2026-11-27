@@ -257,11 +257,11 @@ for(const [appearance, role, clipEnabled] of [['owner','cashier',false],['protot
     }
     if (process.env.POS_UI_PREVIEW) writeFileSync(process.env.POS_UI_PREVIEW, screen.outerHTML);
     await click(button(appearance==='owner'?'Pagar Ahora':'Cobrar'));
-    if(appearance==='owner'){assert.match(screen.textContent!,/Detalles de Orden/);await click(button('Continuar'));assert.match(screen.textContent!,/Finalizar Venta/);}
+    if(appearance==='owner'){assert.match(screen.textContent!,/Detalles de Orden/);await click(button('Continuar'));assert.ok(screen.querySelector('dialog[aria-label="Cobrar"]'));await click(button('Volver a detalles'));assert.match(screen.textContent!,/Detalles de Orden/);await click(button('Continuar'));assert.ok(screen.querySelector('dialog[aria-label="Cobrar"]')); }
     else if(appearance==='prototype') assert.match(screen.textContent!,/Cobrar orden/);
     else assert.ok(screen.querySelector('dialog[aria-label="Cobrar"]'));
     await click(button('Tarjeta'));
-    if(appearance!=='owner'&&!clipEnabled){assert.equal(button('Confirmar pago').disabled,true);await click(screen.querySelector(appearance==='workspace'?'.workspace-card-confirm input':'.prototype-card-confirm input')!);}
+    if(!clipEnabled){assert.equal(button('Confirmar pago').disabled,true);await click(screen.querySelector(appearance!=='prototype'?'.workspace-card-confirm input':'.prototype-card-confirm input')!);}
     await click(button(clipEnabled?'Enviar a CLIP':'Confirmar pago'));
     assert.equal(submitted?.payment_method, 'tarjeta'); assert.equal(submitted?.expected_total, expectedTotal);
     assert.equal(submitted?.order_type, 'Para Llevar'); assert.equal(submitted?.order_note, 'Entrega en puerta');

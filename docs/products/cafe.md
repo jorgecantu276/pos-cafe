@@ -47,6 +47,12 @@ The core cashier journey is: open or receive the drawer → identify products/op
 
 ## Next milestones, in order
 
+### Cash + card split candidate — November 27, 2026
+
+Café checkout adds **Mixto** beside **Tarjeta** for peso cash plus card. Enter the card amount, receive the remaining cash, and return peso change. With CLIP enabled only the card portion is sent; otherwise the cashier confirms that partial amount on the terminal. The existing **MXN + USD** tab and stored `mixto` retain their cash-currency meaning. The split uses `efectivo_tarjeta`, with `orders.card_amount_mxn` and an immutable receipt breakdown. Drawer cash and reports allocate the portions separately; new saved cortes freeze their `payments` breakdown while older cortes remain unknown for that field.
+
+This candidate requires deliberate forward migration `202611270026_split_payments.sql` with the matching application. Existing migration bytes, historical receipts, provider configuration and updater migration refusal remain unchanged. The owner explicitly placed deployment on hold: development, synthetic verification and a draft feature PR only. Do not merge, apply live SQL, publish a package/feed or install the feature until the owner authorizes release. The CD chat owns the subsequent release gates; this feature remains separate from its transport changes.
+
 ### CD integration — November 26, 2026
 
 The delivery candidate now combines the current Café business contracts and
