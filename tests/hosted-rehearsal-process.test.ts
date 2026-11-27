@@ -49,6 +49,31 @@ try {
   assert.match(result.stdout, /failed-parent-returned-with-owned-writer-alive/);
 });
 
+test('actual failure projection retains a primary assertion and both safe frames ahead of long cleanup while redacting private values', { skip: process.platform !== 'win32' }, async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'pos-safe-failure-'));
+  const script = path.join(directory, 'test.ps1');
+  await writeFile(script, String.raw`
+param($Driver)
+$ErrorActionPreference='Stop';$tokens=$null;$parseErrors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile($Driver,[ref]$tokens,[ref]$parseErrors)
+$function=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'ConvertTo-SafeRehearsalDiagnostic'},$true)
+if(!$function -or $parseErrors.Count){throw 'Actual failure projection missing'}
+Invoke-Expression $function.Extent.Text
+$jwt='eyJ'+('a'*40)+'.'+('b'*40)+'.'+('c'*40)
+$privatePath='C:\SyntheticPrivate\credentials.json'
+$raw=@('AssertionError [ERR_ASSERTION]: Primary synthetic mismatch',"+ '$jwt'","  at file:///$privatePath",'Authorization: synthetic-private-header','  at file:///C:/task/acceptance-ui.mjs:139:7','  at file:///C:/task/acceptance-ui.mjs:198:5') + @(1..80|ForEach-Object { 'Container synthetic cleanup '+$_ }) + @('Error: outer child exit failure')
+$result=@(ConvertTo-SafeRehearsalDiagnostic ($raw -join [Environment]::NewLine))
+$joined=$result -join [Environment]::NewLine
+if(!$joined.Contains('Primary synthetic mismatch') -or !$joined.Contains('[acceptance frame] acceptance-ui.mjs:139') -or !$joined.Contains('[acceptance frame] acceptance-ui.mjs:198')){throw 'Cleanup drowned primary error or allowlisted frames'}
+if($joined.Contains($jwt) -or $joined.Contains('SyntheticPrivate') -or $joined.Contains('synthetic-private-header') -or $joined.Contains('file:///C:')){throw 'Private diagnostic value leaked'}
+if($result.Count -gt 60 -or @($result|Where-Object {$_.Length -gt 312}).Count){throw 'Failure projection exceeded its fixed bounds'}
+'primary-preserved-private-values-redacted'
+`);
+  const result = await promisify(execFile)('pwsh.exe', ['-NoProfile', '-NonInteractive', '-File', script,
+    path.resolve('scripts/testing/Run-HostedSmoothiesRehearsal.ps1')], { windowsHide: true, timeout: 15_000 });
+  assert.match(result.stdout, /primary-preserved-private-values-redacted/);
+});
+
 test('actual image warmup retries only explicit registry throttling and preserves terminal failures', { skip: process.platform !== 'win32' }, async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pos-image-prefetch-'));
   const script = path.join(directory, 'test.ps1');

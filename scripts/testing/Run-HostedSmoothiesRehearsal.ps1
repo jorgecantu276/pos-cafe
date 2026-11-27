@@ -73,6 +73,11 @@ $requiredChecks = @('zip-build-equality','complete-file-index','exact-zip-instal
 
 function ConvertTo-SafeRehearsalDiagnostic {
     param([string]$Text)
+    # Retain only allowlisted basenames/numeric lines before redacting paths.
+    # These frames can distinguish a route assertion from a later UI await.
+    $frames = @([regex]::Matches([string]$Text, '(?<file>acceptance(?:-ui|-update)?\.mjs|auto-update\.mjs|prepare-local\.mjs|start-local\.mjs|restore-local\.mjs):(?<line>[1-9][0-9]{0,6}):[0-9]{1,6}(?![0-9])') | ForEach-Object {
+        '[acceptance frame] ' + $_.Groups['file'].Value + ':' + $_.Groups['line'].Value
+    } | Select-Object -Unique | Select-Object -First 32)
     $safe = $Text -replace '(?im)^.*(?:password|passwd|secret|service.?role|jwt|authorization|api.?key|access_token|refresh_token|SMOOTHIES_(?:ANON|SERVICE|DATABASE|ADMIN)|p_payload).*$','[redacted sensitive log line]'
     $safe = $safe -replace '(?i)\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b','[redacted token]'
     $safe = $safe -replace '(?i)\bpostgres(?:ql)?://[^\s"''<>]+','[redacted database URL]'
@@ -80,9 +85,18 @@ function ConvertTo-SafeRehearsalDiagnostic {
     $safe = $safe -replace '(?i)(?:https?|file)://[^\s"''<>]+','[redacted URL]'
     $safe = $safe -replace '(?i)/(?:home|mnt|root|tmp|run)/[^\s"''<>]+','[redacted runner path]'
     $safe = $safe -replace '[A-Za-z0-9_+/=\-]{32,}','[redacted long value]'
-    return @($safe -split '\r?\n' | Where-Object { $_.Trim() } | Select-Object -Last 45 | ForEach-Object {
+    $lines = @($safe -split '\r?\n' | Where-Object { $_.Trim() } | ForEach-Object {
         if ($_.Length -gt 300) { $_.Substring(0,300) + ' [truncated]' } else { $_ }
     })
+    $primary = -1
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match '(?i)(?:^\s*(?:AssertionError|TimeoutError|Error:|locator\.(?:click|fill|waitFor))|\bERR_ASSERTION\b)') { $primary = $index; break }
+    }
+    if ($primary -ge 0) {
+        $first = [Math]::Max(0, $primary - 2); $last = [Math]::Min($lines.Count - 1, $primary + 15)
+        return @(@($lines[$first..$last]) + $frames + @($lines | Select-Object -Last 10) | Select-Object -Unique | Select-Object -First 60)
+    }
+    return @($frames + @($lines | Select-Object -Last 45) | Select-Object -Unique | Select-Object -First 60)
 }
 
 function Invoke-PrivateRehearsalCommand {
@@ -97,8 +111,8 @@ function Invoke-PrivateRehearsalCommand {
     Write-Host ('Completed owned command during ' + $phase + ' (root exit ' + $exitCode + '; deadline exceeded ' + $completed.TimedOut + '; output drain bounded ' + $completed.DrainTimedOut + ').')
     if ($exitCode -ne 0) {
         $script:failureExitCode = $exitCode
-        $log = (@(Get-Content -LiteralPath $stdoutFile -Tail 125 -ErrorAction SilentlyContinue) +
-            @(Get-Content -LiteralPath $stderrFile -Tail 125 -ErrorAction SilentlyContinue)) -join "`n"
+        $log = (@(Get-Content -LiteralPath $stdoutFile -Tail 512 -ErrorAction SilentlyContinue) +
+            @(Get-Content -LiteralPath $stderrFile -Tail 512 -ErrorAction SilentlyContinue)) -join "`n"
         foreach ($knownCode in @('ERR_ASSERTION','EADDRINUSE','ECONNREFUSED','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE','DEPTH_ZERO_SELF_SIGNED_CERT')) {
             if ($log.Contains($knownCode)) { $script:failureCode = $knownCode; break }
         }
