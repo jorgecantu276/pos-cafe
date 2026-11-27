@@ -171,6 +171,12 @@ try {
   assert.equal(orders.status, 200);
   assert.equal((await orders.json()).length, 1);
   console.log('PASS: stopped Docker, restart, authentication and installer repair retain the sale and private recovery material.');
+  stop();
+  assert.equal(await waitForExit(launch), 0);
+  // Verify the runtime-touched installed release, not only its original ZIP.
+  // Startup, signed update, restart and repair must preserve the exact file set.
+  await verifyPackage(path.join(fixture, 'versiones', release.id), indexedRelease, release);
+  console.log('PASS: the installed release retains its exact indexed files after startup, update, restart, repair and final stop.');
   await writeFile(path.join(evidenceDirectory, 'acceptance.json'), JSON.stringify({
     result: 'pass', completedAt: new Date().toISOString(), version: release.appVersion, lanHttps: Boolean(lan), actualDeviceAcceptance: 'pending',
     sourceCommit: release.sourceCommit, familyRelease: release.familyRelease, packageId: release.id,

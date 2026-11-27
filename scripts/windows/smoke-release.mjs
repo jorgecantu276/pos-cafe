@@ -74,8 +74,20 @@ try {
   assert.throws(() => execFileSync(powershell,['-NoProfile','-File',path.join(relocated,'Start-POS.ps1'),'-ConfigPath',configPath,'-NoBrowser'],{windowsHide:true,stdio:'pipe'}));
 } finally {
   // Only terminate the exact process tree created by this isolated drill.
-  if (child.exitCode === null) execFileSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], {windowsHide:true,stdio:'ignore'});
-  if (child.exitCode === null) await new Promise(resolve => child.once('close', resolve));
+  try {
+    const running = () => child.exitCode === null && child.signalCode === null;
+    if (running()) {
+      // The launcher can exit between the check and taskkill. Confirm root
+      // termination below; inherited output pipes are not proof it is alive.
+      try { execFileSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], {windowsHide:true,stdio:'ignore',timeout:10000}); } catch {}
+      for (let attempt = 0; running() && attempt < 100; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+    assert.equal(running(), false, 'The owned release launcher did not stop within the bounded cleanup deadline.');
+  } finally {
+    child.stdout.destroy(); child.stderr.destroy();
+  }
 }
 await verifyPackage(relocated, packageIdentity, relocated, manifest);
 console.log(`PASS relocated Windows release: ${hashes.length} hashes and exact file set preserved after startup/login/favicon/stop; bundled runtime/server/assets/helpers/migrations; API checks; target mismatch refused. No hosted database or physical printer used.`);
