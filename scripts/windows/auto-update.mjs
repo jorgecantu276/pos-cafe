@@ -4,8 +4,8 @@ import { appendFileSync, createReadStream } from 'node:fs';
 import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
+import net from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 
 const repo = 'jorgecantu276/pos-cafe';
@@ -162,14 +162,15 @@ export function printJournalIdle(config) {
   finally { database?.close(); }
 }
 
-function launchWindows(directory, configPath, onReady) {
+function launchWindows(directory, configPath, onReady, { probe = false, signal } = {}) {
   return new Promise(resolve => {
     const token = randomUUID();
     let ready = false;
     let busy = false;
+    let failed = false;
     const child = spawn(ps, [...psArgs, '-File', path.join(directory, 'Start-POS.ps1'),
-      '-ConfigPath', configPath, '-DesktopApp'], {
-      windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'],
+      '-ConfigPath', configPath, ...(probe ? ['-NoBrowser', '-MaintenanceProbe'] : ['-DesktopApp'])], {
+      windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'], signal,
       env: { ...process.env, POS_UPDATE_READY_TOKEN: token },
     });
     createInterface({ input: child.stdout }).on('line', line => {
@@ -179,15 +180,46 @@ function launchWindows(directory, configPath, onReady) {
       } else if (line === 'POS_UPDATE_BUSY ' + token) busy = true;
       else console.log(line);
     });
-    child.once('error', () => resolve({ ready: false, code: 1 }));
-    child.once('close', code => resolve({ ready, busy, code }));
+    child.once('error', () => { failed = true; });
+    child.once('close', code => resolve({ ready: ready && !failed, busy, code: failed ? 1 : code }));
+  });
+}
+
+const centralClock = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Matamoros', hourCycle: 'h23', hour: '2-digit', minute: '2-digit',
+});
+
+// The scheduled task starts at 05:00. Late starts and overlong downloads must
+// never turn into a business-hours installation. Intl applies Central DST.
+export function inCafeUpdateWindow(date = new Date()) {
+  const parts = Object.fromEntries(centralClock.formatToParts(date).map(part => [part.type, part.value]));
+  return parts.hour === '05' && Number(parts.minute) < 15;
+}
+
+function remainingWindow(date) {
+  if (!inCafeUpdateWindow(date)) return 0;
+  const minute = Number(centralClock.formatToParts(date).find(part => part.type === 'minute').value);
+  return (15 - minute) * 60_000 - date.getUTCSeconds() * 1000 - date.getUTCMilliseconds();
+}
+
+async function portUnused(port) {
+  return await new Promise(resolve => {
+    const socket = net.connect({ host: '127.0.0.1', port });
+    socket.setTimeout(1200);
+    socket.once('connect', () => { socket.destroy(); resolve(false); });
+    socket.once('error', error => { socket.destroy(); resolve(error.code === 'ECONNREFUSED'); });
+    socket.once('timeout', () => { socket.destroy(); resolve(false); });
   });
 }
 
 export async function runAutoUpdate({
   configPath, bootstrap, source = github, extract = extractWindowsZip, launch = launchWindows,
-  interval = 15 * 60_000, log = console.log,
+  scheduled = false, now = () => new Date(), isPortUnused = portUnused, log = console.log,
 }) {
+  if (scheduled && !inCafeUpdateWindow(now())) {
+    log('Actualizacion omitida: solo a las 05:00, hora Central (hasta 05:15).');
+    return 0;
+  }
   const config = await json(configPath);
   if (!path.isAbsolute(configPath) || !path.isAbsolute(bootstrap)) throw new Error('Se requieren rutas absolutas.');
   const baseline = await json(path.join(bootstrap, 'release.json'));
@@ -217,6 +249,7 @@ export async function runAutoUpdate({
       throw new Error('Estado de actualizacion invalido.');
     }
   } catch {
+    if (scheduled) { log('Actualizacion omitida: estado local no verificado.'); return 1; }
     log('Actualizacion no disponible. Abriendo la version de inicio.');
     return (await launch(bootstrap, configPath, () => {})).code;
   }
@@ -252,17 +285,20 @@ export async function runAutoUpdate({
   const eligible = update => update.from.includes(active) && !state.rejected.includes(update.commit);
 
   async function stage(signal) {
+    if (!inCafeUpdateWindow(now())) return;
     const release = await source.latest(signal);
+    if (!inCafeUpdateWindow(now())) return;
     const tag = release.tag_name;
     if (release.draft !== false || release.prerelease !== false || !/^pos-[0-9a-f]{7}$/.test(tag) ||
         !release.assets?.some(item => item.name === asset)) return;
     const scratch = path.join(root, 'download-' + randomUUID());
     await mkdir(scratch);
     try {
+      if (!inCafeUpdateWindow(now())) return;
       await source.download(tag, asset, scratch, signal);
       const envelope = await json(path.join(scratch, asset));
       const update = readSignedUpdate(envelope, publicKey);
-      if (update.tag !== tag || !eligible(update) || update.commit === trial?.commit ||
+      if (update.tag !== tag || !eligible(update) ||
           !release.assets.some(item => item.name === update.zip)) return;
       const destination = directory(update.commit);
       let existing;
@@ -275,6 +311,7 @@ export async function runAutoUpdate({
           return;
         } catch { /* A damaged staged package can be downloaded again. */ }
       }
+      if (!inCafeUpdateWindow(now())) return;
       await source.download(tag, update.zip, scratch, signal);
       const zip = path.join(scratch, update.zip);
       if (await sha256(zip) !== update.sha256) throw new Error('ZIP de actualizacion invalido.');
@@ -282,6 +319,7 @@ export async function runAutoUpdate({
       await extract(zip, unpacked, signal);
       await verifyPackage(unpacked, update, directory(active), baseline);
       signal.throwIfAborted();
+      if (!inCafeUpdateWindow(now())) return;
       try { await rename(unpacked, destination); }
       catch (error) {
         if (!['EEXIST', 'ENOTEMPTY', 'EPERM'].includes(error.code)) throw error;
@@ -301,7 +339,7 @@ export async function runAutoUpdate({
   }
 
   async function trialWhenClosed() {
-    if (!publicKey) return null;
+    if (!publicKey || !inCafeUpdateWindow(now())) return null;
     try {
       const envelope = await optionalJson(stagedFile);
       if (!envelope) return null;
@@ -310,77 +348,76 @@ export async function runAutoUpdate({
       await verifyPackage(directory(update.commit), update, directory(active), baseline);
       if (!await closedShift(config)) return null;
       if (!printJournalIdle(config)) return null;
-      return update;
+      return inCafeUpdateWindow(now()) ? update : null;
     } catch {
       log('El paquete preparado no se pudo verificar.');
       return null;
     }
   }
 
-  const stop = new AbortController();
-  const prepared = state.fallback && await trialWhenClosed();
-  const trial = prepared && prepared.commit === state.active ? prepared : null;
   let record = Promise.resolve();
   const saveState = () => saveJson(stateFile, { ...state, bootstrapCommit: baseline.sourceCommit }).catch(() => log('No se pudo guardar el estado de la actualizacion.'));
-  const background = (async () => {
-    while (publicKey && !stop.signal.aborted) {
-      try { await stage(AbortSignal.any([stop.signal, AbortSignal.timeout(180_000)])); }
-      catch { if (!stop.signal.aborted) log('No se pudo preparar una actualizacion. Caja sigue disponible.'); }
-      await sleep(interval, undefined, { signal: stop.signal }).catch(() => {});
+
+  if (scheduled) {
+    if (!publicKey || !await isPortUnused(config.Port || 3000) || !await closedShift(config) || !printJournalIdle(config)) {
+      log('Actualizacion omitida: Caja abierta, estado pendiente o actualizaciones desactivadas.');
+      return 0;
     }
-  })();
-  try {
-    // The previous version stays active until the candidate starts and its launcher verifies its identity.
-    let result = await launch(trial ? directory(trial.commit) : activeDirectory, configPath, () => {
-      if (!trial) {
-        if (resetSelection) record = saveState();
-        return;
-      }
-      const previous = active;
-      active = trial.commit;
-      state = { active, previous, rejected: state.rejected };
-      record = saveState();
-      log('Caja actualizada a ' + trial.tag);
-    });
-    await record;
-    if (trial && !result.ready && !result.busy && result.code !== 0) {
-      const { fallback: _fallback, ...rest } = state;
-      state = { ...rest, active, rejected: [...state.rejected, trial.commit] };
-      await saveState();
-      log('La version nueva no abrio. Se recupera la version anterior.');
-      result = await launch(activeDirectory, configPath, () => {});
-    }
-    if (!trial && !result.ready && !result.busy && result.code !== 0 && state.previous && state.previous !== active) {
-      const rejected = [...state.rejected, active];
-      active = state.previous;
-      state = { active, rejected };
-      await saveState();
-      log('Caja no abrio. Se recupera la version anterior.');
-      result = await launch(directory(active), configPath, () => {});
-    }
-    if (result.code === 0 && result.ready) {
-      // Switch the local selection at shutdown but keep the previous release until the first successful startup.
-      const prepared = await trialWhenClosed();
-      if (prepared) {
-        state = { ...state, active: prepared.commit, fallback: active };
+    if (!inCafeUpdateWindow(now())) return 0;
+    try { await stage(AbortSignal.timeout(Math.max(1, Math.min(180_000, remainingWindow(now()))))); }
+    catch { log('No se pudo preparar una actualizacion. Se conserva la version actual.'); return 1; }
+    const prepared = await trialWhenClosed();
+    if (!prepared || !await isPortUnused(config.Port || 3000) || !inCafeUpdateWindow(now())) return 0;
+    const remaining = remainingWindow(now());
+    if (!remaining) return 0;
+    let result;
+    try {
+      result = await launch(directory(prepared.commit), configPath, () => {}, { probe: true, signal: AbortSignal.timeout(Math.max(1, remaining)) });
+    } catch { log('La comprobacion programada no termino. Se conserva la version actual.'); return 1; }
+    if (!result.ready || result.code !== 0) {
+      if (!result.busy && result.code !== 0) {
+        state = { ...state, rejected: [...new Set([...state.rejected, prepared.commit])] };
         await saveState();
-        log('Turno cerrado. La siguiente apertura activara ' + prepared.tag);
       }
+      log('La version nueva no abrio. Se conserva la version anterior.');
+      return result.busy ? 0 : 1;
     }
-    return result.code ?? 1;
-  } finally {
-    stop.abort();
-    await background;
+    if (!inCafeUpdateWindow(now()) || !await closedShift(config) || !printJournalIdle(config) || !await isPortUnused(config.Port || 3000) || !inCafeUpdateWindow(now())) {
+      log('Actualizacion aplazada: termino la ventana o cambio el estado de Caja.');
+      return 0;
+    }
+    const previous = active;
+    active = prepared.commit;
+    state = { active, previous, rejected: state.rejected };
+    await saveJson(stateFile, { ...state, bootstrapCommit: baseline.sourceCommit });
+    log('Caja actualizada a ' + prepared.tag + ' durante la ventana de las 05:00 Central.');
+    return 0;
   }
+
+  // Opening/closing Caja never downloads or activates an update. It opens the
+  // version already validated at 05:00, with existing safe startup fallback.
+  let result = await launch(activeDirectory, configPath, () => {
+    if (resetSelection) record = saveState();
+  });
+  await record;
+  if (!result.ready && !result.busy && result.code !== 0 && state.previous && state.previous !== active) {
+    const rejected = [...state.rejected, active];
+    active = state.previous;
+    state = { active, rejected };
+    await saveState();
+    log('Caja no abrio. Se recupera la version anterior.');
+    result = await launch(directory(active), configPath, () => {});
+  }
+  return result.code ?? 1;
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  const [configPath, bootstrap] = process.argv.slice(2);
+  const [configPath, bootstrap, mode] = process.argv.slice(2);
   const log = message => {
     console.log(message);
     try { appendFileSync(configPath + '.update.log', new Date().toISOString() + ' ' + message + '\n'); }
     catch { /* A log failure cannot prevent opening Caja. */ }
   };
-  try { process.exitCode = await runAutoUpdate({ configPath, bootstrap, log }); }
+  try { process.exitCode = await runAutoUpdate({ configPath, bootstrap, log, scheduled: mode === '--scheduled' }); }
   catch { console.error('No se pudo iniciar el actualizador de Caja.'); process.exitCode = 1; }
 }

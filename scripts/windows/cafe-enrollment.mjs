@@ -64,6 +64,15 @@ const native = {
     })).stdout);
   },
   readShortcut, writeShortcut,
+  async inspectUpdateTask(inputs) {
+    return await updateTask('Inspect', inputs);
+  },
+  async installUpdateTask(inputs, expected) {
+    return await updateTask('Install', inputs, expected.hash);
+  },
+  async rollbackUpdateTask(inputs, installed, previous) {
+    return await updateTask('Rollback', inputs, installed.hash, previous.xml);
+  },
   async portUnused(port) {
     return await new Promise(resolve => {
       const socket = net.connect({ host: '127.0.0.1', port });
@@ -83,6 +92,15 @@ const native = {
     return response.ok && await response.json() === true;
   },
 };
+
+async function updateTask(mode, inputs, expectedHash = 'absent', previousXml = '') {
+  return JSON.parse(await powershell(
+    "& $env:POS_UPDATE_TASK_SCRIPT -Mode $env:POS_UPDATE_TASK_MODE -ConfigPath $env:POS_UPDATE_TASK_CONFIG -Bootstrap $env:POS_UPDATE_TASK_BOOTSTRAP -ExpectedHash $env:POS_UPDATE_TASK_EXPECTED -PreviousXmlBase64 $env:POS_UPDATE_TASK_PREVIOUS",
+    { POS_UPDATE_TASK_SCRIPT: path.join(inputs.bootstrap, 'Cafe-UpdateTask.ps1'), POS_UPDATE_TASK_MODE: mode,
+      POS_UPDATE_TASK_CONFIG: inputs.config, POS_UPDATE_TASK_BOOTSTRAP: inputs.bootstrap, POS_UPDATE_TASK_EXPECTED: expectedHash,
+      POS_UPDATE_TASK_PREVIOUS: previousXml ? Buffer.from(previousXml, 'utf8').toString('base64') : '' },
+  ));
+}
 
 function shortcutFor(bootstrap, configPath, old) {
   return { ...old, target: shell,
@@ -129,7 +147,7 @@ export async function inspectEnrollment(options, dependencies = {}) {
   assert.ok(signed.from.includes(baseline.sourceCommit), 'The actual installed predecessor is not signed as supported.');
   await verifyPackage(inputs.bootstrap, signed, inputs.bootstrap, baseline);
   await verifyPackage(inputs.installed, { commit: baseline.sourceCommit, filesSha256: hash(await readFile(path.join(inputs.installed, 'SHA256.json'))) }, inputs.installed, baseline);
-  for (const file of ['Open-Caja.ps1', 'auto-update.mjs', 'Extract-POS-Update.ps1']) await normalPath(path.join(inputs.bootstrap, file));
+  for (const file of ['Open-Caja.ps1', 'auto-update.mjs', 'Extract-POS-Update.ps1', 'Cafe-UpdateTask.ps1']) await normalPath(path.join(inputs.bootstrap, file));
   const privateFiles = [inputs.config, inputs.key, inputs.support, inputs.approval, inputs.manifest, inputs.reporter, inputs.shortcut,
     await normalPath(config.PrintDataDirectory, true), await normalPath(config.ReceiptIssuerFile),
     await normalPath(config.BackupDirectory || path.join(path.dirname(inputs.config), 'pos-cafe-backups'), true),
@@ -209,9 +227,10 @@ export async function inspectEnrollment(options, dependencies = {}) {
   }
   const bindings = {};
   for (const [field, file] of Object.entries(inputs)) if (!['installed', 'bootstrap'].includes(field)) bindings[field] = hash(await readFile(file));
+  const scheduledTask = await services.inspectUpdateTask(inputs);
   return { format: 'pos-cafe-enrollment-plan-v1', createdAt: new Date(now).toISOString(), inputs, bindings,
     ...expected, changedDatabaseContract, reportUrl: approval.reportUrl, enabling: options.enabling === true,
-    shortcut, desiredShortcut: desired, autoUpdate: config.AutoUpdate === true, actions: options.enabling ? ['enable-compatible-updates'] : ['bind-fixed-shortcut', 'keep-auto-update-off'],
+    shortcut, desiredShortcut: desired, scheduledTask, autoUpdate: config.AutoUpdate === true, actions: options.enabling ? ['install-owned-05:00-Central-task', 'enable-compatible-updates'] : ['bind-fixed-shortcut', 'keep-auto-update-off'],
     scope: 'Procedural independent acceptance is supplied separately; no database migration, download, launch or business data change.' };
 }
 
@@ -230,6 +249,7 @@ export async function applyEnrollment(plan, receiptFile, dependencies = {}) {
   assert.ok(!Object.values(plan.inputs).includes(receipt), 'The receipt cannot replace an input.');
   const lockPath = plan.inputs.config + '.enrollment.lock';
   let configChanged = false, shortcutChanged = false, changedConfigHash, changedShortcutHash;
+  let installedTask;
   const originalConfig = await readFile(plan.inputs.config), originalShortcut = await readFile(plan.inputs.shortcut);
   const configTemporary = plan.inputs.config + '.enrollment-' + randomUUID();
   const shortcutTemporary = plan.inputs.shortcut + '.enrollment-' + randomUUID() + '.lnk';
@@ -239,6 +259,7 @@ export async function applyEnrollment(plan, receiptFile, dependencies = {}) {
     const current = await inspectEnrollment({ ...plan.inputs, enabling: plan.enabling }, dependencies);
     assert.deepEqual(current.bindings, plan.bindings, 'Bound inputs changed after review.');
     assert.deepEqual(current.desiredShortcut, plan.desiredShortcut, 'The shortcut changed after review.');
+    assert.deepEqual(current.scheduledTask, plan.scheduledTask, 'The scheduled task changed after review.');
     for (const field of ['machineSha256', 'backendIdentitySha256', 'installedCommit', 'bootstrapCommit', 'bootstrapFilesSha256', 'publicKeySha256', 'reportUrl', 'changedDatabaseContract']) {
       assert.equal(current[field], plan[field], `The plan ${field} changed after review.`);
     }
@@ -247,7 +268,7 @@ export async function applyEnrollment(plan, receiptFile, dependencies = {}) {
     // while both files are empty, before writing any client credential bytes.
     await writeFile(backup, '', { flag: 'wx', mode: 0o600 });
     await (dependencies.copyAcl || native.copyAcl)(plan.inputs.config, backup);
-    await writeFile(backup, JSON.stringify({ configBase64: originalConfig.toString('base64'), shortcutBase64: originalShortcut.toString('base64') }));
+    await writeFile(backup, JSON.stringify({ configBase64: originalConfig.toString('base64'), shortcutBase64: originalShortcut.toString('base64'), updateTaskXml: plan.scheduledTask.xml }));
     await writeFile(receipt, JSON.stringify({ format: 'pos-cafe-enrollment-receipt-v1', state: 'prepared', backup }), { flag: 'wx', mode: 0o600 });
     receiptOwned = true;
     const config = JSON.parse(originalConfig.toString('utf8').replace(/^\uFEFF/, ''));
@@ -264,18 +285,20 @@ export async function applyEnrollment(plan, receiptFile, dependencies = {}) {
     }
     await sameFile(plan.inputs.config, plan.bindings.config);
     await sameFile(plan.inputs.shortcut, plan.bindings.shortcut);
+    if (plan.enabling) installedTask = await (dependencies.installUpdateTask || native.installUpdateTask)(plan.inputs, plan.scheduledTask);
     await rename(configTemporary, plan.inputs.config); configChanged = true;
     if (!plan.enabling) { await rename(shortcutTemporary, plan.inputs.shortcut); shortcutChanged = true; }
     const result = { format: 'pos-cafe-enrollment-receipt-v1', state: plan.enabling ? 'enabled' : 'enrolled-auto-update-off',
       completedAt: new Date().toISOString(), machineSha256: plan.machineSha256, backendIdentitySha256: plan.backendIdentitySha256,
       installedCommit: plan.installedCommit, bootstrapCommit: plan.bootstrapCommit, publicKeySha256: plan.publicKeySha256,
       reportUrl: plan.reportUrl, configSha256: changedConfigHash, shortcutSha256: shortcutChanged ? changedShortcutHash : plan.bindings.shortcut,
-      backup, nextGate: plan.enabling ? 'Observe one exact signed compatible update and recovery.' : 'Use the existing support installer -ActualizarRutaCaja to bind this bootstrap, run the fixed shortcut, accept its genuine verified report, then inspect an enable plan.' };
+      backup, scheduledTask: installedTask, nextGate: plan.enabling ? 'Observe the daily 05:00 Central task, one exact signed compatible update and recovery. No late catch-up.' : 'Use the existing support installer -ActualizarRutaCaja to bind this bootstrap, run the fixed shortcut, accept its genuine verified report, then inspect an enable plan.' };
     await writeFile(receipt, JSON.stringify(result, null, 2) + '\n', { mode: 0o600 });
     return result;
   } catch (error) {
     if (shortcutChanged) { await sameFile(plan.inputs.shortcut, changedShortcutHash); await writeFile(plan.inputs.shortcut, originalShortcut); }
     if (configChanged) { await sameFile(plan.inputs.config, changedConfigHash); await writeFile(plan.inputs.config, originalConfig); }
+    if (installedTask) await (dependencies.rollbackUpdateTask || native.rollbackUpdateTask)(plan.inputs, installedTask, plan.scheduledTask);
     if (receiptOwned) await writeFile(receipt, JSON.stringify({ format: 'pos-cafe-enrollment-receipt-v1', state: 'rolled-back', completedAt: new Date().toISOString() }));
     throw error;
   } finally {
