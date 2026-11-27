@@ -370,10 +370,20 @@ export async function runAutoUpdate({
     if (!prepared || !await isPortUnused(config.Port || 3000) || !inCafeUpdateWindow(now())) return 0;
     const remaining = remainingWindow(now());
     if (!remaining) return 0;
+    const probeSignal = AbortSignal.timeout(Math.max(1, remaining));
     let result;
     try {
-      result = await launch(directory(prepared.commit), configPath, () => {}, { probe: true, signal: AbortSignal.timeout(Math.max(1, remaining)) });
-    } catch { log('La comprobacion programada no termino. Se conserva la version actual.'); return 1; }
+      result = await launch(directory(prepared.commit), configPath, () => {}, { probe: true, signal: probeSignal });
+    } catch {
+      log('La comprobacion programada no termino. Se conserva la version actual.');
+      return probeSignal.aborted || !inCafeUpdateWindow(now()) ? 0 : 1;
+    }
+    // A deadline is not evidence of a broken release. Keep it eligible for
+    // tomorrow rather than permanently rejecting a valid package at 05:15.
+    if (probeSignal.aborted || !inCafeUpdateWindow(now())) {
+      log('Actualizacion aplazada: termino la ventana de las 05:00 Central.');
+      return 0;
+    }
     if (!result.ready || result.code !== 0) {
       if (!result.busy && result.code !== 0) {
         state = { ...state, rejected: [...new Set([...state.rejected, prepared.commit])] };

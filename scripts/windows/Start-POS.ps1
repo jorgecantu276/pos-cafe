@@ -1,4 +1,4 @@
-param([string]$ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'pos-cafe-config.json'), [switch]$NoBrowser, [switch]$DesktopApp, [switch]$MaintenanceProbe)
+﻿param([string]$ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'pos-cafe-config.json'), [switch]$NoBrowser, [switch]$DesktopApp, [switch]$MaintenanceProbe)
 $ErrorActionPreference = 'Stop'
 if ($MaintenanceProbe) { $NoBrowser = $true; $DesktopApp = $false }
 # Cafe retains its direct backend and loopback-only launcher contract.
