@@ -1,4 +1,5 @@
 name: Windows verification
+run-name: ${{ inputs.run_transport_diagnostics && 'DIAGNOSTIC ONLY - hosted Docker transport' || format('Windows verification - {0}', github.ref_name) }}
 
 on:
   push:
@@ -8,6 +9,10 @@ on:
     inputs:
       run_installed_acceptance:
         description: Run final-ZIP LAN acceptance on a fresh hosted Windows/WSL2 VM
+        type: boolean
+        default: false
+      run_transport_diagnostics:
+        description: Diagnostic only; skips package verification and never qualifies a release
         type: boolean
         default: false
 
@@ -20,6 +25,7 @@ concurrency:
 
 jobs:
   integration:
+    if: ${{ !inputs.run_transport_diagnostics }}
     name: Auth and backend integration (${{ matrix.script }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -44,6 +50,7 @@ jobs:
       - name: Exercise one isolated Auth/backend scenario on its own runner
         run: npm run ${{ matrix.script }}
   verify:
+    if: ${{ !inputs.run_transport_diagnostics }}
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -94,6 +101,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows/smoke-release.mjs $releaseFolder
   smoothies-package:
+    if: ${{ !inputs.run_transport_diagnostics }}
     name: Portable Smoothies package (Windows)
     runs-on: windows-latest
     timeout-minutes: 25
@@ -177,6 +185,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   smoothies-backend:
+    if: ${{ !inputs.run_transport_diagnostics }}
     name: Smoothies import and cash recovery
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -197,7 +206,7 @@ jobs:
       - run: node --import tsx scripts/smoothies/local-sale-drill.mjs
   smoothies-installed-lan:
     name: Final ZIP installation and LAN acceptance (hosted Windows/WSL2)
-    if: github.event_name == 'workflow_dispatch' && inputs.run_installed_acceptance
+    if: github.event_name == 'workflow_dispatch' && inputs.run_installed_acceptance && !inputs.run_transport_diagnostics
     needs: [verify, smoothies-package, smoothies-backend, integration]
     runs-on: windows-2025
     timeout-minutes: 60
@@ -228,5 +237,37 @@ jobs:
         with:
           name: smoothies-installed-acceptance-${{ github.sha }}
           path: ${{ runner.temp }}/smoothies-rehearsal-evidence/rehearsal.json
+          if-no-files-found: warn
+          retention-days: 14
+  transport-diagnostics:
+    name: Hosted Docker transport diagnostics (no release qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.run_transport_diagnostics
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      POS_ACCEPTANCE_DISPOSABLE: '1'
+    steps:
+      - name: Refuse mixed diagnostic and installation scope
+        shell: pwsh
+        run: |
+          if ('${{ inputs.run_installed_acceptance }}' -ceq 'true') { throw 'Choose transport diagnostics or installed acceptance, never both.' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24.22.2
+      - name: Test transport helpers without installing product dependencies
+        run: node --experimental-strip-types --test tests/hosted-docker-pipe.test.ts tests/hosted-wsl-docker.test.ts tests/staging-safety.test.ts
+      - name: Probe genuine isolated hosted WSL Docker transport only
+        shell: pwsh
+        run: ./scripts/testing/Start-HostedWslDocker.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: hosted-docker-diagnostics-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/pos-wsl-engine-*/transport-diagnostic.json
+            ${{ runner.temp }}/pos-wsl-engine-*/engine.json
           if-no-files-found: warn
           retention-days: 14

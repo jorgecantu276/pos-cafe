@@ -184,7 +184,32 @@ services:
     try {
         [void](Docker @('compose', '--project-name', $project, '-f', $composeFile, 'up', '-d'))
         $canaryId = (Docker @('compose', '--project-name', $project, '-f', $composeFile, 'ps', '-q', 'canary')).Trim()
-        $composeHash = Canary-Hash (Docker @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt')) $expectedHash 'Actual Windows Compose bind'
+        $composeOutput = Docker @('exec', $canaryId, 'sha256sum', '/fixture/canary.txt')
+        if (!$composeOutput.Length) {
+            # Genuine independent controls locate empty attach output without
+            # treating an alternative path as accepted installation evidence.
+            $diagnostic = [ordered]@{ windowsExecCharacters = 0; guestBind = 'unavailable'; archiveBind = 'unavailable'; interactiveCharacters = $null; ttyCharacters = $null }
+            try {
+                $guestOutput = Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'docker', 'exec', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30
+                [void](Canary-Hash $guestOutput $expectedHash 'Guest Linux CLI canary bind')
+                $diagnostic.guestBind = 'exact-bytes'
+            } catch { $diagnostic.guestBind = 'failed' }
+            try {
+                $observedCanary = Join-Path $WorkDirectory 'observed-canary.txt'
+                [void](Native -Executable $docker -Arguments @('cp', "${canaryId}:/fixture/canary.txt", $observedCanary) -TimeoutSeconds 30)
+                $diagnostic.archiveBind = if ((Get-FileHash -LiteralPath $observedCanary -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $expectedHash) { 'exact-bytes' } else { 'different-bytes' }
+            } catch { $diagnostic.archiveBind = 'failed' }
+            try { $diagnostic.interactiveCharacters = (Native -Executable $docker -Arguments @('exec', '-i', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30).Length } catch { }
+            try { $diagnostic.ttyCharacters = (Native -Executable $docker -Arguments @('exec', '-t', $canaryId, 'sha256sum', '/fixture/canary.txt') -TimeoutSeconds 30).Length } catch { }
+            try {
+                $versions = Native -Executable $docker -Arguments @('version', '--format', '{{json .}}') -TimeoutSeconds 30 | ConvertFrom-Json
+                $diagnostic.clientVersion = [string]$versions.Client.Version
+                $diagnostic.serverVersion = [string]$versions.Server.Version
+            } catch { }
+            Write-Host ('Synthetic canary transport diagnostics: ' + ($diagnostic | ConvertTo-Json -Compress))
+            [IO.File]::WriteAllText((Join-Path $WorkDirectory 'transport-diagnostic.json'), ($diagnostic | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+        }
+        $composeHash = Canary-Hash $composeOutput $expectedHash 'Actual Windows Compose bind'
         [void](Docker @('cp', $canary, "${canaryId}:/tmp/pipe-copy.txt"))
         [void](Canary-Hash (Docker @('exec', $canaryId, 'sha256sum', '/tmp/pipe-copy.txt')) $expectedHash 'Binary Docker API copy')
         foreach ($port in @(58000, 55432, 55541, 55542, 55543, 55544)) {
