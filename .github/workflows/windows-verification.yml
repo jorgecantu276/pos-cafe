@@ -216,6 +216,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Establish a real isolated Linux Docker engine and verify Windows transport
+        timeout-minutes: 15
         shell: pwsh
         run: ./scripts/testing/Start-HostedWslDocker.ps1
       - name: Install and rehearse this run's exact candidate with synthetic LAN values
