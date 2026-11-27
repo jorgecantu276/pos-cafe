@@ -20,8 +20,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-verification-${{ github.ref }}
-  cancel-in-progress: true
+  group: windows-verification-${{ github.ref }}-${{ github.event_name }}-i${{ inputs.run_installed_acceptance || false }}-d${{ inputs.run_transport_diagnostics || false }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   integration:
