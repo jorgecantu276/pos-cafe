@@ -18,6 +18,9 @@ if (!$PSBoundParameters.ContainsKey('CandidateSha256')) { $CandidateSha256=[stri
 if ($CandidateTag -cnotmatch '^[a-z0-9][a-z0-9.-]+$' -or $SourceCommit -cnotmatch '^[a-f0-9]{40}$' -or $CandidateSha256 -cnotmatch '^[a-f0-9]{64}$' -or
     $CandidateTag -cne $inputRecord.candidateTag -or $SourceCommit -cne $inputRecord.sourceCommit -or $CandidateSha256 -cne $inputRecord.zipSha256) { throw 'The selected arguments differ from the reviewed immutable descriptor.' }
 $source=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$operatorScript=Join-Path $PSScriptRoot 'Invoke-CafeManualUpdate.ps1'
+if ($inputRecord.sourceTree -cnotmatch '^[a-f0-9]{40}$' -or $inputRecord.operatorScriptSha256 -cnotmatch '^[a-f0-9]{64}$' -or
+    !(Test-Path -LiteralPath $operatorScript) -or (Get-FileHash -LiteralPath $operatorScript).Hash.ToLowerInvariant() -cne $inputRecord.operatorScriptSha256) { throw 'Exact reviewed operator and source tree must be selected in the descriptor.' }
 $work=Join-Path $env:RUNNER_TEMP ('cafe-exact-'+[guid]::NewGuid().ToString('N'))
 $evidence=Join-Path $env:RUNNER_TEMP 'cafe-exact-evidence'
 if (Test-Path -LiteralPath $evidence) { throw 'Never overwrite previous exact-ZIP evidence.' }
@@ -87,6 +90,7 @@ try {
     $orchestrator=Join-Path $work 'orchestrator';$null=New-Item -ItemType Directory -Path $orchestrator
     $orchestratorNode=Join-Path $orchestrator 'node.exe';Copy-Item -LiteralPath $node -Destination $orchestratorNode
     $settings=[ordered]@{work=$work;evidence=$evidence;candidate=$candidate;baseline=$baseline;browser=$browser;sourceCommit=$SourceCommit;
+        candidateZip=$candidateZip;sourceTree=$inputRecord.sourceTree;operatorScript=$operatorScript;operatorScriptSha256=$inputRecord.operatorScriptSha256;
         harnessCommit=(& git -C $source rev-parse HEAD).Trim();candidateZipSha256=$CandidateSha256;baselineZipSha256=$baselineHash;engineId=$engineId;probesPassed=$false;
         hostInfrastructure=@{commit=(& git -C (Join-Path $source 'host-infra') rev-parse HEAD).Trim();loopbackSha256=(Get-FileHash -LiteralPath (Join-Path $source 'scripts/staging/docker-loopback.cs')).Hash.ToLowerInvariant()}}
     if ($settings.hostInfrastructure.commit -cne '8a151bd9d39144d46fd371ce527f37824a4e4a37' -or
@@ -111,7 +115,7 @@ try {
     foreach ($relative in @('Microsoft.NET\Framework64\v4.0.30319\csc.exe','Microsoft.NET\Framework\v4.0.30319\csc.exe','System32\conhost.exe','System32\cmd.exe','System32\WerFault.exe','System32\WerFaultSecure.exe','System32\wermgr.exe')) { $systemFile=Join-Path $env:SystemRoot $relative;if (Test-Path -LiteralPath $systemFile) { $programs+=$systemFile } }
     $audit=Start-CafeHostedProcessAudit $work
     $driver.windows=@()
-    foreach ($lifecycle in @('newInstall','retainedUpgrade','recovery')) {
+    foreach ($lifecycle in @('newInstall','retainedUpgrade','retainedVerify','recovery')) {
         $window=[ordered]@{phase=$lifecycle;state='preparing';networkRestored=$false}
         $boundary=$null
         try {
@@ -157,7 +161,7 @@ try {
         }
     }
     if ((Get-FileHash -LiteralPath $candidateZip).Hash.ToLowerInvariant() -cne $CandidateSha256) { throw 'Original candidate archive changed during rehearsal.' }
-    $driver.state='application-rehearsal-passed-manual-installer-pending';$completed=$true
+    $driver.state='isolated-rehearsal-passed-synthetic-manual-admission';$completed=$true
 } catch { $failure=$_.Exception;$driver.state='failed';$driver.failedPhase=$phase;$driver.failure=$failure.Message }
 finally {
     $driver.cleanup=@()

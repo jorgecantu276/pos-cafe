@@ -1,2 +1,4 @@
 # The vendored transport has a byte-pinned hash shared with private operations.
 scripts/smoothies/SupportTransport.psm1 text eol=lf
+# The independently reviewed operator is pinned by its exact SHA-256.
+scripts/testing/Invoke-CafeManualUpdate.ps1 text eol=lf

@@ -9,6 +9,8 @@ on:
       - scripts/testing/cafe-*.mjs
       - scripts/testing/cafe-qualification-input.json
       - scripts/testing/Run-HostedCafeQualification.ps1
+      - scripts/testing/Invoke-CafeHostedManualFixture.ps1
+      - scripts/testing/Invoke-CafeManualUpdate.ps1
   workflow_dispatch:
 
 permissions:

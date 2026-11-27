@@ -79,7 +79,7 @@ if(mode==='prepare'){
 const boundary=await json(settings.boundaryReceipt);assert.equal(boundary.state,'active');
 assert.equal(settings.probesPassed,true,'Native and browser boundary probes must pass before customer launch.');
 const state=await json(privateFile), sdkClients=[], databases=[];let app,browser,primary;
-assert.ok(['newInstall','retainedUpgrade','recovery'].includes(settings.lifecyclePhase),'Select one bounded lifecycle phase.');
+assert.ok(['newInstall','retainedUpgrade','retainedVerify','recovery'].includes(settings.lifecyclePhase),'Select one bounded lifecycle phase.');
 const reportFile=path.join(settings.evidence,'cafe-exact-result.json');
 const previousReport=await json(reportFile).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
 const report=previousReport||{format:'cafe-exact-zip-acceptance-v1',state:'running',sourceCommit:settings.sourceCommit,harnessCommit:settings.harnessCommit,
@@ -105,12 +105,15 @@ async function start(folder,fixture,label,journalSource,existing){
     ({runtime,config,configFile,transportFile}=existing);
     assert.deepEqual(await json(configFile),config);assert.equal(config.RequireExistingPrintJournal,true);
     assert.equal(config.SupabaseUrl,release.supabaseUrl);
+    const transport=await json(transportFile);transport.boundaryReceipt=settings.boundaryReceipt;transport.boundaryOwner=boundary.owner;
+    await writeFile(transportFile,JSON.stringify(transport));
   }else{
   runtime=path.join(settings.work,'runtime-'+label);await mkdir(runtime);await mkdir(path.join(runtime,'printing'));await mkdir(path.join(runtime,'backups'));await mkdir(path.join(runtime,'keys'));
   if(journalSource){const src=new DatabaseSync(journalSource);try{await sqliteBackup(src,path.join(runtime,'printing/mock-jobs.sqlite'));}finally{src.close();}}
   const example=await json(path.join(folder,'pos-cafe-config.example.json'));
   config={...example,SupabaseUrl:release.supabaseUrl,SupabaseServiceRoleKey:fixture.config.service,Port:3193,PrintMode:'mock',ClipEnabled:false,AutoUpdate:false,
-    PrintDataDirectory:path.join(runtime,'printing'),BackupDirectory:path.join(runtime,'backups'),BackupRecoveryKeyFile:path.join(runtime,'keys/recovery.key'),RequireExistingPrintJournal:!!journalSource};
+    PrintDataDirectory:path.join(runtime,'printing'),BackupDirectory:path.join(runtime,'backups'),BackupRecoveryKeyFile:path.join(runtime,'keys/recovery.key'),ReceiptIssuerFile:path.join(runtime,'keys/issuer.private.json'),RequireExistingPrintJournal:!!journalSource};
+  await writeFile(config.ReceiptIssuerFile,JSON.stringify({testOnly:true,fixture:'synthetic-cafe-hosted'}),{flag:'wx',mode:0o600});
   assert.equal(hash(Buffer.from(config.SupabaseAnonKey)),release.publicKeySha256);
   configFile=path.join(runtime,'config.private.json');transportFile=path.join(runtime,'transport.private.json');
   await writeFile(configFile,JSON.stringify(config),{flag:'wx',mode:0o600});
@@ -151,6 +154,12 @@ async function pay(page){await page.getByRole('button',{name:'Control de entrega
 async function rowsAndSequences(db,raw){return (await db.query("select jsonb_build_object('tables',$1::jsonb->'tables','sequences',$1::jsonb->'sequences')::text value",[raw])).rows[0].value;}
 function journalRows(file){const db=new DatabaseSync(file,{readOnly:true});try{return db.prepare("select name from sqlite_master where type='table' and name not like 'sqlite_%' order by name").all().map(({name})=>({name,
   rows:db.prepare('select * from "'+name.replaceAll('"','""')+'"').all().sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))}));}finally{db.close();}}
+async function awaitSubmittedMockJournal(file){
+  for(let i=0;i<50;i++){const db=new DatabaseSync(file,{readOnly:true});let pending,total;
+    try{pending=db.prepare("select count(*) n from jobs where state is null or state not in ('submitted','cancelled')").get().n;total=db.prepare('select count(*) n from jobs').get().n;}finally{db.close();}
+    if(total>0&&pending===0)return;await new Promise(r=>setTimeout(r,200));
+  }throw Error('Actual synthetic journal did not settle; do not replay or bypass readiness.');
+}
 try{
   await exact(settings.candidate);if(settings.lifecyclePhase!=='recovery')await exact(settings.baseline);
   browser=await chromium.launch({executablePath:settings.browser,headless:true,args:['--disable-background-networking','--disable-component-update']});
@@ -189,6 +198,7 @@ try{
   const retained=state.retained,oldDb=await connectFixture(retained),oldClient=await clientFor(retained);
   app=await start(settings.baseline,retained,'predecessor');const oldUi=await context(retained,await json(app.transportFile));
   await oldUi.page.getByRole('button',{name:/Brownie con nieve PRUEBA/}).click();await pay(oldUi.page);
+  await awaitSubmittedMockJournal(path.join(app.runtime,'printing/mock-jobs.sqlite'));
   const oldSale=(await oldDb.query('select id,request_id,request_payload,receipt_snapshot from orders order by created_at desc limit 1')).rows[0];
   const predecessor=await stop();await oldUi.context.close();
   // Establish the existing-installation setting after the actual predecessor
@@ -198,10 +208,32 @@ try{
   const summary=ok(await oldClient.rpc('pos_shift_summary',{p_register:retained.register.id}));ok(await oldClient.rpc('pos_close_shift',{p_register:retained.register.id,p_counted:summary.expected_cash,p_expenses:summary.expenses,p_preview:summary}));
   await install(oldDb,settings.candidate,['202611230024_inventory_revision_rejection.sql','202611270026_brownie_syrup_choice.sql']);
   await oldDb.query('begin');await applyBrownieSyrup(oldDb,await planBrownieSyrup(oldDb));await oldDb.query('commit');
+  const beforeTransition=await rowsAndSequences(oldDb,ok(await createClient(retained.config.api,retained.config.service,{auth:{persistSession:false,autoRefreshToken:false}}).rpc('pos_business_backup')));
+  const continuation={predecessor:{runtime:predecessor.runtime,config:predecessor.config,configFile:predecessor.configFile,transportFile:predecessor.transportFile},oldSale,
+    journalBefore:journalRows(path.join(predecessor.runtime,'printing/mock-jobs.sqlite')),configBefore:hash(await readFile(predecessor.configFile))};
+  const operatorInput=path.join(settings.work,'manual-input.private.json');
+  await writeFile(operatorInput,JSON.stringify({work:settings.work,operatorScript:settings.operatorScript,operatorScriptSha256:settings.operatorScriptSha256,
+    configFile:predecessor.configFile,installDirectory:settings.baseline,candidateDirectory:settings.candidate,sourceTree:settings.sourceTree,
+    zipPath:settings.candidateZip,zipSha256:settings.candidateZipSha256,databaseContractSha256:hash(Buffer.from(JSON.stringify(await contract(settings.candidate)))),
+    backendPlanSha256:hash(Buffer.from('synthetic-reviewed-024-026:'+settings.sourceCommit)),probeNodePath:process.execPath,boundaryReceipt:settings.boundaryReceipt,boundaryOwner:boundary.owner}),{flag:'wx',mode:0o600});
+  const env={...process.env,NODE_OPTIONS:'--import='+pathToFileURL(path.join(root,'scripts/testing/cafe-runtime-transport.mjs')).href,POS_CAFE_TEST_TRANSPORT_FILE:predecessor.transportFile};
+  const output=execFileSync(ps,['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(root,'scripts/testing/Invoke-CafeHostedManualFixture.ps1'),'-InputFile',operatorInput],{env,windowsHide:true,encoding:'utf8',timeout:60000});
+  const transition=JSON.parse(output.trim());assert.equal(transition.state,'guarded-transition-passed');assert.equal(transition.customerQualification,false);
+  const receipt=await json(transition.receiptPath);check('same guarded operator performs retained folder transition',receipt.state,'installed-verified-not-started');
+  check('operator retains exact original predecessor index',hash(await readFile(path.join(transition.previousDirectory,'SHA256.json'))),(await identity(settings.baseline)).filesSha256);
+  assert.equal((await json(path.join(transition.previousDirectory,'release.json'))).sourceCommit,'b776550a7a91ad1dafb21b2200a235dfe337bb6f');
+  await verifyPackage(settings.baseline,await identity(settings.candidate),settings.baseline,(await identity(settings.candidate)).release);
+  check('guarded folder transition preserves every business row and sequence',await rowsAndSequences(oldDb,ok(await createClient(retained.config.api,retained.config.service,{auth:{persistSession:false,autoRefreshToken:false}}).rpc('pos_business_backup'))),beforeTransition);
+  report.manualInstaller='exercised-under-synthetic-procedural-admission';report.operatorScriptSha256=settings.operatorScriptSha256;
+  await writeFile(path.join(settings.work,'retained-continuation.private.json'),JSON.stringify(continuation),{flag:'wx',mode:0o600});
+  report.lifecycle.retainedUpgrade='guarded-transition-passed';
+  }
+  if(settings.lifecyclePhase==='retainedVerify'){
+  const retained=state.retained,oldDb=await connectFixture(retained),oldClient=await clientFor(retained),continuation=await json(path.join(settings.work,'retained-continuation.private.json'));
+  const {predecessor,oldSale,journalBefore,configBefore}=continuation;
   retained.register=ok(await oldClient.rpc('pos_open_shift',{p_request:randomUUID(),p_cash:0,p_rate:16}));
   const oldRows=await rowsAndSequences(oldDb,ok(await createClient(retained.config.api,retained.config.service,{auth:{persistSession:false,autoRefreshToken:false}}).rpc('pos_business_backup')));
-  const journalBefore=journalRows(path.join(predecessor.runtime,'printing/mock-jobs.sqlite')),configBefore=hash(await readFile(predecessor.configFile));
-  app=await start(settings.candidate,retained,'retained',undefined,predecessor);
+  app=await start(settings.baseline,retained,'retained',undefined,predecessor);
   const afterRows=await rowsAndSequences(oldDb,ok(await createClient(retained.config.api,retained.config.service,{auth:{persistSession:false,autoRefreshToken:false}}).rpc('pos_business_backup')));
   check('opening candidate preserves every business row and sequence before staff sign-in',afterRows,oldRows);
   check('same external configuration remains unchanged',hash(await readFile(predecessor.configFile)),configBefore);
@@ -213,8 +245,8 @@ try{
   const backupResponse=await upgraded.context.request.post(base+'/api/backups',{headers:{Origin:base,'X-Pos-Backup':'1'}});check('exact package backup endpoint',backupResponse.status(),200);
   const backupStatus=await backupResponse.json();assert.ok(backupStatus.lastSuccess&&!backupStatus.lastError);
   await exact(settings.candidate);
-  const upgrade=await stop();await upgraded.context.close();await exact(settings.candidate);
-  report.lifecycle.retainedUpgrade='application-state-passed'; // The production manual installer is a separate explicit gate.
+  const upgrade=await stop();await upgraded.context.close();await exact(settings.candidate);await exact(settings.baseline);
+  report.lifecycle.retainedUpgrade='passed';report.lifecycle.retainedVerify='passed';
   await writeFile(path.join(settings.work,'recovery-continuation.private.json'),JSON.stringify({backupFile:path.join(upgrade.config.BackupDirectory,backupStatus.lastSuccess.filename),
     backupSha256:backupStatus.lastSuccess.sha256,keyFile:upgrade.config.BackupRecoveryKeyFile,journalFile:path.join(upgrade.runtime,'printing/mock-jobs.sqlite')}),{flag:'wx',mode:0o600});
   }
@@ -233,7 +265,7 @@ try{
   const recoveredUi=await context(recovered,await json(app.transportFile));check('restored staff authenticates in exact package',new URL(recoveredUi.page.url()).pathname,'/');
   await exact(settings.candidate);await recoveredUi.context.close();await stop();await exact(settings.candidate);report.lifecycle.recovery='passed';
   }
-  report.state=report.lifecycle.recovery==='passed'?'engineering-passed-manual-installer-pending':'phase-passed';
+  report.state=report.lifecycle.recovery==='passed'?'isolated-rehearsal-passed-synthetic-manual-admission':'phase-passed';
 }catch(error){primary=error;report.state='failed';report.failedPhase=report.checks.at(-1)||'setup';report.errorClass=error.constructor.name;
   report.failure=error.message.split('\n')[0].replace(/https?:\/\/\S+/g,'[origin]').replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,'[token]').slice(0,300);
   await writeFile(path.join(settings.work,'error.private.log'),String(error.stack||error));}
