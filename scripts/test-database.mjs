@@ -27,6 +27,7 @@ import { deliveryProjectionCases } from './delivery-readiness/projection-cases.m
 import { milkChoiceCases } from './catalog/milk-choice-cases.mjs';
 import { menuUpdateCases } from './catalog/menu-update-cases.mjs';
 import { wholeUsdDatabaseCases } from './receipts/whole-usd-database-cases.mjs';
+import { brownieSyrupCases } from './catalog/brownie-syrup-cases.mjs';
 
 const root=resolve(import.meta.dirname,'..');
 // User-owned TEMP survives PostgreSQL's restricted Windows token; a hosted
@@ -275,6 +276,7 @@ try {
   console.log('PASS Windows update gate: service-only read, closed and open drawer, pending handoff and CLIP reconciliation');
   assertions+=await milkChoiceCases(db,connection);
   assertions+=await wholeUsdDatabaseCases(db,connection);
+  assertions+=await brownieSyrupCases(db,connection);
   if(process.env.POS_MENU_BASELINE&&process.env.POS_MENU_UPDATE_SQL)assertions+=await menuUpdateCases(db,connection,process.env.POS_MENU_BASELINE,process.env.POS_MENU_UPDATE_SQL);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {

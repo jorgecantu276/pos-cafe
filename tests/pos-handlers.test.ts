@@ -393,6 +393,24 @@ test('Matcha milk is a single choice and uses only the Matcha prices',()=>{
   assert.deepEqual(selected,[{id:matchaLala.id,phase:matchaMilk,name:'Lala 100',price:0}]);
 });
 
+test('brownie syrup requires one included option and changing it replaces the previous choice',()=>{
+  const names=['Caramelo','Caramelo salado','Chocolate','Sin jarabe'];
+  const dbExtras=names.map((name,i)=>({id:String(i),name,phase:'Jarabe Brownie',price:0,active:true}));
+  const build=handler('buildWizardSteps',{extraAppliesToProduct,useCallback:(fn:unknown)=>fn,dbExtras});
+  const dynamicSteps=build({id:'brownie',customizable:true,wizard_steps:['Jarabe Brownie']}) as WizardStep[];
+  assert.deepEqual(dynamicSteps[0],{id:'Jarabe Brownie',title:'Seleccionar jarabe',options:names,exclusive:true,required:true});
+  let selected:Array<{id:string;name:string;phase:string;price:number}>=[];
+  for(const name of names){
+    handler('chooseExtra',{customizationStep:0,dynamicSteps,activeExtras:selected,dbExtras,appearance:'workspace',extraAppliesToProduct,selectedProduct:{id:'brownie'},
+      setActiveExtras:(extras:typeof selected)=>{selected=extras;},
+    })(name);
+    assert.equal(selected.length,1);assert.equal(selected[0].name,name);assert.equal(selected[0].price,0);
+  }
+  const messages:string[]=[];
+  handler('handleConfirmAdd',{selectedProduct:{id:'brownie'},dynamicSteps,activeExtras:[],alert:(text:string)=>messages.push(text)})();
+  assert.equal(messages.length,1);
+});
+
 test('editing an old draft uses current milk options while preserving the original line and price until saved',()=>{
   useCartStore.getState().clearCart();
   const extras=[{id:'almond',name:'Almendra',price:15,phase:'Tipo de Leche',active:true}];
