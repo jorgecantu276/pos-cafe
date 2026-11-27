@@ -17,12 +17,22 @@ function Invoke-HostedBoundedProcess {
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     foreach ($name in $ChildEnvironment.Keys) { $start.Environment[$name] = $ChildEnvironment[$name] }
     $child = [Diagnostics.Process]::new(); $child.StartInfo = $start
+    $deadline = [Diagnostics.Stopwatch]::StartNew()
     try {
         [void]$child.Start(); $child.StandardInput.Close()
         $stdout = $child.StandardOutput.ReadToEndAsync(); $stderr = $child.StandardError.ReadToEndAsync()
         if (!$child.WaitForExit($Seconds * 1000)) {
-            $child.Kill($true); $child.WaitForExit()
+            $child.Kill($true); [void]$child.WaitForExit(5000)
             throw 'The owned hosted child exceeded its deadline and its process tree was stopped.'
+        }
+        $remaining = [Math]::Max(0, [int]($Seconds * 1000 - $deadline.ElapsedMilliseconds))
+        $drained = [Threading.Tasks.Task]::WhenAll([Threading.Tasks.Task[]]@($stdout,$stderr))
+        if (!$drained.Wait($remaining)) {
+            # An exited child can leave inherited pipes open in a descendant.
+            # Closing only our read handles prevents that descendant from
+            # extending the import deadline or blocking certificate cleanup.
+            $child.StandardOutput.Close(); $child.StandardError.Close()
+            throw 'The owned hosted child output did not drain before its shared deadline.'
         }
         $result = $stdout.GetAwaiter().GetResult(); $diagnostics = $stderr.GetAwaiter().GetResult()
         if ($child.ExitCode -ne 0) { throw ('The owned hosted child failed with exit code ' + $child.ExitCode + '. ' + $diagnostics) }
