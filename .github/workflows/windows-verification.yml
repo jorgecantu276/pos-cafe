@@ -232,7 +232,10 @@ jobs:
         if: always()
         with:
           name: smoothies-installed-acceptance-${{ github.sha }}
-          path: ${{ runner.temp }}/smoothies-rehearsal-evidence/rehearsal.json
+          path: |
+            ${{ runner.temp }}/smoothies-rehearsal-evidence/rehearsal.json
+            ${{ runner.temp }}/pos-wsl-engine-*/bootstrap-events.jsonl
+            ${{ runner.temp }}/pos-wsl-engine-*/transport-diagnostic.json
           if-no-files-found: warn
           retention-days: 14
   transport-diagnostics:
@@ -265,5 +268,6 @@ jobs:
           path: |
             ${{ runner.temp }}/pos-wsl-engine-*/transport-diagnostic.json
             ${{ runner.temp }}/pos-wsl-engine-*/engine.json
+            ${{ runner.temp }}/pos-wsl-engine-*/bootstrap-events.jsonl
           if-no-files-found: warn
           retention-days: 14

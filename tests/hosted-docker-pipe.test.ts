@@ -137,6 +137,13 @@ if((Private-IPv4 '172.24.1.2') -cne '172.24.1.2'){throw 'actual private IPv4 cha
 foreach($address in @('127.0.0.1','1.1.1.1','172.32.0.1','hostname','10.1','010.1.2.3','10.0.0.256','::1')){
   $refused=$false;try{Private-IPv4 $address}catch{$refused=$true};if(!$refused){throw 'noncanonical/public network address accepted'}
 }
+$writerFunction=$syntax.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Write-LinuxScript'},$true)
+if(!$writerFunction){throw 'Write-LinuxScript function was not found'}
+Invoke-Expression $writerFunction.Extent.Text
+$linuxScript=Join-Path $WorkDirectory 'linux-script.sh'
+Write-LinuxScript $linuxScript ("#!/bin/bash"+[char]13+[char]10+"if true; then"+[char]13+[char]10+" :"+[char]13+[char]10+"fi")
+$scriptBytes=[IO.File]::ReadAllBytes($linuxScript)
+if($scriptBytes -contains 13 -or $scriptBytes[-1] -ne 10 -or $scriptBytes[0] -ne 35){throw 'Linux scripts must contain LF-only bytes with no BOM, including the final keyword/newline'}
 $digest='a'*64
 if((Canary-Hash ($digest+"  /fixture/canary.txt"+[Environment]::NewLine) $digest 'Synthetic bind') -cne $digest){throw 'canary SHA parser changed the measured digest'}
 $mismatch=$false

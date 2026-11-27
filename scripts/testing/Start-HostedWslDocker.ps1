@@ -45,6 +45,9 @@ function Native {
             throw "Owned host command exceeded its ${TimeoutSeconds}s deadline: $label"
         }
         $result = $stdout.GetAwaiter().GetResult(); $diagnostics = $stderr.GetAwaiter().GetResult()
+        $event = @{ command = $label; exitCode = $process.ExitCode; stdoutCharacters = $result.Length; stderrCharacters = $diagnostics.Length;
+            stderrSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($diagnostics))).ToLowerInvariant() }
+        [IO.File]::AppendAllText((Join-Path $WorkDirectory 'bootstrap-events.jsonl'), ($event | ConvertTo-Json -Compress) + "`n", [Text.UTF8Encoding]::new($false))
         [IO.File]::WriteAllText((Join-Path $WorkDirectory 'native-stderr.log'), $diagnostics)
         if ($process.ExitCode -ne 0) { throw "$(Split-Path -Leaf $Executable) failed: $diagnostics $result" }
         return $result.Replace([string][char]0, '').TrimEnd("`r", "`n")
@@ -77,6 +80,11 @@ function Private-IPv4([string]$Value) {
     if (![Net.IPAddress]::TryParse($Value, [ref]$address) -or $address.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork -or
         $address.ToString() -cne $Value -or $Value -cnotmatch '^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)') { throw 'The diagnostic requires exact private WSL IPv4 addresses.' }
     return $Value
+}
+function Write-LinuxScript([string]$Path, [string]$Text) {
+    $linuxText = $Text.Replace("`r`n", "`n")
+    if ($linuxText.Contains("`r")) { throw 'Unexpected carriage return in a Linux script.' }
+    [IO.File]::WriteAllText($Path, $linuxText.TrimEnd("`n") + "`n", [Text.UTF8Encoding]::new($false))
 }
 function Free-Ports([int[]]$Ports) {
     foreach ($port in $Ports) {
@@ -119,7 +127,7 @@ try {
     $kernel = Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'uname', '-r')
     if ($kernel -notmatch 'microsoft-standard-WSL2') { throw 'The disposable distro did not boot a genuine WSL2 Linux kernel.' }
     $guestScript = Join-Path $WorkDirectory 'guest-bootstrap.sh'
-    @'
+    $bootstrapLinuxScript = @'
 #!/bin/bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
@@ -140,7 +148,9 @@ systemctl daemon-reload
 systemctl enable --now containerd
 systemctl restart docker
 docker info --format '{{.OSType}}'
-'@.Replace('__OWNER__', $owner).Replace("`r`n", "`n") | Set-Content -LiteralPath $guestScript -Encoding utf8NoBOM
+'@.Replace('__OWNER__', $owner)
+    Write-LinuxScript $guestScript $bootstrapLinuxScript
+    [void](Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'bash', '-n', (Guest-Path $guestScript)))
     [void](Native 'wsl.exe' @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestScript)))
     $keepAlive = Start-Process -FilePath 'wsl.exe' -ArgumentList @('--distribution', $distribution, '--user', 'root', '--', 'sleep', 'infinity') -WindowStyle Hidden -PassThru
     $linuxInfo = Wait-Native { (Docker @('--host', 'tcp://127.0.0.1:2375', 'info', '--format', '{{json .}}')) | ConvertFrom-Json } 120 'Waiting for the owned WSL Linux engine on Windows loopback.'
@@ -265,7 +275,7 @@ services:
                 $windowsGateway = Private-IPv4 ([string]$guestRoutes[0].gateway)
                 if ($guestAddress -ceq $windowsGateway) { throw 'The WSL guest and its Windows gateway must differ.' }
                 $guestControlScript = Join-Path $WorkDirectory 'guest-transport-control.sh'
-                @'
+                $guestControlText = @'
 #!/bin/bash
 set -euo pipefail
 test "$(cat /etc/pos-hosted-rehearsal)" = "$3"
@@ -288,7 +298,9 @@ else
   kill -- "$child"
   rm -- "$pidfile"
 fi
-'@.Replace("`r`n", "`n") | Set-Content -LiteralPath $guestControlScript -Encoding utf8NoBOM
+'@
+                Write-LinuxScript $guestControlScript $guestControlText
+                [void](Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', '-n', (Guest-Path $guestControlScript)) -TimeoutSeconds 30)
                 $guestControlPid = (Native -Executable 'wsl.exe' -Arguments @('--distribution', $distribution, '--user', 'root', '--', 'bash', (Guest-Path $guestControlScript), $guestAddress, $windowsGateway, $owner, 'start') -TimeoutSeconds 30).Trim()
                 if ($guestControlPid -cnotmatch '^[1-9][0-9]*$') { throw 'The temporary guest listener ownership is unavailable.' }
                 $directEndpoint = 'tcp://' + $guestAddress + ':2376'
