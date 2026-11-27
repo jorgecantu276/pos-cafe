@@ -457,5 +457,33 @@ begin
   else raise exception 'Unexpected phone milk validation; review before updating'; end if;
 end $milk_guard$;
 
+
+-- Smoothies' earlier ordered migrations scope extras to eligible presentations.
+-- Replacing checkout/quote definitions must preserve that product-specific rule.
+do $scoped_extras$
+declare signature text; definition text;
+  phase_check constant text := 'not coalesce(extra.phase=any(product.wizard_steps),false)';
+  scope_check constant text := ' or (extra.applicable_product_ids is not null and not (product.id=any(extra.applicable_product_ids)))';
+begin
+  if exists(select 1 from information_schema.columns where table_schema='public'
+      and table_name='extras' and column_name='applicable_product_ids') then
+    foreach signature in array array[
+      'cafe_private.manual_checkout(uuid,jsonb)',
+      'cafe_private.clip_quote(uuid,jsonb)',
+      'cafe_private.phone_catalog_quote(uuid,jsonb)'
+    ] loop
+      select pg_get_functiondef(signature::regprocedure) into definition;
+      if length(definition)-length(replace(definition,phase_check,''))<>length(phase_check) then
+        raise exception 'Unexpected extra phase validation in %; review before updating',signature;
+      end if;
+      if length(definition)-length(replace(definition,scope_check,''))=length(scope_check) then
+        null; -- The phone quote retains the rule from the earlier migration.
+      elsif position('applicable_product_ids' in definition)=0 then
+        execute replace(definition,phase_check,phase_check||scope_check);
+      else raise exception 'Unexpected extra eligibility validation in %; review before updating',signature; end if;
+    end loop;
+  end if;
+end $scoped_extras$;
+
 notify pgrst,'reload schema';
 commit;

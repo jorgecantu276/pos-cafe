@@ -1,7 +1,7 @@
 import { migrationContract } from './testing/migrations.mjs';
 import { createTestPostgres } from './testing/postgres.mjs';
 import { Client } from 'pg';
-import { readFile, mkdtemp } from 'node:fs/promises';
+import { readFile, mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
@@ -27,6 +27,7 @@ import { deliveryReadinessDatabaseCases } from './delivery-readiness/database-ca
 import { deliveryProjectionCases } from './delivery-readiness/projection-cases.mjs';
 import { milkChoiceCases } from './catalog/milk-choice-cases.mjs';
 import { menuUpdateCases } from './catalog/menu-update-cases.mjs';
+import { smoothiesPaymentContractCases } from './payments/smoothies-contract-cases.mjs';
 import { splitPaymentDatabaseCases } from './payments/split-database-cases.mjs';
 import { wholeUsdDatabaseCases } from './receipts/whole-usd-database-cases.mjs';
 
@@ -45,6 +46,33 @@ async function connection(role='postgres',uid='',database='postgres') {
   await c.query(`set role ${role}`);
   await c.query("select set_config('request.jwt.claim.sub',$1,false)",[uid]);
   return c;
+}
+async function freshFinalFixture(db,snapshot,entries,{smoothies=false}={}) {
+  const finalDatabase='fixture_'+randomUUID().replaceAll('-','');
+  await db.query(`create database ${finalDatabase}`);
+  const finalConnect=(role='postgres',uid='')=>connection(role,uid,finalDatabase);
+  const finalDb=await finalConnect();
+  await finalDb.query(`create schema auth; create table auth.users(id uuid primary key);
+    create table auth.identities(id uuid primary key,user_id uuid,provider text,identity_data jsonb);
+    create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+    grant usage on schema public,auth to anon,authenticated,service_role;
+    grant execute on function auth.uid() to public;
+    create function public.uuid_generate_v4() returns uuid language sql as $$select gen_random_uuid()$$;`);
+  for(const sequence of snapshot.sequences) await finalDb.query(`create sequence public."${sequence.name}"`);
+  for(const table of snapshot.tables) {
+    const columns=table.columns.map(column=>`"${column.name}" ${column.type}${column.default?' default '+column.default:''}${column.not_null?' not null':''}`);
+    await finalDb.query(`create table public."${table.name}"(${columns.join(',')})`);
+  }
+  for(const table of snapshot.tables) for(const constraint of table.constraints.filter(value=>value.type!=='f')) await finalDb.query(`alter table public."${table.name}" add constraint "${constraint.name}" ${constraint.definition}`);
+  for(const table of snapshot.tables) for(const constraint of table.constraints.filter(value=>value.type==='f')) await finalDb.query(`alter table public."${table.name}" add constraint "${constraint.name}" ${constraint.definition}`);
+  for(const func of snapshot.functions) await finalDb.query(func.definition??func.function_definition);
+  for(const role of ['admin','cashier','barista','outsider']) {
+    await finalDb.query('insert into auth.users values($1)',[ids[role]]);
+    await finalDb.query('insert into public.profiles(id,full_name,username,role) values($1,$2,$2,$2)',[ids[role],role]);
+  }
+  for(const entry of [...entries].sort((a,b)=>a.name.localeCompare(b.name))) await finalDb.query(entry.sql);
+  if(smoothies) await finalDb.query("create schema smoothies_local; create table smoothies_local.identity(name text primary key,contract text,ready boolean); insert into smoothies_local.identity values('synthetic-final-contract','fixture',true)");
+  return {db:finalDb,connection:finalConnect};
 }
 async function denied(client,sql,args=[]) {await assert.rejects(client.query(sql,args)); assertions++;}
 const ids=Object.fromEntries(['admin','cashier','barista','outsider','product','product2','supply','customer'].map(k=>[k,randomUUID()]));
@@ -288,30 +316,9 @@ try {
   // do not reapply old function definitions to obtain a passing regression run.
   await Promise.all(clients.filter(client=>client!==db).map(client=>client.end()));
   clients.splice(0,clients.length,db);
-  const finalDatabase='final_'+randomUUID().replaceAll('-','');
-  await db.query(`create database ${finalDatabase}`);
-  const finalConnect=(role='postgres',uid='')=>connection(role,uid,finalDatabase);
-  const finalDb=await finalConnect();
-  await finalDb.query(`create schema auth; create table auth.users(id uuid primary key);
-    create table auth.identities(id uuid primary key,user_id uuid,provider text,identity_data jsonb);
-    create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
-    grant usage on schema public,auth to anon,authenticated,service_role;
-    grant execute on function auth.uid() to public;
-    create function public.uuid_generate_v4() returns uuid language sql as $$select gen_random_uuid()$$;`);
-  for(const sequence of snap.sequences) await finalDb.query(`create sequence public."${sequence.name}"`);
-  for(const table of snap.tables) {
-    const columns=table.columns.map(column=>`"${column.name}" ${column.type}${column.default?' default '+column.default:''}${column.not_null?' not null':''}`);
-    await finalDb.query(`create table public."${table.name}"(${columns.join(',')})`);
-  }
-  for(const table of snap.tables) for(const constraint of table.constraints.filter(value=>value.type!=='f')) await finalDb.query(`alter table public."${table.name}" add constraint "${constraint.name}" ${constraint.definition}`);
-  for(const table of snap.tables) for(const constraint of table.constraints.filter(value=>value.type==='f')) await finalDb.query(`alter table public."${table.name}" add constraint "${constraint.name}" ${constraint.definition}`);
-  for(const func of snap.functions) await finalDb.query(func.definition??func.function_definition);
-  for(const role of ['admin','cashier','barista','outsider']) {
-    await finalDb.query('insert into auth.users values($1)',[ids[role]]);
-    await finalDb.query('insert into public.profiles(id,full_name,username,role) values($1,$2,$2,$2)',[ids[role],role]);
-  }
   const finalContract=await migrationContract();
-  for(const sql of finalContract.texts) await finalDb.query(sql);
+  const finalEntries=finalContract.files.map((name,index)=>({name,sql:finalContract.texts[index]}));
+  const {db:finalDb,connection:finalConnect}=await freshFinalFixture(db,snap,finalEntries);
   await finalDb.query('update cafe_private.drawer_settings set rate=20 where singleton');
   console.log('Verifying baseline business behavior on the fresh final migration contract');
   const finalDefinitions=(await finalDb.query("select md5(string_agg(pg_get_functiondef(p.oid), E'\n' order by p.oid)) hash from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','cafe_private') and p.prokind='f'")).rows[0].hash;
@@ -323,6 +330,13 @@ try {
   assertions+=await splitPaymentDatabaseCases(finalDb,finalConnect);
   assert.equal((await finalDb.query("select md5(string_agg(pg_get_functiondef(p.oid), E'\n' order by p.oid)) hash from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','cafe_private') and p.prokind='f'")).rows[0].hash,finalDefinitions,'Regression fixtures must not replace final application functions');
   assertions++;
+  await Promise.all(clients.filter(client=>client!==db).map(client=>client.end()));
+  clients.splice(0,clients.length,db);
+  const smoothiesFolder=resolve(root,'supabase/smoothies');
+  const smoothiesFiles=(await readdir(smoothiesFolder)).filter(name=>/^\d{12}_[a-z_]+\.sql$/.test(name)).sort();
+  const smoothiesEntries=await Promise.all(smoothiesFiles.map(async name=>({name,sql:await readFile(resolve(smoothiesFolder,name),'utf8')})));
+  const {db:smoothiesDb,connection:smoothiesConnect}=await freshFinalFixture(db,snap,[...finalEntries,...smoothiesEntries],{smoothies:true});
+  assertions+=await smoothiesPaymentContractCases(smoothiesDb,smoothiesConnect,ids);
   if(process.env.POS_MENU_BASELINE&&process.env.POS_MENU_UPDATE_SQL)assertions+=await menuUpdateCases(db,connection,process.env.POS_MENU_BASELINE,process.env.POS_MENU_UPDATE_SQL);
   console.log(`PASS ${assertions} database assertions: permissions, projected login, admin/staff controls, rollback, server pricing, duplicate/replayed requests, concurrent independent sales; legacy stock unchanged, loyalty, shift close/recovery, cancellation.`);
 } finally {
